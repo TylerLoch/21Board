@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.27-1';
-  const BOARD_BUILD = 'b180c0db';
+  const BOARD_VERSION = '2026.11.27-2';
+  const BOARD_BUILD = '90d32643';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -49,6 +49,9 @@
       return v && v.widget && typeof v.src === 'string' ? v : null;
     } catch (e) { return null; }
   })();
+  // The dev window's Language › Pseudo: every window in the pseudo language, those opened afterwards too (LabBridge).
+  // Never saved.
+  let labPseudo = false;
   // Kiosk mode (?kiosk=yes): ChromeOS kiosk, for users who don't sign in. No ⛶ Full screen (a kiosk is always full
   // screen), Google Drive folder, install prompt or backup reminders; a Quit control at the end of the Widget
   // Picker's controls. Import and Export use ChromeOS's Files dialog (the kiosk's own storage, USB drives).
@@ -118,7 +121,8 @@
                              // date, the old default) reads as 'auto', 'time' as 'on' (clockMode).
 
     // The whole board's, like the theme and accent: exported, and with Board Sync on every device (section 12b).
-    letters: 'standard'      // Text style: 'standard' (the device's own font) | 'legible' (Atkinson Hyperlegible) | 'early' (Andika)
+    letters: 'standard',     // Text style: 'standard' (the device's own font) | 'legible' (Atkinson Hyperlegible) | 'early' (Andika)
+    widgetLanguage: 'en'     // Default widget language: 'en' | 'es' | 'ru' | 'uk', for windows opened from now on
   };
   // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space. A new board's
   // first page is "Page 1". Before 2026.11.18-12 it was "My Board", and saved pages keep that name.
@@ -277,9 +281,17 @@
     history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 4.5v4h4"/><path d="M12 7.5V12l3 2"/>',   // clock with a back arrow
     send: '<path d="M7 18.5H6.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.6 8.1 4.5 4.5 0 0 1 17.5 18.5H17"/><path d="M12 20.5v-8"/><path d="M8.8 15.2L12 12l3.2 3.2"/>', // cloud with an arrow going up
     external: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>', // a box with an arrow out: open in its own tab
-    reload: '<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M21 4.5v4h-4"/>' // a clockwise arrow (history's, mirrored)
+    reload: '<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M21 4.5v4h-4"/>', // a clockwise arrow (history's, mirrored)
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a13 13 0 0 1 0 18a13 13 0 0 1 0-18z"/>'   // a globe: Language
   };
   const svg = (name, cls = '') => `<svg viewBox="0 0 24 24" aria-hidden="true"${cls ? ` class="${cls}"` : ''}>${ICONS[name] || ''}</svg>`;
+
+  // The languages a widget's window can show (its registry entry's languages), each named in its own words, and in
+  // English under Settings' cards. A window's locale for dates (context.locale); the pseudo language's dates are
+  // Russian's, as the SDK's. Merge.LANGS and Merge.normLang are the codes, and a saved one checked.
+  const LANG_NAMES = { en: 'English', es: 'Español', ru: 'Русский', uk: 'Українська' };
+  const LANG_IN_ENGLISH = { es: 'Spanish', ru: 'Russian', uk: 'Ukrainian' };
+  const LANG_LOCALES = { en: 'en-US', es: 'es-US', ru: 'ru-RU', uk: 'uk-UA', qps: 'ru-RU' };
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -353,6 +365,11 @@
   // =====================================================================
   // 2. Widget catalog
   // =====================================================================
+  // A widget's languages: the known ones, each once, in the order English, Español, Русский, Українська. English always.
+  // (LANG_NAMES' keys: the registry is read before the merge region's Merge.LANGS is there)
+  const normLangs = v => ['en'].concat(Object.keys(LANG_NAMES).filter(c => c !== 'en' && Array.isArray(v) && v.includes(c)));
+  // A window's language: its own if its widget has it, else English.
+  const winLang = w => (w.widget.languages.includes(w.inst && w.inst.language) ? w.inst.language : 'en');
   function normalizeWidget(a, extra = {}) {
     if (!a || typeof a !== 'object' || !ID_RE.test(a.id || '') || typeof a.entry !== 'string') return null;
     const w = a.window || {};
@@ -369,6 +386,7 @@
       icon: typeof a.icon === 'string' && /^\s*<svg/i.test(a.icon) ? a.icon : `<svg viewBox="0 0 24 24">${ICONS.widget}</svg>`,
       color: /^#[0-9a-f]{3,8}$/i.test(a.color || '') ? a.color : '#64748b',
       permissions: Array.isArray(a.permissions) ? a.permissions.filter(p => /^[a-z-]+$/.test(p)) : [],
+      languages: normLangs(a.languages),   // the languages its words table has: two or more give its windows the Language row
       devOnly: !!a.devOnly,
       dev: !!extra.dev,
       sealed: !!extra.sealed,   // an uploaded file (see DevFiles): runs sealed off from the board
@@ -412,7 +430,7 @@
   function rebuildCatalog() {
     catalog = new Map(REGISTRY.map(a => [a.id, a]));
     for (const f of (LAB || NODEV ? [] : S.devFiles.values())) {
-      const widget = normalizeWidget({ id: f.id, name: f.name, entry: 'about:srcdoc', version: f.version, window: f.window, color: '#64748b', description: 'Uploaded test widget' }, { dev: true, sealed: true });
+      const widget = normalizeWidget({ id: f.id, name: f.name, entry: 'about:srcdoc', version: f.version, window: f.window, languages: f.languages, color: '#64748b', description: 'Uploaded test widget' }, { dev: true, sealed: true });
       if (widget && !catalog.has(widget.id)) catalog.set(widget.id, widget);
     }
   }
@@ -529,7 +547,8 @@
       const slug = String(ID_RE.test(m.id || '') ? m.id : label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '') || 'widget';
       const id = ('dev-' + slug).slice(0, 64).replace(/-+$/, '');
       const rec = { id, name: label + ' (test)', file: String(file.name).slice(0, 120), size: file.size, src, version: String(m.version || '').slice(0, 40),
-        window: m.window && typeof m.window === 'object' && !Array.isArray(m.window) ? m.window : null, at: Date.now() };
+        window: m.window && typeof m.window === 'object' && !Array.isArray(m.window) ? m.window : null,
+        languages: Array.isArray(m.languages) ? m.languages.slice(0, 8).map(String) : null, at: Date.now() };
       Writer.put(Keys.devfile(id), 'devfile', rec);
       this.forget(id);   // (a new upload starts, even if the last one froze the board)
       this.apply(id, rec);
@@ -1247,6 +1266,9 @@
     if (typeof v.wid === 'string' && Merge.WID_RE.test(v.wid)) out.wid = v.wid;
     const c = copyLabel(v.copyOf);
     if (c) out.copyOf = c;
+    // Its language (its menu's Language): 'es', 'ru' or 'uk'. English is no field at all.
+    const lang = Merge.normLang(v.language);
+    if (lang) out.language = lang;
     return out;
   }
   const copyLabel = c => (c && typeof c === 'object' && typeof c.wid === 'string' && Merge.WID_RE.test(c.wid)
@@ -1490,6 +1512,8 @@
     if (inst && inst.open && widget) {
       if (!w) { w = new Win(ikey); S.wins.set(ikey, w); }
       w.layout();
+      // (its language changed elsewhere: another tab, a merge, an import, Put back)
+      if (w.frameLang !== Lang.want(w)) Lang.apply(w);
     } else if (w) {
       w.destroy();
       S.wins.delete(ikey);
@@ -2004,7 +2028,7 @@
       el.dataset.ikey = this.ikey;
       el.setAttribute('aria-label', this.widget.name);
       el.innerHTML =
-        `<div class="win-title"><button class="win-label" aria-haspopup="menu" title="Window menu"><span class="name"></span><span class="num"></span><span class="copy-label" hidden></span><span class="sub"></span>${svg('chevron')}</button></div>` +
+        `<div class="win-title"><button class="win-label" aria-haspopup="menu" title="Window menu"><span class="name"></span><span class="num"></span><span class="copy-label" translate="no" hidden></span><span class="sub" translate="no"></span>${svg('chevron')}</button></div>` +
         `<div class="win-body"><div class="win-loading"></div>${this.widget.external ? '<div class="win-shield" hidden></div>' : ''}</div>` +
         ['n', 's', 'e', 'w', 'nw', 'ne', 'sw', 'se'].map(h => `<div class="grip ${h}" data-h="${h}"></div>`).join('');
       this.el = el;
@@ -2030,10 +2054,14 @@
       f.setAttribute('sandbox', sealed ? SEALED_SANDBOX : SANDBOX);
       f.setAttribute('allow', (sealed ? ['fullscreen', 'clipboard-write', 'autoplay'] : ['fullscreen', 'clipboard-read', 'clipboard-write', 'autoplay', ...this.widget.permissions]).join('; '));
       f.addEventListener('load', () => this.onFrameLoad());
-      // Tells the SDK it's inside 21Board, before any of its code runs. (Set before inserting the frame:
-      // a later change doesn't reach the widget's window.name.) Not for a district app: it's another site's page,
-      // with no SDK. (Its address is the registry's, never saved data.)
-      if (!this.widget.external) f.name = 'b21-board:' + this.ikey;
+      // Tells the SDK it's inside 21Board, and the window's language, before any of its code runs: 'b21-board:<ikey>', or
+      // 'b21-board:<ikey>;<language>' in another language. (Set before inserting the frame: a later change doesn't reach
+      // the widget's window.name.) The language is decided here, once (frameLang), and hello sends the same: a change
+      // starts the page again (Lang.apply). Not for a district app: it's another site's page, with no SDK. (Its address
+      // is the registry's, never saved data.)
+      this.pseudo = this.pseudo || labPseudo;
+      this.frameLang = Lang.want(this);
+      if (!this.widget.external) f.name = 'b21-board:' + this.ikey + (this.frameLang === 'en' ? '' : ';' + this.frameLang);
       if (sealed) {
         // An uploaded file: its page is put together first (DevFiles.start), then the frame goes in.
         this.iframe = f; this.loads = 0; this.helloed = false;
@@ -2207,7 +2235,10 @@
             widgetId: this.widget.id, widgetName: this.widget.name, widgetVersion: this.widget.version, instance: inst.n,
             data: clone(S.data.get(this.ikey)), config: clone(S.conf.get(this.ikey)),
             theme, palette: paletteFor(theme), window: this.info(),
-            locale: navigator.language || 'en-US', devMode: !!S.settings.devMode || !!LAB,
+            // The window's language, exactly as its frame's name gave it (frameLang): never worked out again here. Its
+            // locale for dates, where the widget has languages; else the device's, as before.
+            language: this.frameLang, uiLanguage: 'en', uiLocale: 'en-US',
+            locale: this.widget.languages.length > 1 ? LANG_LOCALES[this.frameLang] : navigator.language || 'en-US', devMode: !!S.settings.devMode || !!LAB,
             host: LAB ? 'dev' : 'board',  // 'dev': the widget dev window (the SDK then reports errors to it)
             kiosk: KIOSK                  // ChromeOS kiosk: links can't open new windows, no file access by default
           };
@@ -2599,6 +2630,9 @@
       const rect = placeNew(defaultOuterSize(widget), constraintsFor(widget), opts.side, opts.at), createdAt = Date.now();
       // wid: which window this is on every device (Board Sync)
       inst = { widgetId, n, open: true, rect, z: maxZ() + 1, maximized: false, createdAt, wid: Merge.newWid(widgetId, createdAt, new Set(Array.from(S.insts.values(), i => i.wid))) };
+      // Settings › Classroom › Default widget language, where the widget has it. (A window opened again keeps its own.)
+      const d = S.settings.widgetLanguage;
+      if (d && d !== 'en' && widget.languages.includes(d)) inst.language = d;
     }
     S.deselected = false;
     saveInst(ikey, inst);
@@ -2614,6 +2648,22 @@
     const w = widget.win;
     return { minW: w.minWidth, minH: w.minHeight + TITLE_H, maxW: w.maxWidth, maxH: w.maxHeight + TITLE_H, ratio: w.aspectRatio, resizable: w.resizable };
   }
+
+  // A window's language changed (its menu, another tab, a merge, an import, Put back, the dev window): the window starts
+  // again in it, as Reset… does. The widget hears beforeclose first, to save what it needs. A window closed meanwhile,
+  // or already started again in the right language (Put back's reload, say), is left alone. want: the language its frame
+  // should have (frameLang, see Win.createFrame): the pseudo language in the dev window or Developer mode, else its own.
+  // A window's record in another language: 'es', 'ru' or 'uk' saved, English no field.
+  const withLanguage = (inst, code) => { const o = Object.assign({}, inst); if (code === 'en') delete o.language; else o.language = code; return o; };
+  const Lang = {
+    want: w => (w.pseudo ? 'qps' : winLang(w)),
+    async apply(w) {
+      if (w.frameLang === Lang.want(w)) return;
+      if (w.connected) { w.post('beforeclose'); await sleep(80); }
+      if (S.wins.get(w.ikey) !== w || w.frameLang === Lang.want(w)) return;
+      w.reload();
+    }
+  };
 
   async function closeWin(ikey, opts = {}) {
     const inst = S.insts.get(ikey);
@@ -3339,30 +3389,64 @@
   // =====================================================================
   const Menu = {
     el: null,
+    subEl: null,   // the Language flyout beside the menu (#menu-sub: a sibling, as .menu clips and its blur traps what's inside)
     win: null,
     confirming: false,
+    sub: null,     // 'lang' while the flyout is open
 
     init() {
       this.el = $('#menu');
+      this.subEl = $('#menu-sub');
+      if (!this.subEl) {   // (a page from an earlier release, for a launch or two after an update: the flyout is made here)
+        const s = this.subEl = document.createElement('div');
+        s.id = 'menu-sub'; s.className = 'menu'; s.setAttribute('role', 'menu'); s.setAttribute('aria-label', 'Language');
+        this.el.after(s);
+      }
       this.el.addEventListener('click', e => {
         const b = e.target.closest('[data-act]');
         if (!b || b.disabled) return;
         const w = this.win, act = b.dataset.act, keys = e.detail === 0;   // (0: Enter or Space, not a tap)
         this.act(act, b.dataset.id);
         if (!keys || !w) return;
+        // Language from the keyboard: the keyboard goes into the flyout, at the window's language (closed again, it stays
+        // on the row).
+        if (act === 'lang') { if (this.sub) this.subFocus(); return; }
         // Chosen from the keyboard: the keyboard goes on from the menu's first item if it stays open (Reset asks first),
         // or from the window's name, as after Escape (Go back… opens a sheet that takes it).
-        if (this.win === w) { if (!this.el.contains(document.activeElement)) { const f = $('button:not(:disabled)', this.el); if (f) f.focus(); } }
+        if (this.win === w) { if (!this.el.contains(document.activeElement) && !this.subEl.contains(document.activeElement)) { const f = $('button:not(:disabled)', this.el); if (f) f.focus(); } }
         else if (S.wins.get(w.ikey) === w && act !== 'history') w.labelEl.focus();
       });
-      // The arrow keys (and Home, End) go from item to item, as in any menu. Tab goes on working too.
-      this.el.addEventListener('keydown', e => {
-        if (!/^(ArrowDown|ArrowUp|Home|End)$/.test(e.key)) return;
-        const all = $$('button:not(:disabled)', this.el);
-        if (!all.length) return;
+      // The arrow keys (and Home, End) go from item to item, as in any menu. Tab goes on working too. ArrowRight on
+      // Language opens its flyout.
+      const arrows = (e, el) => {
+        if (!/^(ArrowDown|ArrowUp|Home|End)$/.test(e.key)) return false;
+        const all = $$('button:not(:disabled)', el);
+        if (!all.length) return false;
         e.preventDefault();
         const i = all.indexOf(document.activeElement), last = all.length - 1;
         all[e.key === 'Home' ? 0 : e.key === 'End' ? last : e.key === 'ArrowDown' ? (i < last ? i + 1 : 0) : (i > 0 ? i - 1 : last)].focus();
+        return true;
+      };
+      this.el.addEventListener('keydown', e => {
+        if (e.key === 'ArrowRight' && document.activeElement && document.activeElement.dataset.act === 'lang' && this.el.contains(document.activeElement)) {
+          e.preventDefault();
+          if (!this.sub) this.act('lang');
+          this.subFocus();
+          return;
+        }
+        arrows(e, this.el);
+      });
+      // The flyout: a choice, then the keyboard goes on from the window's name. ArrowLeft goes back to the row.
+      this.subEl.addEventListener('click', e => {
+        const b = e.target.closest('[data-act="lang-set"]');
+        if (!b) return;
+        const w = this.win, keys = e.detail === 0;
+        this.act('lang-set', b.dataset.id);
+        if (keys && w && S.wins.get(w.ikey) === w) w.labelEl.focus();
+      });
+      this.subEl.addEventListener('keydown', e => {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); this.closeSub(true); return; }
+        arrows(e, this.subEl);
       });
     },
 
@@ -3372,6 +3456,7 @@
       closePopups();
       this.win = win;
       this.confirming = false;
+      this.sub = null;
       win.labelEl.classList.add('open');
       this.render();
       this.el.classList.add('open');
@@ -3384,8 +3469,21 @@
       if (!this.win) return;
       this.win.labelEl.classList.remove('open');
       this.win = null;
+      this.sub = null;
       this.el.classList.remove('open');
+      this.subEl.classList.remove('open');
     },
+    // The flyout closed, the menu left open (Escape, ArrowLeft, or a second tap on Language). focus: the keyboard goes
+    // back to the row.
+    closeSub(focus) {
+      if (!this.sub) return;
+      this.sub = null;
+      this.subEl.classList.remove('open');
+      const row = $('[data-act="lang"]', this.el);
+      if (row) { row.setAttribute('aria-expanded', 'false'); if (focus) row.focus(); }
+    },
+    // The keyboard into the flyout, at the window's language.
+    subFocus() { const b = $('[aria-checked="true"]', this.subEl) || $('button', this.subEl); if (b) b.focus(); },
 
     render() {
       const w = this.win;
@@ -3402,6 +3500,8 @@
       const item = (act, icon, label, extra = '', cls = '') =>
         `<button class="menu-item ${cls}" role="menuitem" data-act="${act}" ${extra}><span class="icon-slot">${icon}</span><span class="label">${esc(label)}</span></button>`;
       if (this.confirming) {
+        this.sub = null;
+        this.subEl.classList.remove('open');
         const name = `${w.widget.name}${w.inst.n > 1 ? ' ' + w.inst.n : ''}`;
         show(`<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything you did in this window.${BoardHistory.enabled() ? ' Board history keeps a version.' : ''}</div>` +
           item('reset-yes', svg('reset'), 'Reset', '', 'danger') + item('reset-no', '', 'Cancel'));
@@ -3434,6 +3534,12 @@
       if (html) html += '<div class="menu-sep"></div>';
       const locked = Lock.on();   // (locked: the widget's own items, and a district app's, section 12b)
       if (!locked) html += w.inst.maximized ? item('restore', svg('restore'), 'Zoom back out') : item('maximize', svg('maximize'), 'Zoom to fill');
+      // Language, where the widget has more than English: the window's language, muted, and a chevron to its flyout.
+      if (!locked && w.widget.languages.length > 1) {
+        const cur = w.pseudo ? 'en' : winLang(w);
+        html += `<button class="menu-item" role="menuitem" aria-haspopup="menu" aria-expanded="${this.sub === 'lang'}" aria-controls="menu-sub" data-act="lang"><span class="icon-slot">${svg('globe')}</span>` +
+          `<span class="label">Language</span><span class="value" lang="${cur}">${LANG_NAMES[cur]}</span>${svg('chevRight', 'more')}</button>`;
+      }
       if (w.widget.external) {
         // A district app keeps its own work: there is none here to reset or to go back to. Refresh: a window that
         // opened while the site couldn't be reached stays on the browser's error page. (A kiosk can't open tabs.)
@@ -3447,6 +3553,20 @@
       html += locked ? (w.widget.external ? '<div class="menu-sep"></div>' : '') + Lock.menuNote() : item('close', svg('close'), 'Close');
       show(html);
       if (this.el.classList.contains('open')) this.fitChoices();
+      // The flyout, while open and its row is there (not locked): its choices drawn again, the one with the keyboard
+      // keeping it. Else it goes.
+      if (this.sub === 'lang' && $('[data-act="lang"]', this.el)) this.renderSub();
+      else { this.sub = null; this.subEl.classList.remove('open'); }
+    },
+    // The flyout's choices: the languages the widget has, each in its own words, the window's checked.
+    renderSub() {
+      const w = this.win, cur = w.pseudo ? 'en' : winLang(w);
+      const had = this.subEl.contains(document.activeElement) ? document.activeElement.dataset.id : null;
+      this.subEl.innerHTML = w.widget.languages.map(c => `<button class="menu-item" role="menuitemradio" aria-checked="${c === cur}" lang="${c}" data-act="lang-set" data-id="${c}">` +
+        `<span class="label">${LANG_NAMES[c]}</span>${c === cur ? svg('check', 'check') : ''}</button>`).join('');
+      this.subEl.classList.add('open');
+      const b = had && $(`[data-id="${had}"]`, this.subEl);
+      if (b) b.focus();
     },
 
     // A choice's label too wide for its circle ("Wed", "XXL") gets smaller letters, so all of it shows. (--fit scales the
@@ -3520,13 +3640,41 @@
       this.el.style.left = x / ui + 'px';
       this.el.style.top = y / ui + 'px';
       this.fitChoices();
+      this.positionSub();
+    },
+    // The flyout beside the menu: on its right if it fits, else on its left, level with its row; on screen either way
+    // (with no room on either side, over the menu's far side). Beside the whole menu, so a menu in two columns works.
+    // Measured from layout sizes, as the menu is: its scale-in animation doesn't move it.
+    positionSub() {
+      const f = this.subEl, row = $('[data-act="lang"]', this.el);
+      if (!this.sub || !row) return;
+      for (const c of ['compact', 'tight']) f.classList.toggle(c, this.el.classList.contains(c));
+      const ui = Zoom.ui, vw = window.innerWidth, vh = window.innerHeight, M = 8, GAP = 6;
+      f.style.left = f.style.top = '0px';
+      const fw = f.offsetWidth * ui, fh = f.offsetHeight * ui;
+      const mx = (parseFloat(this.el.style.left) || 0) * ui, my = (parseFloat(this.el.style.top) || 0) * ui, mw = this.el.offsetWidth * ui;
+      const rowTop = my + row.offsetTop * ui - this.el.scrollTop * ui;
+      let x = mx + mw + GAP + fw <= vw - M ? mx + mw + GAP : mx - GAP - fw;
+      x = clamp(x, M, vw - fw - M);
+      const y = clamp(rowTop - 6 * ui, M, vh - fh - M);
+      f.style.left = x / ui + 'px';
+      f.style.top = y / ui + 'px';
     },
 
     act(act, id) {
       const w = this.win;
       if (!w) return;
-      if (Lock.on() && /^(maximize|restore|reset|reset-yes|history|close|delete-copy)$/.test(act)) { this.close(); return; }   // (locked meanwhile)
+      if (Lock.on() && /^(maximize|restore|reset|reset-yes|history|close|delete-copy|lang|lang-set)$/.test(act)) { this.close(); return; }   // (locked meanwhile)
       switch (act) {
+        case 'lang': this.sub = this.sub ? null : 'lang'; this.render(); this.position(); break;
+        case 'lang-set': {
+          // Saved with the window (English: no field), which starts again in it. Its own language again: nothing to do.
+          this.close();
+          if (!w.widget.languages.includes(id) || id === winLang(w)) break;
+          saveInst(w.ikey, withLanguage(w.inst, id));
+          Lang.apply(w);
+          break;
+        }
         case 'widget': w.post('menu', { id }); this.close(); break;
         case 'maximize': this.close(); setMaximized(w.ikey, true); break;
         case 'restore': this.close(); setMaximized(w.ikey, false); break;
@@ -3759,7 +3907,7 @@
     async add() {
       if (this.busy) return;
       this.busy = true;
-      try { if (await this.create()) toast(`${this.label()} is ready.`); } finally { this.busy = false; }
+      try { if (await this.create()) toast(`${this.label()} is ready.`, { noTranslate: true }); } finally { this.busy = false; }
       Picker.renderControls();
     },
     // Pages from a file (Import: "Open as a new page", an all-pages backup): each one a new page. Returns their ids
@@ -3775,7 +3923,7 @@
           const id = await this.create({ after, end: !after, name: p.board.name || null, uid, quiet: true });
           if (!id) break;
           made.push(id); after = id;
-          await applyImport(Object.assign({}, p, { theme: null, accent: null, letters: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
+          await applyImport(Object.assign({}, p, { theme: null, accent: null, letters: null, widgetLanguage: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
         }
         return made;
       });
@@ -3789,7 +3937,7 @@
         const p = parseBoardFile(JSON.stringify(await buildExport('full')));
         p.board.name = `${S.board.name} (copy)`.slice(0, 60);
         await this.addFrom([p], { made });   // (a new board id: another board, as far as the Google Drive folder is concerned)
-        if (made.length) { this.flash(); toast(`${this.label()} is ready.`); }
+        if (made.length) { this.flash(); toast(`${this.label()} is ready.`, { noTranslate: true }); }
       } catch (err) { console.error(err); failed = err; }
       finally { this.busy = false; }
       if (failed) { if (made.length) await this.discard(made, from); toast('Couldn’t copy this page: ' + ((failed && failed.message) || failed)); }   // (no half-made copy is left)
@@ -3934,7 +4082,7 @@
       const item = (act, icon, label, extra = '', cls = '') =>
         `<button class="menu-item ${cls}" role="menuitem" data-act="${act}" ${extra}><span class="icon-slot">${icon}</span><span class="label">${esc(label)}</span></button>`;
       this.menuEl.innerHTML = '<div class="menu-heading">Pages</div>' + ids.map((b, n) =>
-        `<button class="menu-item page-item" role="menuitemradio" aria-checked="${b === S.boardId}" data-act="go" data-id="${b}"><span class="icon-slot page-num">${n + 1}</span><span class="label">${esc(this.name(b))}</span>${b === S.boardId ? svg('check', 'check') : ''}</button>`).join('') +
+        `<button class="menu-item page-item" role="menuitemradio" aria-checked="${b === S.boardId}" data-act="go" data-id="${b}"><span class="icon-slot page-num">${n + 1}</span><span class="label" translate="no">${esc(this.name(b))}</span>${b === S.boardId ? svg('check', 'check') : ''}</button>`).join('') +
         '<div class="menu-sep"></div>' +
         item('new', svg('plus'), 'New page') + item('dup', svg('copy'), 'Duplicate this page') + item('rename', svg('pencil'), 'Rename this page…') +
         (ids.length > 1 ? item('left', svg('back'), 'Move left', i < 1 ? 'disabled' : '') + item('right', svg('open'), 'Move right', i >= ids.length - 1 ? 'disabled' : '') : '') +
@@ -4032,7 +4180,7 @@
     applyClock();
   }
 
-  // Settings → Classroom: go back (board history, section 13c), close all, stay awake.
+  // Settings → Classroom: the default widget language, go back (board history, section 13c), close all, stay awake.
   // While Board Sync is set up (section 13b), the settings that stay on this device say so (the board's own ones
   // say "This page, on all your devices.": pageScope; the theme, accent color and text style, the whole board's, "On
   // all your devices.": allDevices, labelled).
@@ -4040,12 +4188,34 @@
   const allDevices = () => (Link.dir ? 'On all your devices.' : '');
   const labelled = lbl => (Link.dir ? `<div><div class="lbl">${lbl}</div><div class="hint">${allDevices()}</div></div>` : `<div class="lbl">${lbl}</div>`);
   function classroomSettings(sw, seg) {
-    const rows = historyOpenRow() + closeAllRow() + awakeSettings(sw, seg);
+    const rows = languageSettings() + historyOpenRow() + closeAllRow() + awakeSettings(sw, seg);
     return rows ? `<h3>Classroom</h3>${rows}` : '';
   }
 
   function classroomAct(act, val) {
-    return awakeAct(act, val) || clockAct(act, val) || letterAct(act, val);
+    return languageAct(act, val) || awakeAct(act, val) || clockAct(act, val) || letterAct(act, val);
+  }
+
+  // Default widget language: the language new windows start in, where their widget has it (openWidget). Open windows
+  // keep theirs. A group like Text style's, its cards drawn by the same CSS (.lang-opt): each language in its own words,
+  // and in English under it. Not in the dev window, whose Language does this (LabBridge).
+  function languageSettings() {
+    if (LAB) return '';
+    const cur = Merge.LANGS.includes(S.settings.widgetLanguage) ? S.settings.widgetLanguage : 'en';
+    const card = k => {
+      const on = k === cur;
+      return `<button class="lang-opt${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="widget-language" data-val="${k}"><span class="txt"><b lang="${k}">${LANG_NAMES[k]}</b>` +
+        (LANG_IN_ENGLISH[k] ? `<small>${LANG_IN_ENGLISH[k]}</small>` : '') + '</span>' + (on ? `<span class="tick" aria-hidden="true">${svg('check')}</span>` : '') + '</button>';
+    };
+    return settingsGroup('widget-language', 'Default widget language', `<span lang="${cur}">${LANG_NAMES[cur]}</span>`,
+      `<div class="hint">New windows start in this language.</div><div class="lang-opts" role="radiogroup" aria-label="Default widget language">${Merge.LANGS.map(card).join('')}</div>`,
+      { sub: allDevices() });
+  }
+
+  function languageAct(act, val) {
+    if (act !== 'widget-language') return false;
+    if (Merge.LANGS.includes(val)) updateSettings({ widgetLanguage: val });
+    return true;
   }
 
   // ---- Lock
@@ -4921,7 +5091,7 @@
     const H = BoardHistory;
     return `<h3>Board Sync</h3>
       ${warn}
-      <div class="row link-folder"><div class="lbl">Synced through <span class="link-name" title="${esc(L.dir.name)}">“${esc(L.dir.name)}”</span> <span class="link-syncing${L.syncing() ? ' on' : ''}" id="set-link-syncing">Syncing…</span></div><div class="hint" id="set-link-status">${esc(L.status())}</div>
+      <div class="row link-folder"><div class="lbl">Synced through <span class="link-name" translate="no" title="${esc(L.dir.name)}">“${esc(L.dir.name)}”</span> <span class="link-syncing${L.syncing() ? ' on' : ''}" id="set-link-syncing">Syncing…</span></div><div class="hint" id="set-link-status" translate="no">${esc(L.status())}</div>
         <div class="btns"><button class="btn small" data-act="link-choose">Change…</button><button class="btn small" data-act="link-unlink">Unlink</button></div></div>
       <div class="row stack"><label class="lbl" for="set-link-label">This device’s name</label>
         <input type="text" class="text-input" id="set-link-label" maxlength="40" value="${esc(dev.label)}" autocomplete="off" aria-describedby="set-link-label-hint"><div class="hint" id="set-link-label-hint">Shown on your other devices.</div></div>
@@ -4931,14 +5101,15 @@
   // Settings' HTML without what is put in place: Board Sync's status line and "Syncing…" shown or not (putStatus), and
   // when the last backup was and the amber dot on Advanced (refreshStatus, after every drawing too: each write of this
   // device's file counts as a backup, see writeOwn).
-  const noStatus = h => h.replace(/<div class="hint" id="set-link-status">[\s\S]*?<\/div>/, '').replace('<span class="link-syncing on"', '<span class="link-syncing"')
+  const noStatus = h => h.replace(/<div class="hint" id="set-link-status"[^>]*>[\s\S]*?<\/div>/, '').replace('<span class="link-syncing on"', '<span class="link-syncing"')
     .replace(/<div class="hint[^"]*" id="st-backup">(?:<span class="status-dot warn"><\/span>)?[^<]*<\/div>/, '').replace(/(id="grp-advanced-warn"[^>]*?) hidden>/, '$1>');
   // Advanced › Back up every page: when the last backup was, with the amber dot that is on Advanced when it is overdue
   // (Settings.needsLook), so that what the dot is about is plain once Advanced is open.
   const backupLine = late => `<div class="hint${late ? ' warn-line' : ''}" id="st-backup">${late ? '<span class="status-dot warn"></span>' : ''}${esc(backupAgo())}</div>`;
-  // ... and without which theme, accent color and text style are chosen (the swatches' shades, which follow the theme,
-  // and the check; Custom…'s dot and its input's color; the text style's card ticked, and the name on its row): put in
-  // place when only they changed, chosen on another device or in another tab (putLook).
+  // ... and without which theme, accent color, text style and default widget language are chosen (the swatches' shades,
+  // which follow the theme, and the check; Custom…'s dot and its input's color; the text style's and the language's card
+  // ticked, and the name on each one's row): put in place when only they changed, chosen on another device or in
+  // another tab (putLook).
   const noLook = h => h.replace(/<button role="radio" aria-checked="\w+" data-act="theme"([^>]*) class="\w*">/g, '<button data-act="theme"$1>')
     .replace(/<button class="swatch[^"]*" style="[^"]*" role="radio" aria-checked="\w+" data-act="accent"/g, '<button data-act="accent"')
     .replace(/(data-act="accent"[^>]*>)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/g, '$1')
@@ -4947,7 +5118,10 @@
     .replace(/(id="set-accent-custom" value=")[^"]*/, '$1')
     .replace(/<button class="letter-opt[^"]*" role="radio" aria-checked="\w+" data-act="letters"/g, '<button data-act="letters"')
     .replace(/(<span class="sample" aria-hidden="true">[^<]*<\/span>)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/g, '$1')
-    .replace(/(data-val="letters"[^>]*>[\s\S]*?<span class="v">)[^<]*/, '$1');
+    .replace(/(data-val="letters"[^>]*>[\s\S]*?<span class="v">)[^<]*/, '$1')
+    .replace(/<button class="lang-opt[^"]*" role="radio" aria-checked="\w+" data-act="widget-language"/g, '<button data-act="widget-language"')
+    .replace(/(data-act="widget-language"[^>]*><span class="txt">[\s\S]*?<\/span>)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/g, '$1')
+    .replace(/(data-val="widget-language"[^>]*>[\s\S]*?<span class="v">)<span lang="\w+">[^<]*<\/span>/, '$1');
 
   const Settings = {
     el: null,
@@ -4974,13 +5148,13 @@
     // the status line put in place otherwise. (Each merge drew it two or three times: a screen reader read the control
     // it was on again, and a tap whose press and release straddled a drawing was lost.)
     refresh() { this.render(false, true); },
-    // The theme's, accent color's and text style's choices as html has them, put in place: Settings isn't drawn again
-    // for a choice made elsewhere (the keyboard, a tap and a screen reader stay where they were, and nothing moves, but
-    // for the text in another font).
+    // The theme's, accent color's, text style's and default widget language's choices as html has them, put in place:
+    // Settings isn't drawn again for a choice made elsewhere (the keyboard, a tap and a screen reader stay where they
+    // were, and nothing moves, but for the text in another font).
     putLook(html) {
       const t = document.createElement('template');
       t.innerHTML = html;
-      for (const b of t.content.querySelectorAll('[data-act="theme"], [data-act="accent"], [data-act="accent-custom"], [data-act="letters"], [data-act="accent-custom"] > .dot')) {
+      for (const b of t.content.querySelectorAll('[data-act="theme"], [data-act="accent"], [data-act="accent-custom"], [data-act="letters"], [data-act="widget-language"], [data-act="accent-custom"] > .dot')) {
         const el = b.matches('.dot') ? $('[data-act="accent-custom"] > .dot', this.body) : $(`[data-act="${b.dataset.act}"][data-val="${CSS.escape(b.dataset.val)}"]`, this.body);
         if (!el) continue;
         for (const a of ['class', 'style', 'aria-checked']) if (el.getAttribute(a) !== b.getAttribute(a)) { if (b.hasAttribute(a)) el.setAttribute(a, b.getAttribute(a)); else el.removeAttribute(a); }
@@ -4991,6 +5165,8 @@
       if (ci && ci0 && ci0.value !== ci.getAttribute('value')) ci0.value = ci.getAttribute('value');
       const v = $('[data-act="group"][data-val="letters"] .v', t.content), el = $('[data-act="group"][data-val="letters"] .v', this.body);
       if (v && el && el.textContent !== v.textContent) el.textContent = v.textContent;
+      const lv = $('[data-act="group"][data-val="widget-language"] .v', t.content), lel = $('[data-act="group"][data-val="widget-language"] .v', this.body);
+      if (lv && lel && lel.innerHTML !== lv.innerHTML) lel.innerHTML = lv.innerHTML;
     },
     // Accent color › Custom…: a color picked. The board, its widgets and Custom…'s dot follow at once. Settings isn't
     // drawn again while the picker is open: that would close it.
@@ -5592,7 +5768,7 @@
         widgetId, instance: +nStr, open: inst.open, maximized: inst.maximized, z: inst.z,
         rect: inst.rect, createdAt: kind === 'full' && inst.createdAt ? inst.createdAt : undefined,   // which window is which (Board history)
         wid: kind === 'full' && inst.wid ? inst.wid : undefined   // (and on every device: Board Sync)
-      }, kind === 'full' && inst.copyOf ? { copyOf: inst.copyOf } : {}, {
+      }, kind === 'full' && inst.copyOf ? { copyOf: inst.copyOf } : {}, inst.language ? { language: inst.language } : {}, {   // (its language, as its config: a template keeps it)
         config: parts.conf === undefined ? null : parts.conf,
         data: kind === 'full' && parts.data !== undefined ? parts.data : null
       }));
@@ -5608,6 +5784,7 @@
       theme: S.settings.theme,
       accent: accentNow(),   // what the board shows: a key of ACCENTS or a custom '#rrggbb'
       letters: S.settings.letters,   // the text style
+      widgetLanguage: S.settings.widgetLanguage || 'en',   // the default widget language
       board: Object.assign({ name: board.name, background: board.background || { color: null, pattern: 'none' }, scale: sc, shape: free ? 'free' : '16:9' },
         kind === 'full' && board.uid ? { uid: board.uid } : {},   // which board this is (see section 13b)
         kind === 'full' && typeof board.pos === 'number' && isFinite(board.pos) ? { pos: board.pos } : {}),   // its place among the pages
@@ -5691,7 +5868,7 @@
       // that lacks part of a page that couldn't be read.)
       if (missing.length) {
         const names = missing.map(b => `“${Pages.name(b)}”`).join(', ');
-        toast(`Exported, but part of ${missing.length === 1 ? 'the page' : 'the pages'} ${names} couldn’t be read on this device, so ${missing.length === 1 ? 'it isn’t' : 'they aren’t'} all in the file.`, { timeout: 0, action: 'OK' });
+        toast(`Exported, but part of ${missing.length === 1 ? 'the page' : 'the pages'} ${names} couldn’t be read on this device, so ${missing.length === 1 ? 'it isn’t' : 'they aren’t'} all in the file.`, { timeout: 0, action: 'OK', noTranslate: true });
         return true;
       }
       if (kind === 'all' || (kind === 'full' && pages < 2)) updateSettings({ lastBackupAt: Date.now() });
@@ -5724,7 +5901,8 @@
       data: i.data === undefined ? null : i.data,
       createdAt: num(i.createdAt, null),   // board history versions keep it (which window is which)
       wid: typeof i.wid === 'string' && Merge.WID_RE.test(i.wid) ? i.wid : null,   // which window this is on every device (Board Sync)
-      copyOf: copyLabel(i.copyOf)
+      copyOf: copyLabel(i.copyOf),
+      language: Merge.normLang(i.language)   // its language (none: English)
     }));
     const bg = j.board && j.board.background || {};
     const out = {
@@ -5732,6 +5910,7 @@
       theme: ['light', 'dark', 'system'].includes(j.theme) ? j.theme : null,
       accent: accentShown(j.accent, j.accentColor, null),   // (an export's accent, or a device file's two parts)
       letters: Object.prototype.hasOwnProperty.call(LETTERS, j.letters) ? j.letters : null,   // (a file from before 2026.11.17-2 has none)
+      widgetLanguage: Merge.LANGS.includes(j.widgetLanguage) ? j.widgetLanguage : null,   // (nor one from before 2026.11.27-2)
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
         background: { color: bgColor(bg.color), pattern: PATTERN_IDS.includes(bg.pattern) ? bg.pattern : 'none' },
@@ -5782,11 +5961,11 @@
     const missing = new Set(parsed.instances.filter(i => !getWidget(i.widgetId)).map(i => i.widgetId));
     const what = parsed.kind === 'template' ? 'a blank template' : 'a full backup';
     // Replace keeps this page (its uid): with Board Sync, its windows and content change on the other devices too, and
-    // so do the file's theme, accent color and text style, which are the whole board's (said, when they differ from
-    // this board's).
-    const uid = S.board.uid, look0 = { theme: S.settings.theme, accent: S.settings.accent, accentColor: S.settings.accentColor, letters: S.settings.letters };
+    // so do the file's theme, accent color, text style and default widget language, which are the whole board's (said,
+    // when they differ from this board's).
+    const uid = S.board.uid, look0 = { theme: S.settings.theme, accent: S.settings.accent, accentColor: S.settings.accentColor, letters: S.settings.letters, widgetLanguage: S.settings.widgetLanguage };
     const looks = andList([parsed.theme && parsed.theme !== look0.theme && 'theme', parsed.accent && parsed.accent !== accentNow() && 'accent color',
-      parsed.letters && parsed.letters !== look0.letters && 'text style'].filter(Boolean));
+      parsed.letters && parsed.letters !== look0.letters && 'text style', parsed.widgetLanguage && parsed.widgetLanguage !== look0.widgetLanguage && 'default widget language'].filter(Boolean));
     const mode = await dialog({
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
       message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' isn’t' : 's aren’t'} installed here. ${missing.size === 1 ? 'Its' : 'Their'} content is kept but not shown.` : '') + picsLost(lost),
@@ -5932,7 +6111,7 @@
       const wid = mode !== 'add' && i.wid && !wids.has(i.wid) ? i.wid : Merge.newWid(i.widgetId, createdAt, wids);
       wids.add(wid);
       out.push(rec(Keys.inst(b, ik), 'inst', Object.assign({ widgetId: i.widgetId, n, open: i.open, rect, z: zBase + i.z, maximized: i.maximized, createdAt, wid },
-        mode !== 'add' && i.copyOf ? { copyOf: i.copyOf } : {})));
+        mode !== 'add' && i.copyOf ? { copyOf: i.copyOf } : {}, i.language ? { language: i.language } : {})));
       if (i.config !== null) out.push(rec(Keys.conf(b, ik), 'conf', i.config));
       if (i.data !== null && p.kind === 'full') out.push(rec(Keys.data(b, ik), 'data', i.data));
     }
@@ -6288,7 +6467,7 @@
       if (this.perm === 'granted') { this.unnag(); await this.check(true); }
       else if (this.perm === 'prompt' && !this.nagged && this.sync) {
         this.nagged = true;   // (said once; the note on the board stays: see FolderNote)
-        this.nagToast = toast(`Reconnect your “${this.dir.name}” folder to keep syncing.`, { action: 'Reconnect', timeout: 12000, onAction: () => this.reconnect() });
+        this.nagToast = toast(`Reconnect your “${this.dir.name}” folder to keep syncing.`, { action: 'Reconnect', timeout: 12000, onAction: () => this.reconnect(), noTranslate: true });
       }
     },
     // The folder is allowed again: the message at start that asked for it goes (it would say the opposite of
@@ -6309,7 +6488,7 @@
     // From a tap (the note on the board, the message at start, Settings). Once allowed, the folder is checked.
     async reconnect() {
       if (this.perm === 'granted') { await this.check(true); return; }
-      if (await this.ensurePerm()) { toast(`Your “${this.dir.name}” folder is connected again.`); await this.check(true); }
+      if (await this.ensurePerm()) { toast(`Your “${this.dir.name}” folder is connected again.`, { noTranslate: true }); await this.check(true); }
       else if (this.perm === 'denied') FolderNote.explain();   // Chrome refused without asking
       else toast('21Board can’t use that folder until you allow it.');
     },
@@ -6346,7 +6525,7 @@
       if (told) t.said = true;
       if (!t.said && t.at - t.since >= 60 * 1000) {
         t.said = true;
-        toast(`21Board can’t find your “${this.dir.name}” folder, so this board isn’t syncing. It keeps looking.`, { action: 'Details', timeout: 10000, onAction: () => FolderNote.explain() });
+        toast(`21Board can’t find your “${this.dir.name}” folder, so this board isn’t syncing. It keeps looking.`, { action: 'Details', timeout: 10000, onAction: () => FolderNote.explain(), noTranslate: true });
       }
     },
     // Writing this device's file didn't work: said the first time (not for a folder that can only be viewed: the
@@ -8501,7 +8680,7 @@
       const r = await this.find(id);
       if (!r) return false;
       const exp = clone(r.body.exp);
-      delete exp.theme; delete exp.accent; delete exp.letters;
+      delete exp.theme; delete exp.accent; delete exp.letters; delete exp.widgetLanguage;
       const ref = exp.media && exp.media.ref, look = exp.media && exp.media.look;
       delete exp.media;
       const p = parseBoardFile(JSON.stringify(exp));
@@ -8514,7 +8693,7 @@
       await Pages.go(made[0], { quiet: true });
       Pages.flash();
       Picker.renderControls();
-      toast(`“${p.board.name || 'The page'}” is back.`);
+      toast(`“${p.board.name || 'The page'}” is back.`, { noTranslate: true });
       return true;
     },
     async purgeBoard(b) {
@@ -8577,7 +8756,7 @@
         exp = clone(r.body.exp); meta = r.meta;
       } else exp = clone(src.exp);
       const at = (exp.snapshot && exp.snapshot.at) || (exp.history && exp.history.at) || (meta && meta.at) || Date.now();
-      delete exp.theme; delete exp.accent; delete exp.letters;   // going back never changes the theme, accent or text style
+      delete exp.theme; delete exp.accent; delete exp.letters; delete exp.widgetLanguage;   // going back never changes the theme, accent, text style or default widget language
       if (!opts.undo) this.fix(exp, at);
       const ref = exp.media && exp.media.ref, look = exp.media && exp.media.look;
       delete exp.media;
@@ -8641,7 +8820,8 @@
       // (the same window on every device, unless it goes in beside the one there now: Board Sync)
       const taken = new Set(Array.from(S.insts.entries()).filter(([k]) => k !== target).map(([, i]) => i.wid));
       const wid = opts.here && cur && cur.wid ? cur.wid : target === ikey && src.wid && !taken.has(src.wid) ? src.wid : Merge.newWid(src.widgetId, src.createdAt || Date.now(), taken);
-      await saveInst(target, { widgetId: src.widgetId, n, open, rect, z: maxZ() + 1, maximized: opts.exact ? !!src.maximized : false, createdAt: src.createdAt || Date.now(), wid });
+      const language = Merge.normLang(src.language);   // (its language then: src is the version's own record, not checked yet)
+      await saveInst(target, Object.assign({ widgetId: src.widgetId, n, open, rect, z: maxZ() + 1, maximized: opts.exact ? !!src.maximized : false, createdAt: src.createdAt || Date.now(), wid }, language ? { language } : {}));
       if (src.data == null) { S.data.delete(target); Writer.del(Keys.data(b, target)); } else { S.data.set(target, clone(src.data)); Writer.put(Keys.data(b, target), 'data', src.data); }
       if (src.config == null) { S.conf.delete(target); Writer.del(Keys.conf(b, target)); } else { S.conf.set(target, clone(src.config)); Writer.put(Keys.conf(b, target), 'conf', src.config); }
       await Writer.settled(2000);
@@ -8694,7 +8874,7 @@
           const r = await this.get(meta.id);
           if (!r) return;
           const exp = clone(r.body.exp);
-          delete exp.theme; delete exp.accent; delete exp.letters;
+          delete exp.theme; delete exp.accent; delete exp.letters; delete exp.widgetLanguage;
           const dev = Link.device();
           exp.history = { at: meta.at, kind: meta.kind, label: meta.label, by: dev.id, from: dev.label };
           if (await Link.namePics(exp)) exp.formatVersion = 2;   // (its windows' pictures named in Photos, put there first)
@@ -9095,14 +9275,14 @@
           const b = +val, name = (Pages.info.get(b) || {}).name || '';
           closePopups();
           if (!Pages.purges.has(b)) {   // (its Undo ended since the list was drawn: its kept version, once noted as deleted)
-            if (Pages.ids().includes(b)) { toast(`“${name}” is back.`); break; }   // (another device brought it back meanwhile)
+            if (Pages.ids().includes(b)) { toast(`“${name}” is back.`, { noTranslate: true }); break; }   // (another device brought it back meanwhile)
             let d = null;
             for (let i = 0; i < 20 && !d; i++) { d = (await H.deletedPages()).find(x => x.b === b && x.id); if (!d) await sleep(150); }
             if (d) await H.bringBack(d.id); else toast('Couldn’t bring that page back. Try again in a moment.');
             break;
           }
           await Pages.undrop([b], Pages.ids().concat(b), () => {});
-          if (Pages.ids().includes(b)) toast(`“${name}” is back.`);
+          if (Pages.ids().includes(b)) toast(`“${name}” is back.`, { noTranslate: true });
           break;
         }
         case 'retry': await H.reload(); await this.loadExtras(); this.render(); if (this.beside) Settings.render(); break;
@@ -9145,16 +9325,24 @@
   const Merge = (() => {
     const PAGE_PARTS = ['name', 'look', 'size', 'pos', 'photo', 'photoLook'];
     const PAGE_BACK = ['name', 'look', 'size', 'photo', 'photoLook'];   // an unseen edit to one brings a deleted page back (moving it doesn't)
-    const WIN_PARTS = ['rect', 'open', 'data', 'conf', 'label'];
-    // The board's theme, accent color and text style (settings.theme, settings.accent and settings.accentColor,
-    // settings.letters): on every device linked to the folder, the later change winning, as for a page's name. (The
-    // device's other settings, and the page shown, stay its own.) Everything below that handles them goes through
-    // STYLE_PARTS (tests/merge.js leaves 'accentColor' out of it to stand in for 2026.11.17-6, and 'letters' too for
-    // 2026.11.16-4: the releases before them). accentColor: the accent chosen from 2026.11.18-2 ('' before any), see
-    // accentShown.
-    const STYLE_PARTS = ['theme', 'accent', 'letters', 'accentColor'], THEMES = ['light', 'dark', 'system'], LETTER_KEYS = ['standard', 'legible', 'early'];
-    const STYLE_DEF = { theme: 'system', accent: 'blue', letters: 'standard', accentColor: '' };
-    const styleOk = (k, v, H) => (k === 'theme' ? THEMES.includes(v) : k === 'accent' ? H.accentOk(v) : k === 'accentColor' ? v === '' || H.accentColorOk(v) : LETTER_KEYS.includes(v));
+    // language: the window's language (inst.language, from 2026.11.27-2), the later change winning, as for its name. A
+    // version is stamped only for a language chosen, or English chosen after one (Rule 1, see stamp), so a device that
+    // updates never stamps English over a language chosen elsewhere.
+    const WIN_PARTS = ['rect', 'open', 'data', 'conf', 'label', 'language'];
+    // An unseen edit to one brings a deleted window or page back (its language doesn't: Rule 2). Every window's
+    // fingerprint (keepH, winH) is as it was on 2026.11.27-1, whatever its language, and a tombstone that release wrote,
+    // whose cover has no language, still covers the window.
+    const WIN_BACK = WIN_PARTS.filter(k => k !== 'language');
+    // The board's theme, accent color, text style and default widget language (settings.theme, settings.accent and
+    // settings.accentColor, settings.letters, settings.widgetLanguage): on every device linked to the folder, the later
+    // change winning, as for a page's name. (The device's other settings, and the page shown, stay its own.) Everything
+    // below that handles them goes through STYLE_PARTS. (tests/merge.js stands in for the releases before
+    // 2026.11.18-2 and 2026.11.17-2 with 2026.11.27-1's region, tests/fixtures, without 'accentColor', and 'letters' too.)
+    // accentColor: the accent chosen from 2026.11.18-2 ('' before any), see accentShown.
+    const STYLE_PARTS = ['theme', 'accent', 'letters', 'accentColor', 'widgetLanguage'], THEMES = ['light', 'dark', 'system'], LETTER_KEYS = ['standard', 'legible', 'early'];
+    const STYLE_DEF = { theme: 'system', accent: 'blue', letters: 'standard', accentColor: '', widgetLanguage: 'en' };
+    const styleOk = (k, v, H) => (k === 'theme' ? THEMES.includes(v) : k === 'accent' ? H.accentOk(v) : k === 'accentColor' ? v === '' || H.accentColorOk(v)
+      : k === 'letters' ? LETTER_KEYS.includes(v) : k === 'widgetLanguage' ? LANGS.includes(v) : false);
     const WID_RE = /^[\w.@~-]{1,120}$/, DEV_RE = /^[0-9a-z]{12}$/, KEY_RE = /^[0-9a-z]{1,40}$/, WIDGET_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
     const DAY = 864e5;
     // (remadeMs: a record a merge deleted, made again this long after it, is a change made after seeing that, see stamp)
@@ -9227,6 +9415,9 @@
     const nearS1 = (a, b) => Array.isArray(a) && a.length === 5 && a[4] === b[4] && [0, 1, 2, 3].every(i => Math.abs(a[i] - b[i]) < NEAR_PX);
     const normRect = r => { r = r && typeof r === 'object' ? r : {}; return { x: fin(r.x, 40), y: fin(r.y, 40), w: Math.max(20, fin(r.w, 400)), h: Math.max(50, fin(r.h, 340)) }; };
     const normLabel = c => (c && typeof c === 'object' && typeof c.wid === 'string' && WID_RE.test(c.wid) ? { wid: c.wid, from: String(c.from || '').slice(0, 40), name: String(c.name || '').slice(0, 60), at: fin(c.at, 0) } : null);
+    // The languages a window can be in, and a window's saved one: 'es', 'ru' or 'uk', else null (English).
+    const LANGS = ['en', 'es', 'ru', 'uk'];
+    const normLang = v => (v === 'es' || v === 'ru' || v === 'uk' ? v : null);
     function pageVals(v, H) {
       const bg = (v && v.background) || {}, scale = vscale(v && v.scale) || H.scale;
       return {
@@ -9341,8 +9532,9 @@
     }
     const newMine = (uid, b) => ({ uid, b, p: {}, w: {}, hist: { at: 0, local: false }, quiet: null, gone: null, wgone: {} });
     // A page's fingerprint: whether it changed here since.
-    const keepH = P => hash53(JSON.stringify([PAGE_PARTS.map(k => P.parts[k].h), sortBy(Array.from(P.wins.values()), W => W.wid).map(W => [W.wid].concat(WIN_PARTS.map(k => W.parts[k].h)))]));
-    const winH = W => hash53(JSON.stringify(WIN_PARTS.map(k => W.parts[k].h)));
+    // (WIN_BACK: a language chosen on a page held here doesn't bring it back, and the fingerprints are 2026.11.27-1's)
+    const keepH = P => hash53(JSON.stringify([PAGE_PARTS.map(k => P.parts[k].h), sortBy(Array.from(P.wins.values()), W => W.wid).map(W => [W.wid].concat(WIN_BACK.map(k => W.parts[k].h)))]));
+    const winH = W => hash53(JSON.stringify(WIN_BACK.map(k => W.parts[k].h)));
     const cloneMine = m => Object.assign({}, m, { p: Object.assign({}, m.p), w: Object.assign({}, m.w), wgone: Object.assign({}, m.wgone || {}), hist: Object.assign({}, m.hist || { at: 0, local: false }) });
 
     // settings, changed as set operations, so a tab with an old copy can't write its old lists over a merge's.
@@ -9436,6 +9628,8 @@
           W.parts.rect = lp(W.keys.inst, rv, hOf(ir, `rect@${P.scale}`, () => partH('rect', rv, P.scale, H)), ir);
           W.parts.open = lp(W.keys.inst, !!iv.open, iv.open ? TRUE_H : FALSE_H, ir);
           W.parts.label = lp(W.keys.inst, label, label ? hOf(ir, 'label', () => hj(label)) : NULL_H, ir);
+          const lang = normLang(iv.language);
+          W.parts.language = lp(W.keys.inst, lang, lang ? hOf(ir, 'language', () => hj(lang)) : NULL_H, ir);
           for (const kind of ['data', 'conf']) {
             const r = x[kind].get(ik), val = r && r.value !== undefined ? r.value : null;
             W.parts[kind] = lp(W.keys[kind], val, val === null ? NULL_H : hOf(r, kind, () => hj(val)), r);
@@ -9512,6 +9706,10 @@
           note(P.at); items.push(n => { set({ h: P.h, v: nv(E.seen ? E.seen[1] : {}, P.at, P.u)(n), rev: P.rev }); touched.add(M); });
           return;
         }
+        // Rule 1: a window's English, never chosen here, gets no version (an updated device, or a window never given a
+        // language): only its fingerprint is noted, and a language chosen elsewhere applies. One chosen here has one, and
+        // so does English chosen after one (its entry then has a version).
+        if (P.part === 'language' && P.val === null && (!E || !E.v)) { if (!E || E.h !== NULL_H || E.rev !== P.rev) set({ h: NULL_H, rev: P.rev }); return; }
         if (!E || !E.v) { note(P.at); items.push(n => { set(withS1({ h: P.h, v: nv(cover, P.at, P.u)(n), rev: P.rev }, P)); touched.add(M); }); return; }
         // (a place within NEAR_PX of the version's, at scale 1: the same place, rounded another way after a rescale here)
         const near = P.part === 'rect' && E.s1 && E.h !== P.h && E.lh !== P.h && nearS1(E.s1, s1Of(P.val, P.page.scale, H));
@@ -9552,6 +9750,7 @@
         else if (k === 'inst' && P.part === 'rect') out = Object.assign(v || {}, { rect: clone(val.rect), maximized: !!val.maximized });
         else if (k === 'inst' && P.part === 'open') out = Object.assign(v || {}, { open: !!val });
         else if (k === 'inst' && P.part === 'label') out = Object.assign(v || {}, { copyOf: clone(val) });
+        else if (k === 'inst' && P.part === 'language') { out = Object.assign(v || {}); if (val) out.language = val; else delete out.language; }
         else out = clone(val);
         fix.set(P.key, out);
         P.val = clone(val); P.h = h; P.rev = fixRev(P.key);
@@ -9836,19 +10035,20 @@
       return state;
     }
     // Which pages and windows show, from the joined state alone (every device agrees): a deleted one shows again
-    // if some version of a part that brings it back isn't covered by what its deleter had seen.
+    // if some version of a part that brings it back isn't covered by what its deleter had seen. (A window's language
+    // never does: Rule 2. A tombstone from 2026.11.27-1 has no language in its cover.)
     function shown(state) {
       const pages = new Set(), wins = new Map();
       const out = (J, cover, open) => !!J && [J.main].concat(J.pending).some(v => (!open || v.h === TRUE_H) && !covered(v, cover));
       for (const [uid, S] of state.pages) {
         const alive = new Set();
         for (const [wid, W] of S.wins) {
-          if (W.exists.main.h === '1' || (W.cover && WIN_PARTS.some(k => out(W.parts[k], W.cover[k], k === 'open')))) alive.add(wid);
+          if (W.exists.main.h === '1' || (W.cover && WIN_BACK.some(k => out(W.parts[k], W.cover[k], k === 'open')))) alive.add(wid);
         }
         let on = S.exists.main.h === '1';
         if (!on && S.cover) {
           on = PAGE_BACK.some(k => out(S.parts[k], S.cover[k])) ||
-            Array.from(alive).some(wid => { const W = S.wins.get(wid); return !covered(W.exists.main, S.cover[`${wid}/exists`]) || WIN_PARTS.some(k => out(W.parts[k], S.cover[`${wid}/${k}`], k === 'open')); });
+            Array.from(alive).some(wid => { const W = S.wins.get(wid); return !covered(W.exists.main, S.cover[`${wid}/exists`]) || WIN_BACK.some(k => out(W.parts[k], S.cover[`${wid}/${k}`], k === 'open')); });
         }
         if (on) { pages.add(uid); wins.set(uid, alive); }
       }
@@ -10111,7 +10311,9 @@
           T.ikey = `${T.widgetId}:${T.n}`;
           for (const k of WIN_PARTS) {
             const J = SW.parts[k], lp = LW && LW.parts[k];
-            if (!J) { t[k] = lp ? lp.val : k === 'rect' ? { rect: normRect(null), maximized: false } : k === 'open' ? false : null; continue; }
+            // (a window's language no device has a version of is English, Rule 1: a take, whose folder's board replaces
+            // this device's, puts it back to English; otherwise it is this device's own)
+            if (!J) { t[k] = k === 'language' && mode === 'take' ? null : lp ? lp.val : k === 'rect' ? { rect: normRect(null), maximized: false } : k === 'open' ? false : null; continue; }
             if (histFailed.has(uid) && J.clash && J.main.src !== 'local') { (T.held || (T.held = {}))[k] = true; t[k] = lp ? lp.val : null; sum.held++; continue; }
             if (k === 'data' && isLater(T.widgetId) && J.pending.length) {   // Timer, Dice, Traffic light: the later state wins
               SW.parts.data = Object.assign({}, J, { main: Object.assign({}, J.main, { vv: J.pending.reduce((a, v) => vjoin(a, v.vv), J.main.vv) }), pending: [], copy: [] });
@@ -10182,13 +10384,15 @@
           let z = LW ? LW.z : zBase + zk++;
           if (LW && (movedThere || reopened)) z = zBase + zk++;
           let instRev = 0;
-          if (created || ch('rect') || ch('open') || ch('label') || z !== (LW && LW.z)) {
+          const chLang = !!LW && (LW.parts.language.val || null) !== (t.language || null);
+          if (created || ch('rect') || ch('open') || ch('label') || chLang || z !== (LW && LW.z)) {
             const iv = Object.assign(LW ? clone(LW.inst) || {} : {}, { widgetId: T.widgetId, n: T.n, open: !!t.open, rect: t.rect.rect, z, maximized: !!t.rect.maximized,
               createdAt: LW ? LW.createdAt : fin(ident.createdAt, now), wid: T.wid, copyOf: t.label || null });
+            if (t.language) iv.language = t.language; else delete iv.language;
             instRev = put(`inst:${b}:${T.ikey}`, 'inst', iv);
           }
           const keys = { data: `data:${b}:${T.ikey}`, conf: `conf:${b}:${T.ikey}` };
-          const revs = { rect: instRev, open: instRev, label: instRev };
+          const revs = { rect: instRev, open: instRev, label: instRev, language: instRev };
           for (const k of ['data', 'conf']) {
             const J = SW.parts[k], lp = LW && LW.parts[k];
             if (!J || (T.held && T.held[k]) || (lp && lp.h === J.main.h) || (!lp && J.main.h === NULL_H)) continue;
@@ -10205,7 +10409,10 @@
             if (changedHere && J.main.src !== 'local' && J.main.src !== 'plan') { acc.applied.push(J.main); if (mw0 && mw0.p[k] && mw0.p[k].v) acc.replaced.push(mw0.p[k].v); }
             if (changedHere || (k === 'rect' && ch('rect'))) pageChanged = true;
             const wrote = changedHere || (k === 'rect' && ch('rect')) ? revs[k] || 0 : 0;
-            mw.p[k] = entry(J, lp, mw0 && mw0.p[k], wrote, t[k]);
+            // (a window's language with no version here, Rule 1: as if it had no entry, so the English the record held
+            // is still found to be an old value when a tab that hadn't seen this write saves it)
+            const oldE = mw0 && mw0.p[k] && (mw0.p[k].v || k !== 'language') ? mw0.p[k] : null;
+            mw.p[k] = entry(J, lp, oldE, wrote, t[k]);
             if (!wrote) mw.p[k].rev = revs[k] > 0 ? revs[k] : lp ? lp.rev : 0;
             if (k === 'rect') {   // a place converted to this page's scale may round to another fingerprint: noted, so it isn't taken for a move
               const lh = wrote ? partH('rect', t.rect, tScale, H) : lp && lp.h !== J.main.h ? lp.h : mw0 && mw0.p.rect && mw0.p.rect.lh;
@@ -10237,6 +10444,8 @@
           const origZ = T.LW ? T.LW.z : zBase;
           const label = { wid: T.wid, from: c.P.by, name: nameOf(c.P.by), at: c.P.t };
           const iv = { widgetId: T.widgetId, n: n2, open: true, rect, z: over ? Math.max(0, origZ - 1) : zBase + zk++, maximized: false, createdAt: fin(c.P.t, now), wid: c.wid, copyOf: label };
+          const lang = normLang(T.t.language);   // (in the original window's language)
+          if (lang) iv.language = lang;
           const instRev = put(`inst:${b}:${ik}`, 'inst', iv);
           const conf = T.t.conf, dataH = hj(c.val);
           const dataRev = c.val === null ? 0 : put(`data:${b}:${ik}`, 'data', clone(c.val));
@@ -10251,6 +10460,7 @@
           nm.w[c.wid] = { ikey: ik, p: {
             exists: mk('1', true, instRev), rect: Object.assign(mk(partH('rect', { rect, maximized: false }, tScale, H), null, instRev), { s1: s1Of({ rect, maximized: false }, tScale, H) }), open: mk(TRUE_H, true, instRev),
             label: mk(hj(label), label, instRev), conf: mk(hj(conf === undefined ? null : conf), conf, confRev), data: mk(dataH, c.val, dataRev) } };
+          if (lang) nm.w[c.wid].p.language = mk(hj(lang), lang, instRev);   // (none for English: Rule 1)
           pageChanged = true;
         }
         for (const [wid, T0] of Object.entries((M && M.wgone) || {})) if (!nm.w[wid] && !nm.wgone[wid] && !S.wins.has(wid)) nm.wgone[wid] = T0;
@@ -10342,6 +10552,7 @@
           const iv = { exists: mw.p.exists.v }, i = { widgetId: W.widgetId, instance: W.n, wid, open: W.parts.open.val, maximized: W.parts.rect.val.maximized, z: W.z,
             rect: W.parts.rect.val.rect, createdAt: W.createdAt };
           if (W.parts.label.val) i.copyOf = W.parts.label.val;
+          if (W.parts.language.val) i.language = W.parts.language.val;
           for (const k of WIN_PARTS) if (mw.p[k] && mw.p[k].v && !W.parts[k].skipped) iv[k] = mw.p[k].v;
           if (mw.p.rect && mw.p.rect.lh && W.parts.rect.h === mw.p.rect.lh) i.vh = { rect: mw.p.rect.h };   // (the place converted from another scale: still that version)
           if (iv.conf) i.config = W.parts.conf.val;
@@ -10368,7 +10579,8 @@
         pages.push(Object.assign({ viewport: { width: vw, height: vh }, board }, media ? { media } : {}, { instances }));
         // (what the parts fingerprint covers: each part's fingerprint and version, not its value again)
         canon.push([uid, PAGE_PARTS.map(k => (v[k] ? P.parts[k].h : 0)), v, media ? [media.background || null, media.look ? P.parts.photoLook.h : 0] : 0,
-          instances.map(i => { const W2 = P.wins.get(i.wid); return [i.wid, i.widgetId, i.instance, i.createdAt, WIN_PARTS.map(k => (i.v[k] ? W2.parts[k].h : 0)), i.v, i.vh || 0, i.pending ? i.pending.data.map(q => (q.h ? [q.v, q.h, 1] : [q.v, hj(q.val)])) : 0]; })]);
+          // (a window's language only once it has a version: an English window's fingerprint is 2026.11.27-1's, Rule 2)
+          instances.map(i => { const W2 = P.wins.get(i.wid); return [i.wid, i.widgetId, i.instance, i.createdAt, (i.v.language ? WIN_PARTS : WIN_BACK).map(k => (i.v[k] ? W2.parts[k].h : 0)), i.v, i.vh || 0, i.pending ? i.pending.data.map(q => (q.h ? [q.v, q.h, 1] : [q.v, hj(q.val)])) : 0]; })]);
       }
       pages.sort((a, c) => a.board.pos - c.board.pos || (a.board.uid < c.board.uid ? -1 : 1));
       const main = pages[0] || { viewport: { width: 2400, height: 1350 }, board: null, instances: [] };
@@ -10446,7 +10658,7 @@
             if (!ex) throw new Error('window');
             const pw = { wid: i.wid, ident: { widgetId: i.widgetId, n: i.instance, createdAt: fin(i.createdAt, null), z: fin(i.z, 1) }, exists: ex, parts: {}, pending: [] };
             const rv = { rect: normRect(i.rect), maximized: !!i.maximized }, label = normLabel(i.copyOf);
-            const vals = { rect: rv, open: !!i.open, label, data: i.data === undefined ? null : i.data, conf: i.config === undefined ? null : i.config };
+            const vals = { rect: rv, open: !!i.open, label, data: i.data === undefined ? null : i.data, conf: i.config === undefined ? null : i.config, language: normLang(i.language) };
             // (content naming its pictures: only in a sync.v 2 file, and only with its fingerprint beside it)
             const refs = iv.data && v2 ? refsIn(vals.data) : [], dh = refs && refs.length && i.vh && HASH_RE.test(i.vh.data || '') ? i.vh.data : null;
             if (!refs || (refs.length && !dh)) throw new Error('window');
@@ -10551,7 +10763,7 @@
           for (const [wid, pw] of pp.wins) {
             const T = (M.wgone || {})[wid], under = (vv, k) => leq(vv, C[`${wid}/${k}`] || {}) || (!!T && leq(vv, (k === 'exists' ? T.exists[1] : (T.cover || {})[k]) || {}));
             if (!under(pw.exists.vv, 'exists')) return false;
-            for (const k in pw.parts) if (!under(pw.parts[k].vv, k)) return false;
+            for (const k in pw.parts) if (k !== 'language' && !under(pw.parts[k].vv, k)) return false;   // (a window's language never brings it back: Rule 2)
             for (const q of pw.pending) if (!under(q.vv, 'data')) return false;
           }
           continue;
@@ -10562,7 +10774,7 @@
           const mw = M.w[wid], T = M.wgone && M.wgone[wid];
           if (T) {
             if (!leq(pw.exists.vv, T.exists[1])) return false;
-            for (const k in pw.parts) if (!leq(pw.parts[k].vv, (T.cover || {})[k] || {})) return false;
+            for (const k in pw.parts) if (k !== 'language' && !leq(pw.parts[k].vv, (T.cover || {})[k] || {})) return false;
             for (const q of pw.pending) if (!leq(q.vv, (T.cover || {}).data || {})) return false;
             continue;
           }
@@ -10609,7 +10821,7 @@
     }
 
     return { read, stamp, decode, sumText, join, shown, plan, encode, gc, includes, rebuild, photosWanted, picsWanted, ledger, records, patchSettings, joinPatches, newWid, copyWid,
-      partH, okV, leq, vjoin, picType, sniff, refsIn, fill, slim, PAGE_PARTS, WIN_PARTS, STYLE_PARTS, WID_RE, DEV_RE, PIC_MIN, PIC_FILE_RE, PIC_EXT };
+      partH, okV, leq, vjoin, picType, sniff, refsIn, fill, slim, PAGE_PARTS, WIN_PARTS, STYLE_PARTS, WID_RE, DEV_RE, PIC_MIN, PIC_FILE_RE, PIC_EXT, LANGS, normLang };
   })();
   // #endregion
 
@@ -10665,14 +10877,16 @@
       if (locked || !button) { this.merge(text, null, seedHere); return; }   // (locked: no Undo; Board history has it)
       this.merge(text, button, seedHere);
     },
-    // The theme, accent color or text style changed on another device ({by, theme, accent, accentColor, letters}): they
-    // are the whole board's, on every device. No Undo: changing it back in Settings is one tap, and syncs. The accent is
-    // named as it shows now (accentShown): "a custom one" for a custom color.
+    // The theme, accent color, text style or default widget language changed on another device ({by, theme, accent,
+    // accentColor, letters, widgetLanguage}): they are the whole board's, on every device. No Undo: changing it back in
+    // Settings is one tap, and syncs. The accent is named as it shows now (accentShown): "a custom one" for a custom color.
     style(x) {
       const a = ('accent' in x || 'accentColor' in x) && accentNow(), accent = a && (a[0] === '#' ? 'a custom one' : accentOf(a)[2]);
       const theme = { light: 'Light', dark: 'Dark', system: 'Auto' }[x.theme];
       const text = Object.prototype.hasOwnProperty.call(LETTERS, x.letters) ? LETTERS[x.letters].name : null;
-      const what = andList([theme && `the theme to ${theme}`, accent && `the accent color to ${accent}`, text && `the text style to “${text}”`].filter(Boolean));
+      const lang = Merge.LANGS.includes(x.widgetLanguage) ? LANG_NAMES[x.widgetLanguage] : null;
+      const what = andList([theme && `the theme to ${theme}`, accent && `the accent color to ${accent}`, text && `the text style to “${text}”`,
+        lang && `the default widget language to ${lang}`].filter(Boolean));
       return what ? `${this.names([x.by], true)} changed ${what}.` : '';
     },
     // A page deleted here is back: brought back on another device (its Undo, Bring back), or changed there before the
@@ -10682,7 +10896,7 @@
     },
     // Another merge toast, shown at once: it replaces the merge toasts of earlier rounds that are up. (One round that
     // deletes or adds pages and changes the page shown says each.)
-    say(text, opts = {}) { this.drop(); this.dropSaid(); const t = toast(text, opts); t.round = this.round; this.said.push(t); return t; },
+    say(text, opts = {}) { this.drop(); this.dropSaid(); const t = toast(text, Object.assign({ noTranslate: true }, opts)); t.round = this.round; this.said.push(t); return t; },
     drop() { if (this.t && this.t.isConnected) this.t.remove2(); this.t = null; this.ops = []; this.swaps = []; this.from = []; clearTimeout(this.timer); },
     dropSaid() { this.said = this.said.filter(t => { if (t.round === this.round) return t.isConnected; if (t.isConnected) t.remove2(); return false; }); },
     // The merge toast of the page shown: updated in place, or a new one. (A plain "Updated from …" gets a new node at
@@ -10702,7 +10916,7 @@
         this.drop(); this.dropSaid();
         this.ops = seed.ops; this.swaps = seed.swaps; this.from = seed.from; this.text = text; this.newAt = Date.now();
         if (plain) this.plainAt = this.newAt;
-        this.t = toast(text, button ? { action: button, timeout: 0, onAction: run } : { timeout: 0 });
+        this.t = toast(text, button ? { action: button, timeout: 0, onAction: run, noTranslate: true } : { timeout: 0, noTranslate: true });
         this.t.board = S.boardId;   // (an Undo of this page: it goes when another page is shown)
       }
       clearTimeout(this.timer);
@@ -10849,6 +11063,7 @@
     const t = document.createElement('div');
     t.minor = !!opts.minor;
     t.className = 'toast';
+    if (opts.noTranslate) t.setAttribute('translate', 'no');   // (it names a page, a device or a folder: no browser translation)
     t.innerHTML = `<span>${esc(text)}</span>`;
     const remove = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
     if (opts.action) {
@@ -11354,6 +11569,9 @@
         this.run(m.cmd, m.args && typeof m.args === 'object' ? m.args : {});
       });
       const id = REGISTRY[0] && REGISTRY[0].id;
+      // (the language the dev window starts in, from #b21-lang=… in its address: before the first window opens, so that
+      // it opens in it and the first state says so)
+      if (LAB.language) this.setLanguage(String(LAB.language));
       const open = Array.from(S.insts.values()).filter(i => i.widgetId === id && i.open);
       if (id && !open.length) openWidget(id);
       else if (open.length) focusWin(ikeyOf(id, open[0].n));
@@ -11370,7 +11588,9 @@
       // The focused window, else the first open one (tapping the empty board shouldn't move the camera).
       const w = (S.focused && S.wins.get(S.focused)) || Array.from(S.wins.values())[0] || null;
       const box = el => { const r = el.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }; };
-      const menu = $('#menu.open');
+      // (the menu and its Language flyout, as one box: the camera keeps both in sight)
+      const boxes = $$('#menu.open, #menu-sub.open').map(box);
+      const menu = boxes.length ? boxes.reduce((a, b) => { const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; }) : null;
       let info = null;
       if (w && w.disp) {
         const c = w.constraints(), d = w.disp;
@@ -11378,7 +11598,7 @@
         info = { ikey: w.ikey, w: num(d.w), h: num(d.h - TITLE_H), ratio: c.ratio || null, minW: num(c.minW), minH: num(c.minH - TITLE_H),
           maxW: num(c.maxW), maxH: num(c.maxH - TITLE_H), resizable: c.resizable !== false, maximized: !!(w.inst && w.inst.maximized) };
       }
-      const v = { win: w ? box(w.el) : null, menu: menu ? box(menu) : null, info, scale: boardScale(), shape: freeShape() ? 'free' : '16:9', active: Inter.active };
+      const v = { win: w ? box(w.el) : null, menu, info, scale: boardScale(), shape: freeShape() ? 'free' : '16:9', active: Inter.active };
       const sig = JSON.stringify(v);
       if (sig === this.viewSig) return;
       this.viewSig = sig;
@@ -11400,10 +11620,26 @@
       this.post('state', {
         instances: Array.from(S.insts.values()).sort((a, b) => a.n - b.n).map(i => {
           const ik = ikeyOf(i.widgetId, i.n);
-          return { ikey: ik, n: i.n, open: !!i.open, data: S.data.has(ik) ? S.data.get(ik) : null, config: S.conf.has(ik) ? S.conf.get(ik) : null };
+          const w = S.wins.get(ik);
+          return { ikey: ik, n: i.n, open: !!i.open, data: S.data.has(ik) ? S.data.get(ik) : null, config: S.conf.has(ik) ? S.conf.get(ik) : null,
+            language: w ? w.frameLang : labPseudo ? 'qps' : Merge.normLang(i.language) || 'en' };
         }),
-        focused: S.focused, settings: { theme: S.settings.theme, accent: accentNow() }, scale: boardScale(), shape: freeShape() ? 'free' : '16:9'
+        focused: S.focused, settings: { theme: S.settings.theme, accent: accentNow() }, scale: boardScale(), shape: freeShape() ? 'free' : '16:9',
+        language: labPseudo ? 'qps' : S.settings.widgetLanguage || 'en'
       });
+    },
+    // The dev window's Language: every window in it, and windows opened afterwards too (the default widget language);
+    // Pseudo: every window in the pseudo language. A window whose widget lacks a language stays English.
+    setLanguage(v) {
+      if (v !== 'qps' && !Merge.LANGS.includes(v)) return;
+      labPseudo = v === 'qps';
+      if (!labPseudo) S.settings = Object.assign({}, S.settings, { widgetLanguage: v });   // (Open another window follows it; never stored here)
+      for (const [ik, inst] of S.insts) {
+        const w = S.wins.get(ik), widget = getWidget(inst.widgetId);
+        if (w) w.pseudo = labPseudo;
+        if (!labPseudo && widget && widget.languages.includes(v) && (inst.language || 'en') !== v) saveInst(ik, withLanguage(inst, v));
+        if (w) Lang.apply(w);
+      }
     },
     // A message a widget posted that isn't for 21Board: pass it up (e.g. to the AI tool hosting the preview).
     relayUp(e) {
@@ -11437,6 +11673,25 @@
           break;
         }
         case 'open': if (REGISTRY[0]) openWidget(REGISTRY[0].id); break;
+        case 'language': this.setLanguage(String(a.value || '')); break;
+        case 'every-language': {   // four windows, one in each language, two by two on the board
+          const id = REGISTRY[0] && REGISTRY[0].id, widget = id && getWidget(id);
+          if (!widget) break;
+          labPseudo = false;
+          const mine = () => Array.from(S.insts.values()).filter(i => i.widgetId === id).sort((x, y) => x.n - y.n);
+          while (mine().length < 4) if (!openWidget(id, { fresh: true })) break;
+          const v = boundsRect(), c = constraintsFor(widget);
+          mine().slice(0, 4).forEach((inst, k) => {
+            const ik = ikeyOf(id, inst.n), lang = widget.languages.includes(Merge.LANGS[k]) ? Merge.LANGS[k] : 'en';
+            const cell = { x: v.x + (k % 2) * v.w / 2, y: v.y + Math.floor(k / 2) * v.h / 2, w: v.w / 2, h: v.h / 2 };
+            const rect = fitRect({ x: cell.x + 12, y: cell.y + 12, w: cell.w - 24, h: cell.h - 24 }, c, cell);
+            saveInst(ik, withLanguage(Object.assign({}, inst, { open: true, maximized: false, rect }), lang));
+            reconcileWin(ik);
+            const w = S.wins.get(ik);
+            if (w) { w.pseudo = false; w.layout(); Lang.apply(w); }
+          });
+          break;
+        }
         case 'relay': for (const w of S.wins.values()) { try { w.iframe.contentWindow.postMessage(a.data, '*'); } catch (e) { /* gone */ } } break;
         case 'state': break;
       }
@@ -11583,7 +11838,7 @@
       const t = e.target;
       if (Pages.open && !t.closest('#pages-menu') && !t.closest('[data-ctl="pages"]')) Pages.closeMenu();
       if (Picker.side && !t.closest('#panel') && !t.closest('.picker-btn') && !t.closest('#pages-menu')) Picker.close();
-      if (Menu.win && !t.closest('#menu') && !t.closest('.win-label')) Menu.close();
+      if (Menu.win && !t.closest('#menu') && !t.closest('#menu-sub') && !t.closest('.win-label')) Menu.close();
       // (Settings and Board history's columns beside it count as one: a tap in either leaves both open. So does a tap on a
       // message, as for Board history on its own: a merge's Undo while looking through Board history.)
       const cols = HistorySheet.beside && t.closest('#settings, #history, #history-detail, #toasts');
@@ -11606,6 +11861,7 @@
       if (e.key === 'Tab' && dialogResolve) dialogTab(e);
       if (e.key !== 'Escape') return;
       if (dialogResolve) dialogResolve(null);
+      else if (Menu.win && Menu.sub) Menu.closeSub(true);   // (the Language flyout first, then the menu)
       else if (Menu.win) { const w = Menu.win; Menu.close(); w.labelEl.focus(); }
       else if (Pages.open) { Pages.closeMenu(); const ind = $('[data-ctl="pages"]', Picker.el); if (ind) ind.focus(); }
       else if (Picker.side) Picker.close();
@@ -11811,7 +12067,11 @@
     openWidget, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,
     catalog: () => Array.from(catalog.values()), link: Link, history: BoardHistory, historySheet: HistorySheet, historyPlan, pages: Pages, updateBoard,
-    merge: Merge, mergeUI: MergeUI, applyMerged, placeCopy, zTop, raced: Raced, writer: Writer, accentNow, lock: Lock
+    merge: Merge, mergeUI: MergeUI, applyMerged, placeCopy, zTop, raced: Raced, writer: Writer, accentNow, lock: Lock,
+    // A window in the pseudo language (tests, Developer mode or the dev window only): never saved, kept while the window
+    // is open. And the language a window shows.
+    pseudo: (ikey, on) => { const w = S.wins.get(ikey); if (!w || !(S.settings.devMode || LAB)) return; w.pseudo = !!on; Lang.apply(w); },
+    winLang: ikey => { const w = S.wins.get(ikey); return w ? w.frameLang : null; }
   };
 
   // (A problem after the board is up is logged, as before; before that, the teacher is told.)

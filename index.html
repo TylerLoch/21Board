@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="b180c0db">
+<html lang="en" data-build="90d32643">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -410,6 +410,12 @@
     .menu-item.danger, .menu-item.danger svg { color: var(--danger); }
     @media (hover: hover) { .menu-item.danger:hover { background: var(--danger-soft); } }
     .menu-item:disabled { opacity: .45; cursor: default; }
+    /* Window menu › Language: the window's language, muted, and a chevron. Open, the row stays lit beside its flyout. */
+    .menu-item .value { flex: 0 1 auto; min-width: 0; color: var(--muted); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .menu-item svg.more { width: 18px; height: 18px; margin-left: -6px; color: var(--muted); }
+    .menu-item[aria-expanded="true"] { background: var(--active-bg); }
+    .menu-item[aria-expanded="true"] svg.more { color: var(--primary); }
+    /* The flyout, #menu-sub, is a plain .menu beside #menu (Menu.positionSub places it): no new rules. */
     .menu-sep { height: 1px; flex: 0 0 auto; background: var(--border); margin: 5px 8px; }
     .menu-confirm { flex: 0 0 auto; padding: 10px 12px 6px; font-size: 14px; color: var(--muted); max-width: 280px; line-height: 1.35; }
     /* Widget menu extras: section headings, a row of color swatches, and a row of short choices drawn like them. */
@@ -806,17 +812,19 @@
     .corner-clock .d { font-size: 22px; font-weight: 600; padding-right: 14px; border-right: 2px solid var(--border); }
     body.clock-on #toasts { max-width: calc(100vw / var(--ui, 1) - 2 * var(--clock-room, 90px)); }
 
-    /* Text style: Settings → Appearance, one card per choice, each in its own letters (letterSettings in board.js) */
-    .letter-opts { display: flex; flex-direction: column; gap: 8px; }
-    .letter-opt { position: relative; justify-content: space-between; gap: 12px; min-height: 58px; padding: 8px 14px; border-radius: 12px; background: var(--hover-bg); color: var(--text); text-align: left; }
-    .letter-opt .txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-    .letter-opt b { font-size: 16px; font-weight: 700; }
-    .letter-opt small { font-size: 12.5px; line-height: 1.35; color: var(--muted); }
+    /* Text style: Settings → Appearance, one card per choice, each in its own letters (letterSettings in board.js). The
+       Default widget language's cards in Settings → Classroom look the same (.lang-opt, languageSettings): each language
+       in its own words, and in English under it. */
+    .letter-opts, .lang-opts { display: flex; flex-direction: column; gap: 8px; }
+    .letter-opt, .lang-opt { position: relative; justify-content: space-between; gap: 12px; min-height: 58px; padding: 8px 14px; border-radius: 12px; background: var(--hover-bg); color: var(--text); text-align: left; }
+    .letter-opt .txt, .lang-opt .txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .letter-opt b, .lang-opt b { font-size: 16px; font-weight: 700; }
+    .letter-opt small, .lang-opt small { font-size: 12.5px; line-height: 1.35; color: var(--muted); }
     .letter-opt .sample { flex: 0 0 auto; font-size: 26px; line-height: 1.1; }
-    .letter-opt.on { background: var(--primary-soft); box-shadow: inset 0 0 0 2px var(--primary); }
-    .letter-opt.on b { color: var(--primary); }
-    .letter-opt .tick { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--on-primary); box-shadow: 0 0 0 2px var(--surface); display: grid; place-items: center; pointer-events: none; }
-    .letter-opt .tick svg { width: 13px; height: 13px; stroke-width: 3.5; }
+    .letter-opt.on, .lang-opt.on { background: var(--primary-soft); box-shadow: inset 0 0 0 2px var(--primary); }
+    .letter-opt.on b, .lang-opt.on b { color: var(--primary); }
+    .letter-opt .tick, .lang-opt .tick { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--on-primary); box-shadow: 0 0 0 2px var(--surface); display: grid; place-items: center; pointer-events: none; }
+    .letter-opt .tick svg, .lang-opt .tick svg { width: 13px; height: 13px; stroke-width: 3.5; }
 
     /* (end of classroom features) */
   </style>
@@ -862,8 +870,9 @@
   </div>
 
   <div id="menu" class="menu" role="menu"></div>
+  <div id="menu-sub" class="menu" role="menu" aria-label="Language"></div>
   <div id="pages-menu" class="menu" role="menu" aria-label="Pages"></div>
-  <div id="page-flash" aria-live="polite" hidden></div>
+  <div id="page-flash" aria-live="polite" translate="no" hidden></div>
 
   <section id="settings" class="sheet" role="dialog" aria-label="Settings" tabindex="-1">
     <div class="sheet-head"><h2>Settings</h2><button data-close aria-label="Close settings"></button></div>
@@ -871,11 +880,11 @@
   </section>
 
   <!-- Board history: the list of versions, and a version's own column beside it (HistorySheet in board.js). -->
-  <section id="history" class="sheet" role="dialog" aria-label="Board history" tabindex="-1">
+  <section id="history" class="sheet" role="dialog" aria-label="Board history" tabindex="-1" translate="no">
     <div class="sheet-head"><button class="back" data-back hidden></button><h2>Board history</h2><button data-close aria-label="Close Board history"></button></div>
     <div class="sheet-body"></div>
   </section>
-  <section id="history-detail" class="sheet" role="dialog" aria-labelledby="history-detail-title" tabindex="-1">
+  <section id="history-detail" class="sheet" role="dialog" aria-labelledby="history-detail-title" tabindex="-1" translate="no">
     <div class="sheet-head"><button class="back" data-back hidden></button><h2 id="history-detail-title"></h2><button data-close aria-label="Close this version"></button></div>
     <div class="sheet-body"></div>
   </section>

@@ -86,11 +86,13 @@ where your language needs it.
 1. Run `node tools/words.js`. It names each problem with its file and line.
 2. Open the Timer in Russian at <https://tylerloch.github.io/21Board/widgets/timer/index.html#b21-bare&b21-lang=ru>.
    For another widget, change `timer` to its folder. For another language, change `ru` to `es` or `uk`. Read every
-   word at the window's smallest size.
+   word at the window's smallest size. On the board, tap the window's name ⌄, then Language.
 
 ## The Sheet
 
-Reviewers who don't edit files use the Google Sheet "21Board words", with a tab for each widget. Edit your
+Reviewers who don't edit files use the Google Sheet
+["21Board words"](https://docs.google.com/spreadsheets/d/107RhnGYFn33v23lR9u0lvW4Zh0ePw5TJz60BoHrne-U/edit), with a
+tab for each widget. Edit your
 language's cell, tick OK, and add a comment if you like. The words files stay the source. Edits come back to them
 on request.
 

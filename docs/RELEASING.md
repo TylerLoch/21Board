@@ -9,7 +9,8 @@ layout, and nothing to saved data. Most are under 50 lines of code.
 
 1. Write what changes and the test that shows it, in a few lines. No mockups.
 2. Make a branch from main. Write the test, see it fail, then make the change.
-3. Update the docs and guides where they say otherwise. Stamp the next free version, as in step 3.
+3. Update the docs and guides where they say otherwise. A word a window shows changes in all four languages, and
+   node tools/words.js passes. Stamp the next free version, as in step 3.
 4. Run the suites the change touches. Then push the branch and wait for GitHub, as in step 4.
 5. Merge, push, publish, and report, as in steps 5 to 8.
 
@@ -27,6 +28,7 @@ Test what the change does, with the fewest checks that prove it.
 - Add to the feature's suite, in its area's file in `tests/suites/`. Start a new suite only for a new feature.
 - Name a suite for what it tests, not for its release.
 - Don't tie a check to this release. A recorded layout or a version number fails the next one.
+- Set a window's language through the board, never the browser's locale.
 
 ## 1. Spec
 

@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.27-1';
+const VERSION = '2026.11.27-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'b180c0db';
+const BUILD = '90d32643';
 const FILES = {
-  './': 'cca19f1d1823fcc3',
-  'index.html': 'cca19f1d1823fcc3',
-  'board.js': '88a6f5316c6f9310',
+  './': 'a815ca73b3da3d1e',
+  'index.html': 'a815ca73b3da3d1e',
+  'board.js': '2104751c09e287d8',
   'sdk/board21.js': '08906190c5acd9e7',
-  'sdk/board21-dev.js': '4bc3617a17b2185c',
-  'sdk/dev/board-shell.js': 'ab3f1ec62f52697e',
-  'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': 'ae15a05c3bb4ec69',
+  'sdk/board21-dev.js': 'ec785ecbfaa7430d',
+  'sdk/dev/board-shell.js': '49c875caff4259fa',
+  'sdk/lab.html': '0f64e592aad54c02',
+  'widgets/registry.js': '0bc966acbae82c8b',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -37,7 +37,7 @@ const FILES = {
   'fonts/EarlyReaders-Regular.woff2': 'e96901beca9ae308',
   'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
   'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
-  'widgets/timer/index.html': 'd73dcc04bf88ec6b',
+  'widgets/timer/index.html': '46ecb3641dd9a842',
   'widgets/timer/words.js': '16517f04ba8ae70f',
   'widgets/stopwatch/index.html': '5c56c767f8f86c2a',
   'widgets/task-timer/index.html': 'db23b33641e050b2',

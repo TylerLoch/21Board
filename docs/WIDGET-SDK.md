@@ -61,6 +61,8 @@ The SDK must be the **first script in `<head>`**, a plain `<script src>` with no
 name, and window size for testing. Inside 21Board, its entry in `widgets/registry.js` counts, so keep the
 two the same.
 
+The template also has a words table, so its window comes in four languages. See [Languages](#languages).
+
 ---
 
 ## Rules for widgets
@@ -83,6 +85,9 @@ two the same.
 9. **Check what you load.** Content and config (`ctx.data`, `ctx.config`, and the `data` and `config`
    events) can come from a `.21board` file someone imported. Check types and ranges before you use
    them. Put them on the page as text (`textContent`, `setAttribute`), never as HTML (`innerHTML`).
+10. **Four languages.** Every word a window shows comes from your words table, in English, Spanish, Russian, and
+    Ukrainian. Menu rows and title bar words are English for now. Numbers always use English rules. Save keys in
+    data and config, never the words shown. Never use a translation service.
 
 ---
 
@@ -113,8 +118,8 @@ The **context**:
   theme: 'light' | 'dark',
   palette: { bg, text, accent, ... },   // same values as the --b21-* CSS variables
   window: { width, height, x, y, maximized, focused, zoom, corners },  // content size in CSS px; focused = selected; zoom, corners below
-  locale: 'en-US',
-  language: 'en',            // this window's language: 'en', 'es', 'ru', or 'uk'. English inside 21Board for now
+  locale: 'en-US',           // the window's locale for dates, such as 'es-US', when your widget lists languages; else the device's
+  language: 'en',            // this window's language: 'en', 'es', 'ru', or 'uk'
   uiLanguage: 'en',          // the board's own, for menu rows and the title bar
   uiLocale: 'en-US',
   devMode: false,            // Developer mode is on in Settings
@@ -126,6 +131,9 @@ The **context**:
   standalone: false
 }
 ```
+
+**A language change reloads the window.** The board sends `beforeclose`, then starts your page again in the new
+language. So build your words once, as the page loads, and save anything you need on `beforeclose`.
 
 ### Saving
 
@@ -386,9 +394,9 @@ Use `[data-b21-theme="dark"] .thing { … }` for anything else that should chang
 
 ## Languages
 
-A window can show its words in English, Spanish, Russian, or Ukrainian. Inside 21Board every window is English for
-now. To see another language, open the widget on its own with `#b21-bare&b21-lang=es` at the end of its address. Use
-`ru` for Russian and `uk` for Ukrainian.
+A window shows its words in English, Spanish, Russian, or Ukrainian. The teacher picks each window's language from its
+menu. New windows start in the one chosen in Settings → Classroom → Default widget language. Your widget gets the
+Language row once it lists its languages.
 
 ### Words tables
 
@@ -433,6 +441,14 @@ Board21.words({
 - List `words.js` in your widget's `files` in `widgets/registry.js`, so it works offline.
 - `node tools/words.js` checks every table. `node tools/words.js --format` lays them out. Translators read
   [docs/TRANSLATING.md](TRANSLATING.md).
+
+A widget that is one file, such as an uploaded or AI-built one, keeps its table in the page, right after the
+manifest: `<script>Board21.words({ … });</script>`. An uploaded file can't load `words.js`.
+
+### Listing your languages
+
+Add `"languages": ["en", "es", "ru", "uk"]` to your manifest and your registry entry. Without it, the window has no
+Language row and stays English.
 
 ### Showing words
 
@@ -483,13 +499,16 @@ Board21.words({
   keeps its own `lang` in an English window.
 - `translate="no"` goes on `<html>`, so a browser's page translation never sends a window's words away.
 - A Russian or Ukrainian window skips the easier-to-read fonts, which have no Cyrillic letters.
+- The board names the window's frame with its language before your page loads, so `Board21.t()` is right from your
+  first line.
 
 ### Trying a language
 
-Open the widget on its own with `#b21-bare&b21-lang=es`, `ru`, or `uk`. Reload to change the language.
-
-`#b21-bare&b21-lang=qps` shows the pseudo language. Every word from your table shows in ［brackets］, longer, with
-accents and a Cyrillic letter. English outside the brackets isn't in your table yet.
+- On the board: tap the window's name, then **Language**, and pick one.
+- In the dev window: **Language** in the toolbar sets every window. **Pseudo** is the pseudo language. Every word from
+  your table shows in ［brackets］, longer, with accents and a Cyrillic letter. English outside the brackets isn't in
+  your table yet. *⋯ ▸ Open in every language* opens one window in each.
+- On its own: add `#b21-bare&b21-lang=es`, `ru`, `uk`, or `qps` to the widget's address. Reload to change it.
 
 ---
 
@@ -505,6 +524,7 @@ Add an entry to `widgets/registry.js`:
   version: '1.0.0',
   entry: 'widgets/counter/index.html',
   files: ['widgets/counter/index.html'],  // EVERY file the widget needs (images, extra scripts...) for offline use
+  languages: ['en', 'es', 'ru', 'uk'], // the languages your words table has; gives windows the Language row
   color: '#0ea5e9',                    // Widget Picker tile color
   icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>', // 24x24 stroke icon, drawn white
   window: {
@@ -595,10 +615,11 @@ the theme, accent, and size of windows and menus in Settings.
 | **View** | *Window* (default): follows the window and its open menu. *Board*: the whole screen. |
 | **Screen** | Smartboard 1920 × 1080, laptop 1366 × 768, Chromebook 1280 × 800, tablet 1024 × 768, or the preview's own size. |
 | **Theme, − / +** | Light / dark / auto, and the size of windows and menus (as in Settings). |
+| **Language** | English, Español, Русский, Українська, or Pseudo, for every window. *⋯ ▸ Open in every language* opens one window in each. |
 | **Data** | The window's saved content and config as JSON. Edit it and *Send as a change from another tab* to test your `data` and `config` handlers. Copy it or clear it. |
 | **Events** | Every message between the widget and the board, and the widget's errors in red. |
-| **Checks** | Common problems: the SDK not first, files loaded from the Internet, localStorage, `alert()`, menu items the board will drop (more than 24, swatches that aren't `#hex`)… Each has *Copy fix request*, a sentence to paste back to the AI tool. |
-| **⋯** | Reload the widget, reset its window, open another window, switch the board shape, show the widget on its own, and *Copy for 21Board* (the HTML with its SDK path set for the `widgets/` folder, plus a `widgets/registry.js` entry). |
+| **Checks** | Common problems: the SDK not first, files loaded from the Internet, localStorage, `alert()`, menu items the board will drop (more than 24, swatches that aren't `#hex`), a words table with no `"languages"`, `words.js` in a file that can't load it, and words missing from the table… Each has *Copy fix request*, a sentence to paste back to the AI tool. |
+| **⋯** | Reload the widget, reset its window, open another window, open one in every language, switch the board shape, show the widget on its own, and *Copy for 21Board* (the HTML with its SDK path set for the `widgets/` folder, plus a `widgets/registry.js` entry). |
 
 The footer shows the window's content size, shape lock, minimum size, and board size.
 
@@ -609,7 +630,7 @@ The footer shows the window's content size, shape lock, minimum size, and board 
 - **Just the widget:** *⋯ ▸ Show the widget on its own*, or add `#b21-bare` to the address, or
   `data-dev="off"` to the SDK's script tag. This is standalone mode: data in `localStorage`, window calls
   ignored, menu items in a small dropdown in the corner. Add `&b21-lang=es`, `ru`, or `uk` after `#b21-bare` to see
-  the widget in that language.
+  the widget in that language. The dev window starts in it too.
 - If the SDK **isn't the first script** in `<head>`, the widget runs on its own with a note saying so.
 - Without a manifest block, a widget in this repo's `widgets/` folder uses its `widgets/registry.js`
   entry; otherwise the window is 400 × 300.
@@ -719,4 +740,5 @@ storage, so it can't read this site's real boards. *Edit code* goes back to the 
 - [ ] Drags: if any part of the widget needs dragging (text selection, drawing, custom sliders), it sets
       `dragFromContent: false`, or marks that area `data-b21-nodrag`
 - [ ] Every file listed in `files`
+- [ ] Words table complete: en, es, ru, and uk. Manifest and registry list all four. `node tools/words.js` passes.
 - [ ] Works offline (load once, go offline, reload)

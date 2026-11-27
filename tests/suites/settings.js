@@ -425,7 +425,7 @@ module.exports = T => {
     const named = await page.evaluate(() => [...document.querySelectorAll('#settings [role="radiogroup"]')].map(g => `${g.getAttribute('aria-label') || '(no name)'}: ${[...g.querySelectorAll('[role="radio"]')].map(r => r.textContent).join('/')}`));
     ok(named.length >= 5 && !named.some(n => n.startsWith('(no name)')) && named.includes('Theme: Light/Dark/Auto') && named.includes('Clock in the corner: On/Off/Auto') && named.includes('Widget Picker: Both corners/Left/Right'),
       `every set of choices in Settings has a name (${named.join('; ')})`);
-    ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden,about hidden,code-license hidden,docs-license hidden' && !sh.missing.length && !sh.name,
+    ok(sh.groups.join() === 'widget-language hidden,saved hidden,bg hidden,letters hidden,advanced hidden,about hidden,code-license hidden,docs-license hidden' && !sh.missing.length && !sh.name,
       `every group starts closed, and is in the page, hidden (${sh.groups.join(', ')}); no page name field`);
     // This page › Windows: how many there are, open or closed; open, the list says Open or Closed (no sizes).
     const saved = () => page.evaluate(() => ({ value: document.querySelector('#settings [data-val="saved"] .v').textContent, label: document.querySelector('#settings [data-val="saved"] .lbl').textContent,
@@ -466,11 +466,11 @@ module.exports = T => {
       `Off turns snapping off; Light, Medium and Firm turn it on with that push (${seen.join(', ')})`);
     await page.evaluate(() => { window.__board21.updateBoard({}); }); await page.waitForTimeout(150);
     sh = await shape();
-    ok(sh.groups.join() === 'saved open,bg hidden,letters hidden,advanced open,about hidden,code-license hidden,docs-license hidden', `open groups stay open while Settings is drawn again (${sh.groups.join(', ')})`);
+    ok(sh.groups.join() === 'widget-language hidden,saved open,bg hidden,letters hidden,advanced open,about hidden,code-license hidden,docs-license hidden', `open groups stay open while Settings is drawn again (${sh.groups.join(', ')})`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await openSettings(page);
     sh = await shape();
-    ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden,about hidden,code-license hidden,docs-license hidden', 'and every group is closed again the next time Settings opens');
+    ok(sh.groups.join() === 'widget-language hidden,saved hidden,bg hidden,letters hidden,advanced hidden,about hidden,code-license hidden,docs-license hidden', 'and every group is closed again the next time Settings opens');
     // The amber dot on Advanced: only while a backup is overdue. Not on a new board, though the browser hasn't promised
     // to keep 21Board's data here: Advanced › Backups and storage says that.
     const dot = (p = page) => p.evaluate(() => { const d = document.getElementById('grp-advanced-warn'); return !!d && !d.hidden && getComputedStyle(d).display !== 'none'; });

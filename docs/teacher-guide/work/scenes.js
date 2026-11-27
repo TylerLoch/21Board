@@ -424,6 +424,26 @@ SCENES.menu = async () => {
   await ctx.close();
 };
 
+// ---- 5b. language.jpg: a Timer switched to Español through its menu, at the size it opens at with room on its right,
+// its menu open again with Language tapped and the four languages beside it
+SCENES.language = async () => {
+  const { ctx, p } = await newBoard();
+  const ik = await addWin(p, 'timer');
+  await setRect(p, ik, { x: 560, y: 120, w: 380, h: 300 });
+  await wait(p, 800);
+  await deselect(p);
+  await p.click(`.win[data-ikey="${ik}"] .win-label`); await wait(p, 400);
+  await p.click('#menu [data-act="lang"]'); await wait(p, 400);
+  await p.click('#menu-sub [data-id="es"]'); await wait(p, 2500);   // (the window starts again in Spanish)
+  await deselect(p);
+  await p.click(`.win[data-ikey="${ik}"] .win-label`); await wait(p, 400);
+  await p.click('#menu [data-act="lang"]'); await wait(p, 600);
+  log('  flyout', JSON.stringify(await p.$$eval('#menu-sub .menu-item', els => els.map(e => e.innerText.trim() + (e.getAttribute('aria-checked') === 'true' ? ' ✓' : '')))));
+  const b = union(await rectOf(p, ik), await p.locator('#menu').boundingBox(), await p.locator('#menu-sub').boundingBox());
+  await shot(p, 'language.jpg', padded(b, 24));
+  await ctx.close();
+};
+
 // ---- 6. settings.jpg: Settings, as it opens
 SCENES.settings = async () => {
   const { ctx, p } = await newBoard();

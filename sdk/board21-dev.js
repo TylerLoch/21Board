@@ -12,9 +12,10 @@
  * and saving all behave as on the smartboard. The test board's data is kept apart from real boards.
  *
  * Toolbar: View (Window: the camera follows the focused window and its menu; Board: the whole screen),
- * Screen size, Theme, Size of windows and menus, Data (content/config JSON: edit, send as a change from
- * another tab, clear), Events (every SDK message), Checks (common problems, each with a fix request to paste
- * back to the AI), ⋯ (reload, show on its own, copy for 21Board).
+ * Screen size, Theme, Language (every window in English, Spanish, Russian, Ukrainian, or the pseudo language),
+ * Size of windows and menus, Data (content/config JSON: edit, send as a change from another tab, clear), Events
+ * (every SDK message), Checks (common problems, each with a fix request to paste back to the AI), ⋯ (reload, open
+ * in every language, show on its own, copy for 21Board).
  *
  * The widget's errors are repeated in this page's console as "[widget] …", so an AI tool's own error panel
  * sees them. Messages a widget posts for the AI tool (not for 21Board) are passed up and their answers back.
@@ -138,7 +139,9 @@
           color: m.color || (r && r.color) || '#2563eb', icon: m.icon || (r && r.icon) || undefined,
           permissions: m.permissions || (r && r.permissions) || [],
           window: m.window || (r && r.window) || { width: 400, height: 300 },
-          fromRegistry: !!r
+          languages: m.languages || (r && r.languages) || undefined,   // (the manifest's, or with none the registry entry's)
+          fromRegistry: !!r,
+          inRepo: !!path   // (opened from widgets/<id>/ in 21Board's own folder: its other files load)
         };
       }
     };
@@ -166,7 +169,19 @@
   }
 
   // ---------------------------------------------------------------------- checks
-  function lint(src, info, lastMenu) {
+  // The SDK's words warnings and errors in the widget's console ("21Board: no words for …"), as a check each: the title
+  // is the sentence up to its first ". " or ", so ", the detail the rest. Null for any other line.
+  var WORDS_LOG = /^21Board: (no words for |.*(rows? needs? more languages|has no (Spanish|Russian|Ukrainian)\b|has no \w+ form))/;
+  function wordsCheck(level, text) {
+    if (!WORDS_LOG.test(text || '')) return null;
+    var s = String(text).slice('21Board: '.length), cut = s.search(/\. |, so /);
+    var title = (cut < 0 ? s : s.slice(0, cut)).replace(/\.$/, ''), rest = cut < 0 ? '' : s.slice(cut + 2);
+    rest = rest.replace(/^so /, '').replace(/\s*Add it to the words table\.$/, '').trim();
+    if (rest && !/^[\w.]+:/.test(rest)) rest = rest[0].toUpperCase() + rest.slice(1);   // (a list of keys keeps their own case)
+    return { level: level === 'error' ? 'err' : 'warn', title: title[0].toUpperCase() + title.slice(1), detail: rest };
+  }
+
+  function lint(src, info, lastMenu, words) {
     var out = info.notes.slice();
     var doc = info.doc;
     var code = Array.prototype.map.call(doc.querySelectorAll('script:not([src])'), function (s) { return s.type === 'application/json' ? '' : s.textContent; }).join('\n');
@@ -196,6 +211,15 @@
     if (/type=["']text\/babel["']|\bimport\s+React\b|from\s+["']react["']/.test(src)) add('err', 'Uses React/JSX', 'Widgets are one plain HTML file with no build step.', 'Rewrite as a single HTML file in plain JavaScript, with no React, JSX, or build step.');
     if (code && !/Board21\.(ready|load)\b/.test(code)) add('warn', 'Never calls Board21.ready()', 'The widget can’t get its saved data, theme, or size without it.', 'Start the widget with const ctx = await Board21.ready(); then render ctx.data.');
     if (/Board21\.save\s*\(/.test(code) && !/on\(\s*["']data["']/.test(code)) add('info', 'Doesn’t listen for "data"', 'If the board is open in two tabs, or a backup is imported, this widget keeps showing old content.', 'Add Board21.on("data", data => render(data)) so changes made elsewhere show up.');
+    // Languages: a words table in the page with window rows, and no "languages" (the manifest's, or with no manifest the
+    // registry entry's); words.js loaded where it can't be (a file uploaded, or one an AI tool shows); the SDK's own
+    // words warnings.
+    var wt = code.indexOf('Board21.words(');
+    if (wt >= 0 && /\bwindow\s*:\s*\{/.test(code.slice(wt)) && !(info.widget.languages || []).length)
+      add('err', 'No "languages" for this widget', 'Without it, the window has no Language row and stays English.', 'Add "languages": ["en", "es", "ru", "uk"] to the manifest block and to its registry entry.');
+    if (Array.prototype.some.call(scripts, function (n) { return /(^|\/)words\.js([?#]|$)/.test(n.getAttribute('src') || ''); }) && !info.widget.inRepo)
+      add('warn', 'words.js won’t load in an uploaded file', 'A widget you upload is one file. It can’t load others.', 'Put the words table in the page, right after the manifest: <script>Board21.words({ … });</script>');
+    (words || []).forEach(function (w) { add(w.level, w.title, w.detail, 'Add the missing words to the words table, in English, Spanish, Russian, and Ukrainian.'); });
     if (lastMenu) {
       var items = lastMenu.items || [];
       if (items.length > 24) add('warn', 'The menu has ' + items.length + ' items', 'The board shows the first 24.', 'Keep the window menu to 24 items or fewer.');
@@ -242,7 +266,9 @@
 
     var st = {
       screen: 'smartboard', view: 'window', theme: 'system', scale: 0.8, storage: '', board: null, lastView: null, fitKey: '',
-      events: [], errors: 0, warns: 0, state: null, drawer: null, lastMenu: null, checks: [], ikey: null
+      events: [], errors: 0, warns: 0, state: null, drawer: null, lastMenu: null, checks: [], ikey: null, words: [],
+      // the language every window starts in: #b21-lang=… in the page's address, else English
+      lang: (function (m) { return m ? m[1] : 'en'; })(/(?:^#|[#&])b21-lang=(en|es|ru|uk|qps)(?=&|$)/.exec(String(opts.hostUrl || location.href).replace(/^[^#]*/, '')))
     };
     try { var saved = JSON.parse(sessionStorage.getItem('21board-dev') || '{}'); if (saved.screen) st.screen = saved.screen; if (saved.view) st.view = saved.view; } catch (e) { /* blocked */ }
     var remember = function () { try { sessionStorage.setItem('21board-dev', JSON.stringify({ screen: st.screen, view: st.view })); } catch (e) { /* blocked */ } };
@@ -253,6 +279,7 @@
         '<span class="seg" role="group" aria-label="View"><button data-view="window" title="Follow the window">Window</button><button data-view="board" title="The whole screen">Board</button></span>' +
         '<select data-k="screen" aria-label="Screen" title="The screen the board is drawn on">' + SCREENS.map(function (s) { return '<option value="' + s.id + '" title="' + s.size + '">' + s.label + '</option>'; }).join('') + '</select>' +
         '<select data-k="theme" aria-label="Theme" title="Theme"><option value="system">Auto</option><option value="light">Light</option><option value="dark">Dark</option></select>' +
+        '<select data-k="lang" aria-label="Language" title="Language"><option value="en">English</option><option value="es">Español</option><option value="ru">Русский</option><option value="uk">Українська</option><option value="qps">Pseudo</option></select>' +
         '<span class="size" title="Size of windows and menus"><button class="tb" data-act="smaller" aria-label="Smaller">−</button><output data-k="scale">80%</output><button class="tb" data-act="larger" aria-label="Larger">+</button></span>' +
         '<span class="sep brk"></span>' +
         '<button class="tb" data-drawer="data">Data</button>' +
@@ -266,6 +293,7 @@
         '<button data-act="reload">Reload the widget</button>' +
         '<button data-act="reset">Reset size and data</button>' +
         '<button data-act="open2">Open another window</button>' +
+        '<button data-act="every">Open in every language</button>' +
         '<button data-act="shape">Switch board shape</button>' +
         '<hr>' +
         '<button data-act="bare">Show the widget on its own</button>' +
@@ -282,7 +310,7 @@
 
     // ---- the test board
     function labPage(widget) {
-      var lab = { widget: widget, src: src };
+      var lab = { widget: widget, src: src, language: st.lang };
       return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
         '<title>21Board test board</title>' +
         '<script type="application/json" id="b21-lab">' + JSON.stringify(lab).replace(/</g, '\\u003c') + '</script>' +
@@ -350,6 +378,7 @@
           case 'state':
             st.state = m;
             if (m.settings && m.settings.theme) { st.theme = m.settings.theme; $('[data-k="theme"]').value = st.theme; }
+            if (m.language) { st.lang = m.language; $('[data-k="lang"]').value = st.lang; }
             if (st.drawer === 'data') renderDrawer();
             break;
           case 'log':
@@ -357,6 +386,8 @@
               (console[m.level === 'warn' ? 'warn' : 'error'])('[widget] ' + m.text);
               if (m.level === 'warn') st.warns++; else st.errors++;
               addEvent({ level: m.level === 'warn' ? 'warn' : 'err', text: m.text });
+              var wc = wordsCheck(m.level, m.text);
+              if (wc && !st.words.some(function (x) { return x.title === wc.title; })) { st.words.push(wc); runChecks(); }
             } else {
               if (m.dir === 'in' && m.mtype === 'menu') { try { st.lastMenu = JSON.parse(m.json); runChecks(); } catch (err) { /* truncated */ } }
               addEvent({ dir: m.dir, type: m.mtype, summary: m.summary, json: m.json, ikey: m.ikey });
@@ -399,7 +430,7 @@
     // ---- checks
     function runChecks() {
       if (!info.widget) return;
-      st.checks = lint(src, info, st.lastMenu);
+      st.checks = lint(src, info, st.lastMenu, st.words);
       var bad = st.checks.filter(function (c) { return c.level === 'err' || c.level === 'warn'; }).length;
       var n = $('[data-k="chn"]');
       n.textContent = String(bad);
@@ -489,6 +520,7 @@
           '<p><b>Try it like a teacher.</b> Drag the title bar. Tap the window, then drag its handles to resize it. Tap its name for the menu. Double-tap the title bar to fill the board. ▦ in a bottom corner opens the Widget Picker and Settings. Open another window there, or change the theme, accent, and size.</p>' +
           '<p><b>Saved data</b> is a test copy, kept apart from real boards. In AI previews it usually lasts only until the preview reloads. Data ▸ Copy keeps it.</p>' +
           '<p><b>Just the widget:</b> ⋯ ▸ Show the widget on its own, or add <code>#b21-bare</code> to the address.</p>' +
+          '<p><b>Languages:</b> Language in the toolbar shows every window in English, Spanish, Russian, or Ukrainian. Pseudo puts every word from your table in brackets. English outside them isn’t in your table yet. ⋯ ▸ Open in every language opens a window in each.</p>' +
           '<p>The widget’s errors also appear in this page’s console as “[widget] …”. The SDK must be the first script in &lt;head&gt; for this window to appear.</p>' +
           '<p class="muted">21Board dev window ' + VERSION + '. Reference: docs/WIDGET-SDK.md.</p></div>';
       }
@@ -517,6 +549,7 @@
         case 'reset': send('reset'); break;
         case 'clear': send('clear'); break;
         case 'open2': send('open'); break;
+        case 'every': send('every-language'); setView('board'); break;
         case 'shape': send('shape', { value: st.lastView && st.lastView.shape === 'free' ? '16:9' : 'free' }); break;
         case 'close-drawer': openDrawer(st.drawer); break;
         case 'edit': if (opts.onEdit) opts.onEdit(); break;
@@ -552,7 +585,9 @@
         case 'copy21': {
           var w = info.widget || {};
           var html = String(opts.src || '').replace(SDK_TAG_RE, function (all, a, q) { return a + q + '../../sdk/board21.js' + q; });
-          var entry = { id: w.id, name: w.name, description: w.description || '', version: w.version || '1.0.0', color: w.color, entry: 'widgets/' + w.id + '/index.html', files: ['widgets/' + w.id + '/index.html'], window: w.window };
+          var entry = { id: w.id, name: w.name, description: w.description || '', version: w.version || '1.0.0', color: w.color, entry: 'widgets/' + w.id + '/index.html', files: ['widgets/' + w.id + '/index.html'] };
+          if (w.languages && w.languages.length) entry.languages = w.languages;
+          entry.window = w.window;
           if (st.drawer !== 'checks') openDrawer('checks');   // (where the text is shown if copying is blocked)
           copyText('<!-- Save as widgets/' + w.id + '/index.html -->\n' + html + '\n\n<!-- Add to widgets/registry.js (BOARD21_WIDGETS), then bump VERSION in sw.js and run node tools/release.js: -->\n' + JSON.stringify(entry, null, 2) + ',\n', 'Copied the HTML and its registry entry');
           break;
@@ -563,12 +598,14 @@
       var k = e.target.getAttribute('data-k');
       if (k === 'screen') { st.screen = e.target.value; remember(); st.fitKey = ''; place(false); setTimeout(function () { st.fitKey = ''; maybeFollow(); }, 400); }
       else if (k === 'theme') send('theme', { value: e.target.value });
+      else if (k === 'lang') { st.lang = e.target.value; send('language', { value: st.lang }); }
       else if (k === 'inst') { st.ikey = e.target.value; renderDrawer(); }
       else if (k === 'hidewin') renderDrawer();
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { pop.hidden = true; } });
 
     $('[data-k="screen"]').value = st.screen;
+    $('[data-k="lang"]').value = st.lang;
     setView(st.view);
     renderFoot();
     place(false);

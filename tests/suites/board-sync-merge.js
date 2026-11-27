@@ -613,7 +613,7 @@ module.exports = T => {
       await eventually(() => B.p.evaluate(() => window.__said.join() === 'not syncing,Syncing…,not syncing'), 25000);
       await B.p.waitForTimeout(500);
       let out = await B.p.evaluate(() => ({ ys: Array.from(new Set(window.__ys)), said: window.__said.slice(), lines: window.__lines.slice(), drawn: window.__drawn, what: window.__what.slice() }));
-      ok(out.said.join() === 'not syncing,Syncing…,not syncing' && out.ys.length === 1, `then it hides once the change is in the folder, and Classroom’s first row stays put (${out.said.join(' → ')}; y ${out.ys.join(' → ')})`);
+      ok(out.said.join() === 'not syncing,Syncing…,not syncing' && out.ys.length === 1, `then it hides once the change is in the folder, and Classroom’s Board history row stays put (${out.said.join(' → ')}; y ${out.ys.join(' → ')})`);
       ok(out.lines.length && out.lines.every(t => /^Up to date\. This device’s latest changes went to your folder at \d/.test(t)), `the grey line never says “Syncing…”: it says how things stand (${out.lines.join(' | ')})`);
       ok(out.drawn === 0, `and Settings isn’t drawn again (${out.drawn} drawings${out.what.length ? ': ' + out.what.join(' | ') : ''})`);
       // Close all tapped while syncing (as JOIN-3): the same, but for the drawing Close all does itself.
@@ -621,7 +621,7 @@ module.exports = T => {
       await B.p.click('#settings [data-act="close-all"]');
       await eventually(() => B.p.evaluate(() => window.__said.includes('Syncing…') && window.__said[window.__said.length - 1] === 'not syncing'), 25000);
       out = await B.p.evaluate(() => ({ ys: Array.from(new Set(window.__ys)), said: window.__said.slice(), lines: window.__lines.slice() }));
-      ok(out.said.includes('Syncing…') && out.ys.length === 1 && !out.lines.some(t => /Syncing/.test(t)), `Close all tapped: “Syncing…” beside the folder’s name, then not, and Classroom’s first row stays put (${out.said.join(' → ')}; y ${out.ys.join(' → ')})`);
+      ok(out.said.includes('Syncing…') && out.ys.length === 1 && !out.lines.some(t => /Syncing/.test(t)), `Close all tapped: “Syncing…” beside the folder’s name, then not, and Classroom’s Board history row stays put (${out.said.join(' → ')}; y ${out.ys.join(' → ')})`);
       await syncWaits(B.p);
       await B.p.focus('#settings [data-act="hist-open"]');
       await B.p.evaluate(() => { window.__ys = []; window.__drawn = 0; });

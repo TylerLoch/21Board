@@ -89,7 +89,7 @@ the widget I describe after this prompt. If I haven't described one, ask me what
 ## Hard rules
 
 - We need **one plain HTML file** (no React, JSX, TypeScript, libraries, or build step). `<!DOCTYPE html>`
-  is the very first line, then `<html lang="en">`.
+  is the very first line, then `<html lang="en">`. The SDK sets `lang` to the window's language as it runs.
 - In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly
   `<script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>` (no async, defer, or type=module).
 - That address is public, and the SDK works in your preview. There it runs the widget in a real 21Board
@@ -97,13 +97,14 @@ the widget I describe after this prompt. If I haven't described one, ask me what
   it, and don't check that it loaded. If your preview says `Board21 is not defined`, it blocked the SDK.
   Tell me in one line and leave the code as it is.
 - The next line is a manifest:
-  `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
+  `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","languages":["en","es","ru","uk"],"window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
   Replace "my-widget" and "My Widget" with my widget's name.
   - The id is lowercase letters, digits, and dashes. Strict JSON: no comments, no trailing commas.
   - You may add `"description"` (one short sentence for teachers) and `"color"` (a `#hex` for its tile),
     and change the `window` sizes and keys to suit the widget (see *Window size*).
-- Then `<meta name="viewport" content="width=device-width, initial-scale=1">`, a `<title>` with the
-  widget's name, one `<style>`, the markup, and one `<script>` at the end of `<body>`.
+- Then the words table (see **Four languages**), `<meta name="viewport" content="width=device-width,
+  initial-scale=1">`, a `<title>` with the widget's name, one `<style>`, the markup, and one `<script>` at the
+  end of `<body>`.
 - **No network at all**: no Tailwind or other CDNs, no web fonts, no external images, no `fetch`. Draw
   pictures with inline SVG, CSS, or emoji. Write no `http://` or `https://` address anywhere in your own
   script code, not even the SVG namespace (inline `<svg>` markup doesn't need `xmlns`; for
@@ -111,6 +112,15 @@ the widget I describe after this prompt. If I haven't described one, ask me what
 - **No storage of your own**: never use localStorage, sessionStorage, IndexedDB, or cookies, and don't
   name them in comments either (the checks look for the words). Save only with `Board21.save` /
   `Board21.saveConfig`.
+- **Four languages.** Every word the widget shows goes in one words table, right after the manifest:
+  `<script>Board21.words({ window: { … }, board: { … } });</script>`. Each `window` row has `en`, `es`
+  (US Spanish, Mexican words), `ru`, and `uk` side by side. `board` rows are for menu rows and the title bar,
+  and need only `en`. Show words with `Board21.t('key')` in the window and `Board21.ui('key')` in the menu
+  and title bar. Keep `"languages"` in the manifest, or the window gets no Language row. Never use a
+  translation service. Never build a sentence from pieces in code: give each sentence its own row, with
+  `{name}` for what goes in it.
+- **Numbers in English form** in every language, with a point for decimals. Show dates and times with
+  `Board21.format.date(date, options)`, never with the device's language.
 - No `alert()`, `confirm()`, or `prompt()` (nor functions of your own with those names): show messages and
   "Are you sure?" inside the widget. No `autofocus` and no `.focus()` on load (it pops up the on-screen
   keyboard); focus a text box only after the tap that opened it.
@@ -123,7 +133,18 @@ the widget I describe after this prompt. If I haven't described one, ask me what
 <head>
 <meta charset="utf-8">
 <script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>
-<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>
+<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","languages":["en","es","ru","uk"],"window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>
+<script>
+Board21.words({
+  window: {
+    done: { note: 'Closes the editor.', en: 'Done', es: 'Listo', ru: 'Готово', uk: 'Готово' }
+  },
+  board: {
+    edit: { note: 'Menu row. Opens the editor.', en: 'Edit…' },
+    big: { note: 'Menu row. Bigger text.', en: 'Big text' }
+  }
+});
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>My Widget</title>
 <style>
@@ -146,7 +167,7 @@ the widget I describe after this prompt. If I haven't described one, ask me what
 </head>
 <body>
   <section class="view" id="use"> … the stage and ONE big primary button … </section>
-  <section class="view" id="edit"> … the editor … <button class="primary" id="done">Done</button></section>
+  <section class="view" id="edit"> … the editor … <button class="primary" id="done" data-t="done">Done</button></section>
 <script>
   let state = { items: [] };    // content (the work)   -> Board21.save
   let config = { big: false };  // preferences          -> Board21.saveConfig
@@ -164,7 +185,7 @@ the widget I describe after this prompt. If I haven't described one, ask me what
   }
   addEventListener('resize', fitAll);
   function setMenu() {
-    Board21.menu.set([{ id: 'edit', label: 'Edit…' }, { id: 'big', label: 'Big text', checked: config.big }]);
+    Board21.menu.set([{ id: 'edit', label: Board21.ui('edit') }, { id: 'big', label: Board21.ui('big'), checked: config.big }]);
   }
   Board21.on('menu', id => { /* change state or config, save it, render(), setMenu() */ });
   Board21.on('data', d => { state = readState(d); render(); setMenu(); });  // the menu can depend on content too
@@ -280,9 +301,10 @@ content. Keep your buttons out of them.
   teacher taps the empty board while the window stays in view**: never pause, hide, or stop on blur.
 - `Board21.on('beforeclose', () => …)`: save anything not yet saved, right away (no awaiting).
 - Useful context: `ctx.instance`; `ctx.window`; `ctx.theme` (`'light'`/`'dark'`); `ctx.palette`
-  (the variables' colors, for canvas); `ctx.locale` (for dates and numbers:
-  `toLocaleDateString(ctx.locale, …)`); `ctx.kiosk` (a locked-down Chromebook: links can't open new
-  windows, so hide them); `ctx.devMode` (Developer mode is on: extra details may show).
+  (the variables' colors, for canvas); `ctx.language` (`'en'`, `'es'`, `'ru'`, or `'uk'`: the window's
+  language); dates with `Board21.format.date(d, { weekday: 'long' })`, and numbers always in English form;
+  `ctx.kiosk` (a locked-down Chromebook: links can't open new windows, so hide them); `ctx.devMode`
+  (Developer mode is on: extra details may show).
 
 ## Dragging
 
@@ -327,17 +349,18 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 - **Motion**: short and purposeful; none under `@media (prefers-reduced-motion: reduce)`.
 - **Sound only when the teacher turns it on** (a checkmark menu item saved in config). Make it with the
   Web Audio API (no sound files), and create the `AudioContext` on a tap: browsers block sound before one.
-- Plain, short, friendly words a K–8 student or busy teacher understands. No jargon. Lists of three or more take
-  the Oxford comma.
+- Plain, short, friendly words a K–8 student or busy teacher understands. No jargon. English lists of three or more
+  take the Oxford comma. Spanish, Russian, and Ukrainian lists don't.
 
 ## Before you answer, check
 
-- [ ] `<!DOCTYPE html>` first; the SDK tag exactly as given, the first script, right after `<meta charset="utf-8">`; the manifest next, valid JSON, its id and name replaced.
+- [ ] `<!DOCTYPE html>` first; the SDK tag exactly as given, the first script, right after `<meta charset="utf-8">`; the manifest next, valid JSON, its id and name replaced, `languages` lists all four.
 - [ ] `Board21` used directly, with no mock, stub, or fallback.
 - [ ] No address, CDN, font, image, or fetch from the Internet; no `http(s)://` in your own script code; no localStorage, sessionStorage, IndexedDB, or cookies (not even in comments); no alert/confirm/prompt; no autofocus; no React.
 - [ ] `const ctx = await Board21.ready()`; draws from `ctx.data` / `ctx.config`; `data` and `config` handlers re-render and call `setMenu()`.
 - [ ] Anything about a student saved with `save()`, preferences with `saveConfig()`; loaded values checked; saved text shown with `textContent`.
 - [ ] Menu: at most 24 items, each with its own id, swatches `#hex` and choices of 3 characters or fewer (at most 12 per row); `menu.set()` called again when state changes.
+- [ ] Words: every word in the table, `window` rows in `en`, `es`, `ru`, and `uk`, `board` rows in `en`; shown with `Board21.t`, `Board21.ui`, or `data-t`; every plural form; no words saved in content or config.
 - [ ] Works and reads well at `minWidth` × `minHeight` with the most items (no text under 14px) and when it fills the board (no buttons in the bottom corners, or in the top ones while the board is locked), in light and dark; only an editor's list scrolls; 48px tap targets.
 - [ ] Typing, drawing, or dragging areas: `dragFromContent: false`, `data-b21-nodrag`, or `setDragFromContent`.
 - [ ] A bigger editor uses `setMinSize(…)` and `setMinSize(null, null)`; `setSize` only after a tap and never when maximized.
@@ -359,8 +382,12 @@ The essentials only, for trying out an idea. For a widget you will keep, use the
 Build the widget I describe below as a 21Board widget (a window on a K–8 classroom smartboard). We need **one plain HTML file** (no React, no build step), starting with `<!DOCTYPE html>`. In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly `<script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>` (no async, defer, or type=module). That address is public, and the SDK works in your preview, where it runs the widget in a real 21Board window. Use `Board21` directly, with no mock, stub, or fallback.
 
 The next line is a manifest:
-`<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
+`<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","languages":["en","es","ru","uk"],"window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
 Replace "my-widget" and "My Widget" with my widget's name. Add `"dragFromContent":false` to `window` if the widget needs typing, drawing, or dragging.
+
+Put every word the widget shows in `Board21.words({ window: {…}, board: {…} })` right after the manifest. Write each
+window row in English, Spanish (US, Mexican words), Russian, and Ukrainian, and show it with `Board21.t('key')`. Menu
+rows and the title bar use `Board21.ui('key')`, English only. Keep `"languages"` in the manifest.
 
 Start with `const ctx = await Board21.ready()` and draw from `ctx.data`. Save content with `Board21.save(state)` and preferences with `Board21.saveConfig(cfg)`; anything about students (names, scores) is content, never config. Handle `Board21.on('data', …)` and `Board21.on('config', …)` by re-rendering from the value given and setting the menu again (your own saves don't come back as events). Check the type of every loaded field and show text with `textContent`, never `innerHTML`. Save timers as wall-clock times (`endsAt`). Never use localStorage, sessionStorage, IndexedDB, or cookies (don't even name them in comments).
 

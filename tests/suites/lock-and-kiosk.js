@@ -588,12 +588,13 @@ module.exports = T => {
     ok(await B(() => document.body.classList.contains('dark') && window.__board21.state.settings.theme === 'dark'), 'Settings › Appearance › Theme: Dark turns the board dark');
     await setTheme(page, 'system');
     ok(await B(() => !document.body.classList.contains('dark') && window.__board21.state.settings.theme === 'system'), 'and Auto brings it back');
-    // ---- No Lock in Settings: Classroom keeps Board history, Close all windows and Stay awake.
+    // ---- No Lock in Settings: Classroom keeps the Default widget language, Board history, Close all windows, and Stay awake.
     await openSettings(page);
     const classroom = await B(() => { const h = Array.from(document.querySelectorAll('#settings .sheet-body > h3')).find(e => e.textContent === 'Classroom'), rows = [];
       for (let e = h && h.nextElementSibling; e && e.tagName !== 'H3'; e = e.nextElementSibling) rows.push(Array.from(e.querySelectorAll('[data-act]')).map(b => b.dataset.act).join('+') || e.className);
       return { rows, lock: !!document.querySelector('#settings [data-act="lock-windows"]'), text: /Lock windows|This device only/.test(document.getElementById('settings').textContent) }; });
-    ok(!classroom.lock && !classroom.text && classroom.rows.join() === 'hist-open,close-all,awake', `Settings › Classroom: no “Lock windows in place”, only Board history, Close all windows and Stay awake (${classroom.rows.join(', ')})`);
+    ok(!classroom.lock && !classroom.text && classroom.rows.join() === 'row disc,widget-language+widget-language+widget-language+widget-language,hist-open,close-all,awake',
+      `Settings › Classroom: no “Lock windows in place”, only the Default widget language (its row and its four cards), Board history, Close all windows, and Stay awake (${classroom.rows.join(', ')})`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
 
     // ---- The dialog: a tap on Lock closes the Widget Picker and asks how.

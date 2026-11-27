@@ -10,8 +10,10 @@
  *   node tools/words.js --sheet <id>          one Sheet tab as TSV
  *   node tools/words.js --apply <file.tsv>    brings Sheet edits back into the files, then checks
  *
- * A table is a widget's words.js (or an inline <script> that is one Board21.words(…) call in its page), and the
- * common words in sdk/board21.js. The rules: docs/WIDGET-SDK.md, "Languages", and docs/TRANSLATING.md.
+ * A table is a widget's words.js (or an inline <script> that is one Board21.words(…) call in its page), the common
+ * words in sdk/board21.js, and the starter's (widgets/_template/index.html, inline). A widget with a table lists its
+ * languages in the registry (the starter, in its manifest). The rules: docs/WIDGET-SDK.md, "Languages", and
+ * docs/TRANSLATING.md.
  * It reads the SDK's own "// #region Words" (as tests/words.js does), so the two never disagree.
  * Required as a module (tests/words.js), it writes nothing. No dependencies.
  */
@@ -290,21 +292,33 @@ function registry(r) {
   vm.runInContext(r.read('widgets/registry.js'), box, { filename: 'widgets/registry.js', timeout: 1000 });
   return Array.from(box.BOARD21_WIDGETS || []).filter(w => w && !w.external);
 }
-// Every table: { id, file, files (the widget's own, with its table taken out), text, offset, read: readTable's result }.
+// Every table: { id, file, files (the widget's own, with its table taken out), text, offset, langs (the languages it
+// lists), read: readTable's result }. Last, the starter's (id _template), with its manifest's languages.
+const TEMPLATE = 'widgets/_template/index.html';
+function inlineTable(r, id, entry, files, langs) {
+  const html = r.read(entry);
+  for (const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    if (!/^\s*Board21\.words\(/.test(m[1])) continue;
+    const s = m.index + '<script>'.length;
+    return { id, file: entry, inline: true, files, text: m[1], offset: lineAt(html, s) - 1, cut: [s, s + m[1].length], langs };
+  }
+  return null;
+}
 function tables(r) {
   const out = [];
   for (const w of registry(r)) {
     const dir = path.posix.dirname(w.entry), file = dir + '/words.js';
     const files = (w.files && w.files.length ? w.files : [w.entry]).filter(f => f !== file && r.has(f));
-    if (r.has(file)) { out.push({ id: w.id, file, files, text: r.read(file), offset: 0 }); continue; }
+    if (r.has(file)) { out.push({ id: w.id, file, files, text: r.read(file), offset: 0, langs: w.languages }); continue; }
     if (!r.has(w.entry)) continue;
-    const html = r.read(w.entry);
-    for (const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
-      if (!/^\s*Board21\.words\(/.test(m[1])) continue;
-      const s = m.index + '<script>'.length;
-      out.push({ id: w.id, file: w.entry, inline: true, files, text: m[1], offset: lineAt(html, s) - 1, cut: [s, s + m[1].length] });
-      break;
-    }
+    const t = inlineTable(r, w.id, w.entry, files, w.languages);
+    if (t) out.push(t);
+  }
+  if (r.has(TEMPLATE)) {
+    let langs;
+    try { const m = /<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(r.read(TEMPLATE)); langs = m ? JSON.parse(m[1]).languages : undefined; } catch (e) { langs = undefined; }
+    const t = inlineTable(r, '_template', TEMPLATE, [TEMPLATE], langs);
+    if (t) out.push(Object.assign(t, { template: true }));
   }
   return out;
 }
@@ -378,7 +392,7 @@ function check(opts = {}) {
   const all = [{ id: 'common', file: SDK, common: true, read: commonRead }].concat(tables(r).map(t => Object.assign(t, { read: readTable(t.file, t.text, t.offset) })));
   for (const t of all) {
     const rd = t.read;
-    if (rd.problem) { problems.push(rd.problem); list.push({ id: t.id, file: t.file, rows: 0 }); continue; }
+    if (rd.problem) { problems.push(rd.problem); list.push({ id: t.id, file: t.file, inline: !!t.inline, rows: 0 }); continue; }
     const off = rd.offset || 0, at = n => `${t.file} line ${n + off}`;
     const secs = rd.model.sections, rowsOf = n => (secs.find(s => s.name === n && s.rows) || { rows: [] }).rows;
     let count = 0;
@@ -466,7 +480,7 @@ function check(opts = {}) {
         else prefixes.push(p);
       }
     }
-    list.push({ id: t.id, file: t.file, rows: count });
+    list.push({ id: t.id, file: t.file, inline: !!t.inline, rows: count });
     if (t.common) {
       if (commonText(sdkText, rd, Words) !== sdkText) problems.push(`${SDK}’s Common words aren’t laid out. Run node tools/words.js --format.`);
       continue;
@@ -510,6 +524,22 @@ function check(opts = {}) {
       if (fileText(rd, Words, used) !== t.text) problems.push(`${t.file} isn’t laid out. Run node tools/words.js --format.`);
     }
   }
+  // The languages a widget lists go with its table: one whose table has window rows lists all four, English first (its
+  // registry entry, or the starter's manifest), and one that lists them has a table. (Its files aren't checked here:
+  // the Offline suite does that.)
+  const FOUR = JSON.stringify(LANGS);
+  for (const t of all) {
+    if (t.common || !t.read || t.read.problem) continue;
+    const win = ((t.read.model.sections.find(x => x.name === 'window' && x.rows) || { rows: [] }).rows.length > 0);
+    const listed = t.langs === undefined ? undefined : JSON.stringify(Array.from(t.langs || []));
+    if (t.template) {
+      if (listed === undefined) { if (win) problems.push(`${t.file}: the manifest has no languages. Add "languages": ["en", "es", "ru", "uk"].`); }
+      else if (listed !== FOUR) problems.push(`${t.file}: the manifest’s languages must be ["en", "es", "ru", "uk"].`);
+    } else if (listed === undefined) { if (win) problems.push(`widgets/registry.js: ${t.id} has a words table but no languages. Add languages: ['en', 'es', 'ru', 'uk'].`); }
+    else if (listed !== FOUR) problems.push(`widgets/registry.js: ${t.id}’s languages must be ['en', 'es', 'ru', 'uk'].`);
+  }
+  const withTable = new Set(all.map(t => t.id));
+  for (const w of registry(r)) if (w.languages !== undefined && !withTable.has(w.id)) problems.push(`widgets/registry.js: ${w.id} lists languages but has no words table.`);
   return { tables: list, rows: list.reduce((a, x) => a + x.rows, 0), problems };
 }
 function summary(res) {
