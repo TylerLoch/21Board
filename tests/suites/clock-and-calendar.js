@@ -5,6 +5,115 @@ module.exports = T => {
     chromium, fs, path, ROOT, OUT, ok, freeBoard, openSettings, setTheme, setCornerClock, setClock, addWin,
     eventually, release, boardUp, TESTS_DIR, BASE
   } = T;
+
+  // The helpers the Clock's Date view suites share. Each suite calls dateView once, so it keeps its own page errors.
+  const dateView = browser => {
+    const errors = [];
+    // Each part runs on its own: one that stops early is reported, and the next still runs.
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const frameL = (p, ik) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const F = (p, ik, fn, arg) => frameL(p, ik).locator('html').evaluate(fn, arg);
+    const connected = (p, ik) => eventually(() => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+    // The window menu as a line: [Heading], ✓ checked, (off) disabled, — a line.
+    const menuOf = (p, ik) => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.map(i => i.separator ? '—' : i.heading ? `[${i.label}]` : (i.checked ? '✓ ' : '') + i.label + (i.disabled ? ' (off)' : '')).join(' | '), ik);
+    const showOf = async (p, ik) => (await menuOf(p, ik)).split(/ \| (?:\[(?:Analog clock face|Clock face)\]|—)/)[0];   // (the views: up to the clock face items, or the line when they're gone)
+    // A window's ⌄ menu, and the item with this id in it, as a teacher taps it. False when there's no such item, or it's off.
+    const choose = async (p, ik, id) => {
+      await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.waitForTimeout(200);
+      const it = p.locator(`#menu [data-id="${id}"]`);
+      if (!await it.count() || await it.isDisabled()) { await p.keyboard.press('Escape'); await p.waitForTimeout(150); return false; }
+      await it.click(); await p.waitForTimeout(350); return true;
+    };
+    const confOf = (p, ik) => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
+    const ratioOf = (p, ik) => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return w.rt.ratio === undefined ? w.widget.win.aspectRatio : w.rt.ratio; }, ik);
+    const rectOf = (p, ik) => p.evaluate(ik => Object.assign({}, window.__board21.state.insts.get(ik).rect), ik);
+    // The window's content w × h (its title bar on top).
+    const size = async (p, ik, w, h) => { await p.evaluate(([ik, w, h]) => window.__board21.setRect(ik, { x: 40, y: 40, w, h: h + 40 }), [ik, w, h]); await p.waitForTimeout(500); };
+    const put = (p, ik, kind, v) => p.evaluate(async ([ik, kind, v]) => {
+      const w = window.__board21.state.wins.get(ik), B = w.iframe.contentWindow.Board21;
+      if (kind === 'data') { await B.save(v); w.post('data', { data: v, reason: 'remote' }); } else { await B.saveConfig(v); w.post('config', { config: v, reason: 'remote' }); }
+    }, [ik, kind, v]);
+    // Chicago time: Friday, November 20, and Wednesday, September 30, 2026.
+    const FRI = '2026-11-20T10:10:30-06:00', WED = '2026-09-30T10:10:30-05:00';
+    const newBoard = async (at, opts = {}) => {
+      const ctx = await browser.newContext(Object.assign({ viewport: { width: 1500, height: 1000 }, timezoneId: 'America/Chicago', locale: 'en-US' }, opts));
+      const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+      if (at) await page.clock.setFixedTime(at);
+      await page.goto(BASE); await boardUp(page); await freeBoard(page);
+      return { ctx, page };
+    };
+    const openClock = async (page, w, h) => {
+      const ik = await addWin(page, 'clock'); await connected(page, ik);
+      if (w) await size(page, ik, w, h);
+      return ik;
+    };
+    // The mixes, from a new Clock (Analog), as a teacher checks and unchecks them.
+    const MIX = { ad: ['date'], dd: ['date', 'digital', 'analog'], all: ['digital', 'date'], y: ['date', 'analog'] };
+    const NAME = { ad: 'Analog + Date', dd: 'Digital + Date', all: 'all three', y: 'Date alone' };
+    const mix = async (p, ik, m) => { for (const id of MIX[m]) await choose(p, ik, id); };
+    // The Clock as a teacher sees it. Text is measured as its own box (a Range), not its element's. The dial is its
+    // square; the digital time its font box, or with the LCD or LED look the box of its digits. t: the time's size, its
+    // font size or its digits' height. where: 'beside' the clocks, 'under' them, or 'under the digital time' beside or
+    // under the dial.
+    const look = (p, ik) => F(p, ik, () => {
+      const q = s => document.querySelector(s);
+      const vis = el => !!el && !el.closest('[hidden]') && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+      const bx = r => ({ x: r.left, y: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height });
+      const ink = el => { if (!vis(el)) return null; const g = document.createRange(); g.selectNodeContents(el); return bx(g.getBoundingClientRect()); };
+      const fs = el => vis(el) ? parseFloat(getComputedStyle(el).fontSize) : null;
+      const probe = (k, v) => { const i = document.createElement('i'); i.style[k] = v; document.body.appendChild(i); const c = getComputedStyle(i)[k]; i.remove(); return c; };
+      const svg = q('#analog'), dial = vis(svg) ? bx(svg.getBoundingClientRect()) : null;
+      const seg = q('.led-svg'), plain = q('#time');
+      let time = null, t = null;
+      if (vis(q('#dig')) && seg && vis(seg)) {
+        const r = seg.getBoundingClientRect(), vb = seg.viewBox.baseVal, u = Math.min(r.width / vb.width, r.height / vb.height), w = vb.width * u, h = vb.height * u;
+        time = bx(new DOMRect(r.left + (r.width - w) / 2, r.top + (r.height - h) / 2, w, h)); t = 100 * u;
+      } else if (vis(plain)) { time = bx(plain.getBoundingClientRect()); t = fs(plain); }
+      const stack = vis(q('#stack')), line = !stack && vis(q('#line'));
+      const parts = stack ? ['#weekday', '#monthday', '#year'].map(s => ink(q(s))).filter(Boolean) : line ? [ink(q('#line'))] : [];
+      const date = parts.length ? parts.reduce((a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), r: Math.max(a.r, b.r), b: Math.max(a.b, b.b) })) : null;
+      const text = stack ? ['#weekday', '#monthday', '#year'].map(s => q(s).textContent).join(' / ') : line ? q('#line').textContent : null;
+      const sizes = stack ? { big: fs(q('#weekday')), md: fs(q('#monthday')), yr: fs(q('#year')) } : line ? { big: fs(q('#line')), md: fs(q('#line')), yr: fs(q('#line .yr')) } : null;
+      let yearBelow = null;
+      if (stack) { const m = ink(q('#monthday')), y = ink(q('#year')); yearBelow = !!m && !!y && (y.y + y.b) / 2 > m.b - m.h * .2; }
+      // fill: how much of #day's room, inside its padding, the stack or line takes, in width or in height.
+      let fill = null;
+      if (stack || line) {
+        const d = q('#day'), b = d.getBoundingClientRect(), cs = getComputedStyle(d), r = q(stack ? '#stack' : '#line').getBoundingClientRect();
+        const px = k => parseFloat(cs[k]) || 0;
+        fill = Math.max(r.width / (b.width - px('paddingLeft') - px('paddingRight')), r.height / (b.height - px('paddingTop') - px('paddingBottom')));
+      }
+      let where = null;
+      const clocks = [dial, time].filter(Boolean);
+      if (date && clocks.length) {
+        const r = Math.max(...clocks.map(c => c.r)), b = Math.max(...clocks.map(c => c.b));
+        if (date.x >= r - 2) where = 'beside';
+        else if (time && date.y >= time.b - 2 && (!dial || dial.b <= time.y + 2 || date.x >= dial.r - 2)) where = dial ? 'under the digital time' : 'under';
+        else if (date.y >= b - 2) where = 'under';
+        else where = 'among the clocks';
+      }
+      const ob = el => vis(el) ? bx(el.getBoundingClientRect()) : null;
+      return { W: innerWidth, H: innerHeight, dial, time, t, date, parts, text, stack, line, sizes, yearBelow, fill, where,
+        words: vis(q('#words')) ? ink(q('#words')) : null, wordsText: vis(q('#words')) ? q('#words').textContent : null, q: vis(q('#q')),
+        badge: ob(q('#badge')), now: ob(q('#now')), arrows: Array.from(document.querySelectorAll('#dig .arrow')).filter(vis).map(ob),
+        panel: q('#clock').classList.contains('panel'), clockBg: getComputedStyle(q('#clock')).backgroundColor,
+        dayColor: vis(q('#day')) ? getComputedStyle(q('#day')).color : null, wordsColor: vis(q('#words')) ? getComputedStyle(q('#words')).color : null,
+        seg: probe('color', 'var(--seg)'), ink: probe('color', 'var(--b21-text)'), panelBg: probe('backgroundColor', 'var(--panel)') };
+    });
+    // What the date clashes with, 2 px allowed for font boxes, and whether it leaves the window.
+    const clashes = l => {
+      const hit = (a, b) => !!a && !!b && a.x < b.r - 2 && b.x < a.r - 2 && a.y < b.b - 2 && b.y < a.b - 2;
+      const out = [];
+      if (!l.date) return ['no date'];
+      for (const [name, b] of [['the dial', l.dial], ['the digital time', l.time], ['Time in words', l.words], ['Set', l.badge], ['Now', l.now], ...l.arrows.map(a => ['an arrow', a])])
+        if (l.parts.some(d => hit(d, b))) out.push(name);
+      if (l.date.x < -2 || l.date.y < -2 || l.date.r > l.W + 2 || l.date.b > l.H + 2) out.push('the window’s edge');
+      return out;
+    };
+    const said = l => `${l.W} × ${l.H}: ${l.where}, ${l.stack ? 'stack' : l.line ? 'line' : 'none'}, ${l.sizes ? [l.sizes.big, l.sizes.md, l.sizes.yr].map(v => v && Math.round(v * 10) / 10).join('/') : '-'} px, time ${l.t && Math.round(l.t * 10) / 10}, dial ${l.dial && Math.round(l.dial.w)}`;
+    return { errors, part, frameL, F, connected, menuOf, showOf, choose, confOf, ratioOf, rectOf, size, put, FRI, WED, newBoard, openClock, MIX, NAME, mix, look, clashes, said };
+  };
+
   return [
   ['Calendar and date-only clock', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
@@ -1424,110 +1533,9 @@ module.exports = T => {
   // on. The date goes beside the clocks, under them, or under the digital time beside the dial, as a stack (the weekday;
   // the month and day; the year) or one line, wherever the clocks stay biggest. With room to spare it grows. The time
   // always leads.
-  ['Clock: the Date view, in any mix with Analog and Digital', async (browser) => {
-    const errors = [];
-    // Each part runs on its own: one that stops early is reported, and the next still runs.
-    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
-    const frameL = (p, ik) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
-    const F = (p, ik, fn, arg) => frameL(p, ik).locator('html').evaluate(fn, arg);
-    const connected = (p, ik) => eventually(() => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
-    // The window menu as a line: [Heading], ✓ checked, (off) disabled, — a line.
-    const menuOf = (p, ik) => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.map(i => i.separator ? '—' : i.heading ? `[${i.label}]` : (i.checked ? '✓ ' : '') + i.label + (i.disabled ? ' (off)' : '')).join(' | '), ik);
-    const showOf = async (p, ik) => (await menuOf(p, ik)).split(/ \| (?:\[(?:Analog clock face|Clock face)\]|—)/)[0];   // (the views: up to the clock face items, or the line when they're gone)
-    // A window's ⌄ menu, and the item with this id in it, as a teacher taps it. False when there's no such item, or it's off.
-    const choose = async (p, ik, id) => {
-      await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.waitForTimeout(200);
-      const it = p.locator(`#menu [data-id="${id}"]`);
-      if (!await it.count() || await it.isDisabled()) { await p.keyboard.press('Escape'); await p.waitForTimeout(150); return false; }
-      await it.click(); await p.waitForTimeout(350); return true;
-    };
-    const confOf = (p, ik) => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
-    const ratioOf = (p, ik) => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return w.rt.ratio === undefined ? w.widget.win.aspectRatio : w.rt.ratio; }, ik);
-    const rectOf = (p, ik) => p.evaluate(ik => Object.assign({}, window.__board21.state.insts.get(ik).rect), ik);
-    // The window's content w × h (its title bar on top).
-    const size = async (p, ik, w, h) => { await p.evaluate(([ik, w, h]) => window.__board21.setRect(ik, { x: 40, y: 40, w, h: h + 40 }), [ik, w, h]); await p.waitForTimeout(500); };
-    const put = (p, ik, kind, v) => p.evaluate(async ([ik, kind, v]) => {
-      const w = window.__board21.state.wins.get(ik), B = w.iframe.contentWindow.Board21;
-      if (kind === 'data') { await B.save(v); w.post('data', { data: v, reason: 'remote' }); } else { await B.saveConfig(v); w.post('config', { config: v, reason: 'remote' }); }
-    }, [ik, kind, v]);
-    // Chicago time: Friday, November 20, and Wednesday, September 30, 2026.
-    const FRI = '2026-11-20T10:10:30-06:00', WED = '2026-09-30T10:10:30-05:00';
-    const newBoard = async (at, opts = {}) => {
-      const ctx = await browser.newContext(Object.assign({ viewport: { width: 1500, height: 1000 }, timezoneId: 'America/Chicago', locale: 'en-US' }, opts));
-      const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
-      if (at) await page.clock.setFixedTime(at);
-      await page.goto(BASE); await boardUp(page); await freeBoard(page);
-      return { ctx, page };
-    };
-    const openClock = async (page, w, h) => {
-      const ik = await addWin(page, 'clock'); await connected(page, ik);
-      if (w) await size(page, ik, w, h);
-      return ik;
-    };
-    // The mixes, from a new Clock (Analog), as a teacher checks and unchecks them.
-    const MIX = { ad: ['date'], dd: ['date', 'digital', 'analog'], all: ['digital', 'date'], y: ['date', 'analog'] };
-    const NAME = { ad: 'Analog + Date', dd: 'Digital + Date', all: 'all three', y: 'Date alone' };
-    const mix = async (p, ik, m) => { for (const id of MIX[m]) await choose(p, ik, id); };
-    // The Clock as a teacher sees it. Text is measured as its own box (a Range), not its element's. The dial is its
-    // square; the digital time its font box, or with the LCD or LED look the box of its digits. t: the time's size, its
-    // font size or its digits' height. where: 'beside' the clocks, 'under' them, or 'under the digital time' beside or
-    // under the dial.
-    const look = (p, ik) => F(p, ik, () => {
-      const q = s => document.querySelector(s);
-      const vis = el => !!el && !el.closest('[hidden]') && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-      const bx = r => ({ x: r.left, y: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height });
-      const ink = el => { if (!vis(el)) return null; const g = document.createRange(); g.selectNodeContents(el); return bx(g.getBoundingClientRect()); };
-      const fs = el => vis(el) ? parseFloat(getComputedStyle(el).fontSize) : null;
-      const probe = (k, v) => { const i = document.createElement('i'); i.style[k] = v; document.body.appendChild(i); const c = getComputedStyle(i)[k]; i.remove(); return c; };
-      const svg = q('#analog'), dial = vis(svg) ? bx(svg.getBoundingClientRect()) : null;
-      const seg = q('.led-svg'), plain = q('#time');
-      let time = null, t = null;
-      if (vis(q('#dig')) && seg && vis(seg)) {
-        const r = seg.getBoundingClientRect(), vb = seg.viewBox.baseVal, u = Math.min(r.width / vb.width, r.height / vb.height), w = vb.width * u, h = vb.height * u;
-        time = bx(new DOMRect(r.left + (r.width - w) / 2, r.top + (r.height - h) / 2, w, h)); t = 100 * u;
-      } else if (vis(plain)) { time = bx(plain.getBoundingClientRect()); t = fs(plain); }
-      const stack = vis(q('#stack')), line = !stack && vis(q('#line'));
-      const parts = stack ? ['#weekday', '#monthday', '#year'].map(s => ink(q(s))).filter(Boolean) : line ? [ink(q('#line'))] : [];
-      const date = parts.length ? parts.reduce((a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), r: Math.max(a.r, b.r), b: Math.max(a.b, b.b) })) : null;
-      const text = stack ? ['#weekday', '#monthday', '#year'].map(s => q(s).textContent).join(' / ') : line ? q('#line').textContent : null;
-      const sizes = stack ? { big: fs(q('#weekday')), md: fs(q('#monthday')), yr: fs(q('#year')) } : line ? { big: fs(q('#line')), md: fs(q('#line')), yr: fs(q('#line .yr')) } : null;
-      let yearBelow = null;
-      if (stack) { const m = ink(q('#monthday')), y = ink(q('#year')); yearBelow = !!m && !!y && (y.y + y.b) / 2 > m.b - m.h * .2; }
-      // fill: how much of #day's room, inside its padding, the stack or line takes, in width or in height.
-      let fill = null;
-      if (stack || line) {
-        const d = q('#day'), b = d.getBoundingClientRect(), cs = getComputedStyle(d), r = q(stack ? '#stack' : '#line').getBoundingClientRect();
-        const px = k => parseFloat(cs[k]) || 0;
-        fill = Math.max(r.width / (b.width - px('paddingLeft') - px('paddingRight')), r.height / (b.height - px('paddingTop') - px('paddingBottom')));
-      }
-      let where = null;
-      const clocks = [dial, time].filter(Boolean);
-      if (date && clocks.length) {
-        const r = Math.max(...clocks.map(c => c.r)), b = Math.max(...clocks.map(c => c.b));
-        if (date.x >= r - 2) where = 'beside';
-        else if (time && date.y >= time.b - 2 && (!dial || dial.b <= time.y + 2 || date.x >= dial.r - 2)) where = dial ? 'under the digital time' : 'under';
-        else if (date.y >= b - 2) where = 'under';
-        else where = 'among the clocks';
-      }
-      const ob = el => vis(el) ? bx(el.getBoundingClientRect()) : null;
-      return { W: innerWidth, H: innerHeight, dial, time, t, date, parts, text, stack, line, sizes, yearBelow, fill, where,
-        words: vis(q('#words')) ? ink(q('#words')) : null, wordsText: vis(q('#words')) ? q('#words').textContent : null, q: vis(q('#q')),
-        badge: ob(q('#badge')), now: ob(q('#now')), arrows: Array.from(document.querySelectorAll('#dig .arrow')).filter(vis).map(ob),
-        panel: q('#clock').classList.contains('panel'), clockBg: getComputedStyle(q('#clock')).backgroundColor,
-        dayColor: vis(q('#day')) ? getComputedStyle(q('#day')).color : null, wordsColor: vis(q('#words')) ? getComputedStyle(q('#words')).color : null,
-        seg: probe('color', 'var(--seg)'), ink: probe('color', 'var(--b21-text)'), panelBg: probe('backgroundColor', 'var(--panel)') };
-    });
-    // What the date clashes with, 2 px allowed for font boxes, and whether it leaves the window.
-    const clashes = l => {
-      const hit = (a, b) => !!a && !!b && a.x < b.r - 2 && b.x < a.r - 2 && a.y < b.b - 2 && b.y < a.b - 2;
-      const out = [];
-      if (!l.date) return ['no date'];
-      for (const [name, b] of [['the dial', l.dial], ['the digital time', l.time], ['Time in words', l.words], ['Set', l.badge], ['Now', l.now], ...l.arrows.map(a => ['an arrow', a])])
-        if (l.parts.some(d => hit(d, b))) out.push(name);
-      if (l.date.x < -2 || l.date.y < -2 || l.date.r > l.W + 2 || l.date.b > l.H + 2) out.push('the window’s edge');
-      return out;
-    };
-    const said = l => `${l.W} × ${l.H}: ${l.where}, ${l.stack ? 'stack' : l.line ? 'line' : 'none'}, ${l.sizes ? [l.sizes.big, l.sizes.md, l.sizes.yr].map(v => v && Math.round(v * 10) / 10).join('/') : '-'} px, time ${l.t && Math.round(l.t * 10) / 10}, dial ${l.dial && Math.round(l.dial.w)}`;
+  // The suites below share dateView, at the top of this file.
+  ['Clock: the Date view, the Show menu, places and sizes, looks, and saved settings', async (browser) => {
+    const { errors, part, frameL, F, connected, menuOf, showOf, choose, confOf, ratioOf, size, put, FRI, WED, newBoard, openClock, NAME, mix, look, clashes, said } = dateView(browser);
 
     // ---- 1. Show: Analog, Digital, and Date, in any mix.
     await part('Show', async () => {
@@ -1787,6 +1795,12 @@ module.exports = T => {
       await ctx.close();
     });
 
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  ['Clock: the Date view, small windows, an upgrade, filling the board, and two tabs', async (browser) => {
+    const { errors, part, frameL, F, connected, showOf, choose, rectOf, size, FRI, newBoard, openClock, NAME, mix, look, clashes, said } = dateView(browser);
+
     // ---- 9b. What the prototype's own checks looked at: Time in words, seconds and 24-hour time, tiny windows, the date
     // beside the time while setting it, the width kept, and a long weekday beside the dial.
     await part('Words, seconds, and tiny windows', async () => {
@@ -2011,6 +2025,12 @@ module.exports = T => {
       await ctx.close();
     });
 
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  ['Clock: the Date view, back at its shape and dragged 1 px at a time', async (browser) => {
+    const { errors, part, connected, choose, rectOf, size, FRI, newBoard, openClock, MIX, NAME, mix } = dateView(browser);
+
     // ---- 17. A Clock comes back at the shape it had: closed and opened again from the Widget Picker, Reset then Undo,
     // Delete then Undo, put back from Board history, and Import (Replace). Two or three views keep any shape; Analog
     // alone keeps 1:1, and Digital alone 2.2:1.
@@ -2138,6 +2158,12 @@ module.exports = T => {
       await ctx.close();
     });
 
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  ['Clock: the Date view, filling the board as without the corners, and a growing board', async (browser) => {
+    const { errors, part, F, choose, WED, newBoard, openClock, NAME, mix, look, clashes, said } = dateView(browser);
+
     // ---- 19. Filling the board: wherever the date is already clear of the board's buttons in the bottom corners, the
     // Clock is exactly as it is in a window of the same size that doesn't fill the board. Where it isn't, the date moves
     // up or shrinks to stay 8 px clear. On the longest date, Wednesday, September 30 (the room is measured for the
@@ -2211,6 +2237,12 @@ module.exports = T => {
       }
       ok(!drops.length && ran.length === 2, `Digital + Date with Time in words filling a board that grows from 1366 × 700 to 1366 × 820, 4 px at a time: the time and the date never shrink (${ran.join('; ')})${drops.length ? ': ' + drops.join(' | ') : ''}`);
     });
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  ['Clock: the Date view, maximizing and the corner clock', async (browser) => {
+    const { errors, part, F, choose, FRI, newBoard, openClock, NAME, mix, look, said } = dateView(browser);
 
     // ---- 20. Maximizing from the ⌄ menu: nothing changes before the window starts to grow, and then the time only grows.
     // The board's buttons count only once the window has its full size. Restore is the same backwards: nothing changes
