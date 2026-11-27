@@ -18,7 +18,7 @@
 .wx { --u: 1; --fs: 16px; position: relative; width: 100%; height: 100%; overflow: hidden; color: #fff; isolation: isolate;
   font: 400 max(14px, calc(var(--fs) * var(--u))) / 1.25 var(--b21-font, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
   background: linear-gradient(180deg, var(--s1), var(--s2)); text-shadow: 0 1px 3px rgba(0,0,0,.16);
-  --card: rgba(6,26,58,.2); --edge: rgba(255,255,255,.15); --dim: rgba(255,255,255,.9); --track: rgba(0,0,0,.2); --inset: .9em; }
+  --card: rgba(6,26,58,.2); --edge: rgba(255,255,255,.15); --dim: rgba(255,255,255,.9); --track: rgba(0,0,0,.2); --inset: 1.15em; }
 .wx * { box-sizing: border-box; }
 .wx svg { display: block; flex: none; }
 .wx .ic { width: 1.3em; height: 1.3em; }
@@ -72,14 +72,56 @@
 .wx .in { position: relative; height: 100%; display: grid; gap: .75em; padding: 1em; min-height: 0; }
 .wx .hero { padding-inline: var(--inset); min-width: 0; }
 .wx .place { font-weight: 600; font-size: 1.05em; overflow-wrap: anywhere; }
-.wx .temp { white-space: nowrap; font-weight: 300; line-height: .92; letter-spacing: -.045em; font-size: 4.4em; font-variant-numeric: lining-nums; }
-.wx .temp .deg { letter-spacing: 0; }
-.wx .temp .unit { font-size: max(14px, .3em); font-weight: 500; color: var(--dim); opacity: .8; vertical-align: top; position: relative; top: .34em; margin-left: .05em; letter-spacing: 0; }
+.wx .temp { white-space: nowrap; font-weight: 700; line-height: .92; letter-spacing: -.045em; font-size: 4.4em; font-variant-numeric: lining-nums; }
+.wx .temp .deg { letter-spacing: -.08em; }
+/* The temperature in bold. The unit letter: as big as the digits, on their baseline, dim, regular */
+.wx .temp .unit { color: var(--dim); opacity: .8; letter-spacing: 0; font-weight: 400; }
 .wx .src { font-size: max(14px, .68em); color: var(--dim); font-weight: 600; letter-spacing: .01em; }
 .wx .cond { display: flex; align-items: center; gap: .35em; font-weight: 600; }
 .wx .hl, .wx .more { color: var(--dim); font-weight: 500; font-variant-numeric: tabular-nums; }
+/* Now: the temperature's block (left) and the sky's (right), one over the other, or side by side (side, stk). Lines
+   that may wrap take no width of their own (they wrap at Now's width), so the key lines set Now's shape. */
+.wx:not(.L-m) .hero > .left, .wx:not(.L-m) .hero > .right { display: grid; gap: inherit; min-width: 0; align-content: center; justify-self: stretch; }
+.wx:is(.laid, .probe) .hero :is(.src, .foot, .place, .more, .hilabel) { width: 0; min-width: 100%; }
+.wx:is(.laid, .probe) .hero :is(.src, .foot, .more) { width: auto; min-width: 0; white-space: nowrap; }
+/* Filling the window: Now's block lines up with the cards and the band in its column, or sits in the middle of a cell
+   it has to itself (mid). The sun's arc sits over its times in the middle of its card. */
+.wx.laid .hero.mid { justify-content: center; }
+.wx.laid .sun .arc { flex: 0 1 auto; height: auto; min-height: 2.6em; aspect-ratio: 5 / 2; margin-top: auto; }
+.wx.laid .sun > :last-child { margin-bottom: auto; }
+/* (A tall, narrow sun card: sunrise over sunset, so the times can grow.) */
+.wx.laid .sun.col .sunrow { flex-direction: column; gap: .4em; }
+.wx.laid .sun.col .sunrow div:last-child { text-align: left; }
+.wx.laid .sun.col .daylight { text-wrap: balance; }
+/* (A wide, short sun card: sunrise, the arc, and sunset in one row, so the times grow with the card's height. The arc
+   takes the room between them: --arch.) */
+.wx.laid .sun.row { display: grid; grid-template-columns: max-content minmax(5em, 1fr) max-content; grid-template-rows: auto minmax(min-content, 1fr) auto auto; column-gap: .8em; }
+.wx.laid .sun.row > :not(.arc, .sunrow) { grid-column: 1 / -1; }
+.wx.laid .sun.row .sunrow { display: contents; }
+.wx.laid .sun.row .sunrow > div { grid-area: 2 / 1; align-self: center; }
+.wx.laid .sun.row .sunrow > div:last-child { grid-area: 2 / 3; }
+.wx.laid .sun.row .arc { grid-area: 2 / 2; height: var(--arch, 2em); width: auto; max-width: 100%; min-height: 0; margin: 0; justify-self: center; align-self: center; }
+.wx.laid .sun.row .daylight { text-align: center; }
+.wx.laid .sun.row .moonline { justify-content: center; }
+.wx:is(.laid, .probe) .hero .temp { min-width: var(--tw, 0); }
+.wx:is(.laid, .probe) .hero .cond { min-width: var(--cw, 0); }
+.wx:not(.L-m) .hero.side { grid-template-columns: max-content max-content; justify-content: center; align-items: center; column-gap: 1.3em; }
+.wx:not(.L-m) .hero.side > .right { padding-top: .2em; }
+.wx.laid:not(.L-s) .hero.side:not(.mid) { justify-content: start; }
+/* (The sky's lines grow into the room beside the temperature, to its height: --sky.) */
+.wx.laid:not(.L-s) .hero.side > .right { font-size: calc(var(--sky, 1) * 1em); }
+/* The sky's words keep to their side of the room the longest sky takes: right in Medium, in the middle in Small */
+.L-m .hero:not(.stk) .right .cond { justify-content: flex-end; }
+.L-s .hero:not(.side) .cond { justify-content: center; }
+.L-s .hero.side { text-align: left; }
+.L-s .hero.side > .left, .L-s .hero.side > .right { justify-items: start; }
+.L-m .hero.stk { grid-template-columns: minmax(0, 1fr); align-items: start; align-content: center; }
+.L-m.laid .hero.stk { grid-template-columns: minmax(0, max-content); }
+.L-m .hero.stk .right { justify-items: start; text-align: left; grid-template-columns: auto auto; justify-content: start; align-items: center; column-gap: .6em; }
+.L-m .hero.stk .right .bigic { grid-row: span 2; margin-bottom: 0; }
 .wx .hl b { color: #fff; font-weight: 600; }
 .wx .more { display: flex; align-items: center; gap: .35em; flex-wrap: wrap; }
+.wx:is(.laid, .probe) .more { flex-wrap: nowrap; }
 .wx .aqd { width: .62em; height: .62em; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 0 .12em rgba(0,0,0,.18); }
 .wx .foot { font-size: max(14px, .66em); color: var(--dim); font-weight: 500; }
 
@@ -93,7 +135,7 @@
 .wx .band.watch { background: #ffd54d; color: #2a2100; }
 .wx .band.off { background: rgba(255,255,255,.9); color: #1f2937; }
 
-.wx .card { position: relative; background: var(--card); border: 1px solid var(--edge); border-radius: 1em; padding: .7em var(--inset) .8em; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.wx .card { position: relative; background: var(--card); border: 1px solid var(--edge); border-radius: 1em; padding: .8em var(--inset) .9em; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .wx h3 { margin: 0 0 .55em; font-size: max(14px, .74em); font-weight: 600; color: var(--dim); display: flex; align-items: center; gap: .4em; padding-bottom: .55em; border-bottom: 1px solid var(--edge); letter-spacing: .01em; flex: none; white-space: nowrap; }
 .wx h3 svg { width: 1.2em; height: 1.2em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .wx h3 .when { margin-left: auto; color: #fff; font-weight: 700; }
@@ -104,11 +146,18 @@
 
 /* Hours */
 .wx .sum { font-size: max(14px, .9em); font-weight: 500; margin: -.1em 0 .6em; }
+.wx .card > .sum:first-child { margin-top: 0; }
 .wx .hours { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); flex: 1; align-items: center; }
-.wx .hours.two { grid-auto-flow: row; grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr)); row-gap: .6em; }
+.wx .hours.two { grid-auto-flow: row; grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr)); row-gap: 1.6em; align-content: center; }
 .wx .hr { display: grid; justify-items: center; gap: .3em; text-align: center; grid-template-rows: auto auto .7em auto; }
 .wx .hr .pop { grid-row: 3; }
+/* (Two rows: each hour's lines close together, and the rows well apart, so a temperature reads with its own hour.) */
+.wx .hours.two .hr { row-gap: .15em; }
+.wx .hours.two:not(.pops) .hr { grid-template-rows: auto auto 0 auto; }
 .wx .hr .v { grid-row: 4; }
+/* (Medium: 6 hours, in one row or two. A tall window may show 12 in two rows: all.) */
+.L-m:not(.V-detail) .hours:not(.all) > .hr:nth-child(n+7) { display: none; }
+.L-m .hours.two.all { grid-template-columns: repeat(var(--cols, 6), minmax(max-content, 1fr)); }
 .wx .hr .t { font-size: max(14px, .8em); font-weight: 600; color: var(--dim); white-space: nowrap; }
 .wx .hr:first-child .t { color: #fff; }
 .wx .hr .hi { width: 1.9em; height: 1.9em; }
@@ -118,13 +167,15 @@
 
 /* Seven days */
 .wx .days { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-rows: minmax(0, 1fr); flex: 1; }
-.wx .days li { display: grid; grid-template-columns: 3.4em 2.2em 2.5em minmax(2em, 1fr) 2.5em; align-items: center; gap: .55em; border-top: 1px solid var(--edge); min-height: 2.1em; }
+.wx .days li { display: grid; grid-template-columns: 3.4em 2.2em max(2.5em, var(--dw, 0em)) minmax(var(--barmin, 2em), 1fr) max(2.5em, var(--dw, 0em)); align-items: center; gap: .55em; border-top: 1px solid var(--edge); min-height: 2.1em; }
 .wx .days li:first-child { border-top: 0; }
 .wx .days .d { font-weight: 600; }
 .wx .days .di { display: grid; justify-items: center; gap: .1em; }
 .wx .days .di svg { width: 1.6em; height: 1.6em; }
 .wx .days .lo { color: var(--dim); text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
 .wx .days .hi { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* (Filling the window, the range bar keeps at least a third of its row: the words give way first.) */
+.wx.laid .days li { --barmin: max(3.5em, 35%); }
 .wx .bar { position: relative; height: .36em; border-radius: 1em; background: var(--track); }
 .wx .bar i { position: absolute; top: 0; bottom: 0; border-radius: 1em; }
 .wx .bar b { position: absolute; top: 50%; width: .62em; height: .62em; margin: -.31em 0 0 -.31em; border-radius: 50%; background: #fff; box-shadow: 0 0 0 .14em rgba(0,0,0,.28); }
@@ -136,9 +187,25 @@
 .wx .dot svg { width: 1.65em; height: 1.65em; fill: none; stroke: #fff; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .wx figcaption { font-size: max(14px, .74em); font-weight: 600; color: #fff; }
 .wx .advice { font-weight: 650; font-size: 1.12em; line-height: 1.2; margin: 0 0 .55em; text-wrap: balance; }
+.wx :is(.advice, .says) .nw { white-space: nowrap; }
 .wx .eg { font-size: max(14px, .7em); font-weight: 600; color: var(--dim); margin: 0 0 .35em; }
-.wx .note { font-size: max(14px, .85em); color: var(--dim); font-weight: 500; margin: .6em 0 0; }
+.wx .note { font-size: max(14px, .85em); color: var(--dim); font-weight: 500; margin: .6em 0 0; text-wrap: pretty; }
 .wx .wear .body { flex: 1; display: grid; align-content: center; min-height: 0; }
+.wx:is(.laid, .probe) .wear :is(.advice, .note) { width: 0; min-width: 100%; }
+.wx.probe .wear .body { min-width: 11em; }
+.wx .wear.side .body { grid-template-columns: minmax(0, max-content) max-content; grid-template-areas: "a e" "n i" "t i"; column-gap: 1.6em; justify-content: start; }
+.wx .wear.side .advice { grid-area: a; }
+.wx .wear.side .eg { grid-area: e; align-self: end; }
+.wx .wear.side .items { grid-area: i; align-self: start; }
+.wx .wear.side .note { grid-area: n; }
+.wx .wear.side .tg { grid-area: t; align-self: start; }
+.wx:is(.laid, .probe) .wear.side :is(.advice, .note) { width: auto; min-width: 0; }
+/* (In a card wider than they need, the clothes sit in the middle of the room the words leave.) */
+.wx.laid .wear.side .body { grid-template-columns: minmax(0, max-content) minmax(max-content, 1fr); }
+.wx.laid .wear.side :is(.eg, .items) { justify-self: center; }
+/* (Or a narrow column of words: the advice in balanced lines, the note a sentence a line.) */
+.wx:is(.laid, .probe) .wear.side.sn .body { grid-template-columns: min-content max-content; }
+.wx.laid .wear.side.sn .body { grid-template-columns: min-content minmax(max-content, 1fr); }
 .wx .tg { display: inline-flex; background: rgba(0,0,0,.2); border-radius: 2em; padding: .18em; gap: .1em; flex: none; }
 .wx .tg b { font-weight: 600; padding: .35em .85em; border-radius: 2em; color: var(--dim); min-width: 3.6em; text-align: center; white-space: nowrap; }
 .wx .tg b.on { background: #fff; color: #17406f; text-shadow: none; }
@@ -161,16 +228,26 @@
 .wx .big { font-size: 2em; font-weight: 400; line-height: 1; letter-spacing: -.02em; }
 .wx .big small { font-size: max(14px, .45em); font-weight: 600; letter-spacing: 0; margin-left: .15em; }
 .wx .stack { display: grid; gap: .35em; align-content: center; min-width: 0; }
-.wx .stack span { color: var(--dim); font-size: max(14px, .85em); font-weight: 500; }
+.wx .stack span { color: var(--dim); font-size: max(14px, .85em); font-weight: 500; text-wrap: balance; }
 .wx .stack .name { color: #fff; font-weight: 600; font-size: 1.05em; }
 .wx .aqpill { justify-self: start; font-weight: 700; font-size: max(14px, .85em); padding: .2em .7em; border-radius: 1em; text-shadow: none; }
 .wx .aqscale { position: relative; height: .45em; border-radius: 1em; margin: .8em 0 .2em; background: linear-gradient(90deg, #00e400 0 16.6%, #ffff00 16.6% 33.3%, #ff7e00 33.3% 50%, #ff0000 50% 66.6%, #8f3f97 66.6% 83.3%, #7e0023 83.3%); }
+/* Air quality's advice: in a card that fills its window, and in the Now view */
+.wx .row1 .aqsay { flex: 1 1 9em; margin-left: .3em; }
+.wx:not(.laid):not(.V-detail) .air .aqsay, .wx.probe .air .aqsay, .wx .air.nosay .aqsay { display: none; }
+/* (A short, wide air card: the number beside its chip, bar, and advice, as tall as the card's body.) */
+.wx.laid .air.row .stack { grid-template-columns: max-content minmax(8em, 1fr); grid-template-rows: minmax(0, 1fr) auto auto auto minmax(0, 1fr); column-gap: .8em; row-gap: .3em; align-content: stretch; }
+.wx.laid .air.row .stack > .big { grid-area: 1 / 1 / -1 / 2; align-self: center; }
+.wx.laid .air.row .aqpill { grid-area: 2 / 2; }
+.wx.laid .air.row .aqscale { grid-area: 3 / 2; margin: .3em 0 .15em; }
+.wx.laid .air.row .aqsay { grid-area: 4 / 2; }
 .wx .aqscale b { position: absolute; top: 50%; width: .8em; height: .8em; margin: -.4em 0 0 -.4em; border-radius: 50%; background: #fff; box-shadow: 0 0 0 .15em rgba(0,0,0,.35); }
 
 /* Small: just now */
 .L-s .in { place-content: center; justify-items: center; text-align: center; gap: .5em; }
 .L-s .hero { display: grid; justify-items: center; gap: .12em; padding: 0; }
-.L-s .temp { font-size: 4.5em; margin: .04em 0 .06em .2em; }
+.L-s .temp { font-size: 4.5em; margin: .04em 0 .06em; }
+.L-s .hero > .left, .L-s .hero > .right { justify-items: center; }
 .L-s .cond .ic { width: 1.45em; height: 1.45em; }
 .L-s .band { margin-bottom: .3em; }
 .L-s.has-band .temp { font-size: 3.4em; }
@@ -183,6 +260,8 @@
 .L-m .in { grid-template-rows: auto minmax(0, 1fr) auto; gap: .65em; }
 .L-m.has-band .in { grid-template-rows: auto auto minmax(0, 1fr) auto; gap: .55em; }
 .L-m.has-band h3 { margin-bottom: .25em; padding-bottom: .3em; }
+/* (A warning's words start further in, so its gaps close up and it keeps to one line.) */
+.L-m .band { gap: .35em; }
 .L-m .right .cond .chev { width: .85em; height: .85em; opacity: .8; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .L-m.has-band .temp { font-size: 3.4em; }
 .L-m .hero { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: .5em; }
@@ -194,18 +273,30 @@
 .L-m .week { display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); align-items: center; flex: 1; }
 .L-m .week .col { display: grid; justify-items: center; gap: .18em; text-align: center; font-variant-numeric: tabular-nums; }
 .L-m .week .col + .col { border-left: 1px solid var(--edge); }
+/* (Drawn where the planned size leaves room: each day's words keep clear of its rules, and Today, the longest word,
+   gets a wider column. weekRoom() sets the gap, --wr.) */
+.L-m .week.wr { grid-template-columns: minmax(0, 1.25fr) repeat(var(--m, 4), minmax(0, 1fr)); }
+.L-m .week.wr .col { padding-inline: var(--wr, .25em); }
 .L-m .week .n { font-size: max(14px, .82em); font-weight: 600; color: var(--dim); }
 .L-m .week .col:first-child .n { color: #fff; }
 .L-m .week svg { width: 1.8em; height: 1.8em; }
 .L-m .week .h { font-weight: 600; font-size: 1.05em; }
 .L-m .week .l { color: var(--dim); font-size: max(14px, .88em); }
-.L-m .wl { flex-direction: row; align-items: center; gap: .7em; padding: .5em .6em; }
+/* (Medium's strip: roomier ends and smaller gaps, so it's no wider.) */
+.L-m .wl { flex-direction: row; align-items: center; gap: .55em; padding: .55em .75em; }
 .L-m .wl .tg { font-size: max(14px, .85em); }
 .L-m .wl .tg b { min-width: 3.4em; padding: .45em .7em; }
 .L-m .wl .items { gap: .3em; flex-wrap: nowrap; }
 .L-m .wl .dot { width: 2em; height: 2em; }
 .L-m .wl .dot svg { width: 1.25em; height: 1.25em; }
 .L-m .wl .says { font-weight: 600; font-size: max(14px, .9em); min-width: 0; line-height: 1.2; }
+/* (Its chevron, a little after the advice, opens What to wear's view, and is the strip's button for keys. Always there. It
+   takes no room of its own: it sits in the strip's padding when the advice fills the line, so no window draws smaller
+   for it. Its box is its stroke.) */
+.L-m .wl .open .chev { display: inline-block; vertical-align: .08em; width: .3333em; height: .5333em; margin: 0 -.6833em 0 .35em; opacity: .8; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+/* (Its focus ring goes round the chevron.) */
+.L-m .wl .open:focus-visible { outline: 0; }
+.L-m .wl .open:focus-visible .chev { outline: 3px solid #fff; outline-offset: 2px; border-radius: .1em; }
 
 /* Large: now and what to wear, beside the week and the sun */
 .L-l .in { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "hero days" "wear sun"; gap: .8em; padding: 1.1em; }
@@ -218,12 +309,15 @@
 .L-l .temp { font-size: 5.4em; margin: .02em 0 .02em -.05em; }
 .L-l .cond, .L-xl .cond { font-size: 1.15em; }
 .L-l .daysc, .L-xl .daysc { grid-area: days; }
+.L-l:not(.laid) .arc { max-height: 4.2em; }
 .L-l .wear, .L-xl .wear { grid-area: wear; }
 .L-l .sun, .L-xl .sun { grid-area: sun; }
-.L-l .arc { max-height: 4.2em; }
-.L-l .days li { grid-template-columns: 3em 3.3em 2.3em minmax(2em, 1fr) 2.3em; gap: .5em; min-height: 1.6em; }
+.L-l .days li { grid-template-columns: 3em 3.3em max(2.3em, var(--dw, 0em)) minmax(var(--barmin, 2em), 1fr) max(2.3em, var(--dw, 0em)); gap: .5em; min-height: 1.6em; }
 .L-l .days .di { grid-auto-flow: column; justify-content: start; align-items: center; gap: .25em; }
 .L-l .days .di svg { width: 1.35em; height: 1.35em; }
+/* (The 7 days down the right at full height: each day's rain chance under its icon, so the words can grow.) */
+.L-l .daysc.dt .days li { grid-template-columns: 3em 1.5em max(2.3em, var(--dw, 0em)) minmax(var(--barmin, 2em), 1fr) max(2.3em, var(--dw, 0em)); }
+.L-l .daysc.dt .days .di { grid-auto-flow: row; justify-content: center; justify-items: center; gap: .1em; }
 
 /* Fill the board: everything */
 .L-xl .in { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.15fr) minmax(0, .95fr) minmax(0, .95fr); grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
@@ -242,11 +336,10 @@
 .L-xl .wear .advice { font-size: 1.5em; margin-bottom: .6em; }
 .L-xl .days li { gap: .7em; }
 .L-xl .compass { width: 5.6em; height: 5.6em; }
-.L-xl .smalls { grid-area: smalls; display: grid; gap: 1em; min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
-.L-xl .smalls.n1, .L-xl .smalls.n2 { grid-template-columns: minmax(0, 1fr); }
-.L-xl .smalls.n3 > :last-child { grid-column: span 2; }
-.L-xl .smalls > .card { grid-area: auto; }
 .L-l .moon { grid-area: moon; }
+.L-l .hourly { grid-area: hourly; }
+.L-l .windc { grid-area: windc; }
+.L-l .air { grid-area: air; }
 .L-l.l-solo .hero, .L-xl .in > .hero:only-of-type { align-content: center; }
 .L-m.m-big .hero { align-self: center; }
 .L-m.m-big .temp { font-size: 5em; }
@@ -269,7 +362,7 @@
 .wx.V-detail .dnow .temp { font-size: 3.6em; grid-row: span 3; }
 .wx .dnow .cards { display: grid; grid-template-columns: 1.25fr 1fr; grid-template-rows: auto minmax(0, 1fr); gap: .6em; min-height: 0; }
 .wx .air .row1 .big { font-size: 1.6em; color: #fff; }
-.wx .dnow .card { padding-top: .55em; padding-bottom: .5em; }
+.wx .dnow .card { padding-top: .65em; padding-bottom: .55em; }
 .wx .dnow .stack { gap: .2em; }
 .wx .dnow .card h3 { margin-bottom: .35em; padding-bottom: .4em; }
 .wx .dnow .windc { grid-row: span 2; }
@@ -283,11 +376,55 @@
 .wx .scroll .lab { font-size: max(14px, .72em); font-weight: 700; color: var(--dim); margin-top: .3em; }
 .wx .scroll .alert + .alert { border-top: 1px solid var(--edge); padding-top: .8em; }
 .wx .scroll .alert { display: grid; gap: .6em; }
+/* What to wear's own view: the day, the advice a sentence a line, the clothes, and the note, then each school hour's
+   feels like. Wide, the words sit beside the clothes, and the clothes in the middle of the room the words leave
+   (.beside). Narrow and tall, the hours take two rows (.two). */
+.wx .dwear { display: grid; align-content: center; gap: .8em; min-width: 0; min-height: 0; }
+.wx .wtop { display: grid; justify-items: start; align-content: center; gap: .55em; padding-inline: var(--inset); min-width: 0; }
+.wx .dwear .tg { font-size: max(14px, .9em); }
+.wx .dwear .advice { font-size: 1.6em; font-weight: 700; line-height: 1.15; margin: 0; max-width: 100%; }
+/* (Each sentence whole, on its own line. The first breaks after "Dress for" only where nothing fits whole: .brk.) */
+.wx .dwear .advice .s { display: block; white-space: nowrap; }
+.wx .dwear.brk .advice .s:first-child { white-space: normal; }
+.wx .dwear .items { gap: .5em 1.1em; }
+.wx .dwear .dot { width: 3.6em; height: 3.6em; }
+.wx .dwear .dot svg { width: 2.2em; height: 2.2em; }
+.wx .dwear figcaption { font-size: max(14px, .85em); }
+/* (Where the hours fit only that way, the clothes go in rows of three (.r3), and then without their names (.bare).) */
+.wx .dwear.r3 .wtop > .items { display: grid; grid-template-columns: repeat(3, max-content); }
+.wx .dwear.bare figcaption { display: none; }
+.wx .dwear .note { font-size: max(14px, .9em); margin: 0; max-width: 100%; }
+/* (With the hours, today's note leaves out how it feels now: the hours show it.) */
+.wx .dwear:not(.nohrs) .fnow { display: none; }
+.wx .dwear.beside .wtop { grid-template-columns: minmax(0, var(--ww, max-content)) minmax(max-content, 1fr); grid-template-areas: "t i" "a i" "n i"; column-gap: 2em; align-items: center; }
+.wx .dwear.beside .wtop > .tg { grid-area: t; }
+.wx .dwear.beside .wtop > .advice { grid-area: a; }
+.wx .dwear.beside .wtop > .note { grid-area: n; align-self: start; }
+.wx .dwear.beside .wtop > .items { grid-area: i; flex-wrap: nowrap; justify-self: center; }
+.wx .whrs h3 { white-space: nowrap; }
+/* (The hours stand .7em apart or more, so each number reads with its own hour. Only the tile that picks the advice has
+   room around its words.) */
+.wx .wrow { display: grid; grid-template-columns: repeat(var(--n, 8), minmax(max-content, 1fr)); gap: .5em .7em; align-items: start; }
+.wx .dwear.two .wrow { grid-template-columns: repeat(var(--h, 4), minmax(max-content, 1fr)); }
+.wx .wh { display: grid; justify-items: center; justify-self: center; gap: .1em; padding: .25em 0 .3em; border-radius: .7em; white-space: nowrap; }
+/* (Where nothing fits with the hours, even closed up, they step aside: the advice, the clothes, and the note come first.) */
+.wx .dwear.nohrs > .whrs { display: none; }
+.wx .wh .t { font-size: max(14px, .8em); font-weight: 600; color: var(--dim); }
+.wx .wh.now .t { color: #fff; }
+.wx .wh .v { font-size: 1.3em; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.wx .wh .m { display: grid; place-items: center; height: 1.15em; }
+.wx .wh .mk { width: 1.15em; height: 1.15em; color: #6cc8ff; }
+.wx .wh .mk.snow { color: #fff; }
+.wx .wh .k { font-size: max(14px, .72em); font-weight: 700; }
+/* (The hour that picks the advice sits on a soft tile, not the white of a picked day. Today, the other hours gone by are
+   dim.) */
+.wx .wh.why { background: rgba(255,255,255,.2); padding-inline: .35em; }
+.wx .wh.past:not(.why) { opacity: .55; }
 
 .wx.V-detail .days li { min-height: 0; }
 .wx.V-detail .days .di svg { width: 1.4em; height: 1.4em; }
 .wx.V-detail .days .di { grid-auto-flow: column; justify-content: start; align-items: center; gap: .25em; }
-.wx.V-detail .days li { grid-template-columns: 3.4em 3.8em 2.5em minmax(2em, 1fr) 2.5em; }
+.wx.V-detail .days li { grid-template-columns: 3.4em 3.8em max(2.5em, var(--dw, 0em)) minmax(var(--barmin, 2em), 1fr) max(2.5em, var(--dw, 0em)); }
 .wx .air .row1 { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; }
 
 /* On a date */
@@ -342,21 +479,30 @@
 .wx .simple .say { font-size: 2.1em; font-weight: 700; line-height: 1.1; letter-spacing: -.01em; }
 .wx .simple .items { justify-content: center; }
 .wx .simple .src { position: absolute; bottom: .9em; left: 0; right: 0; }
+/* (Its words and picture grow with the window; the credit stays the window's size, centered, clear of the corners.) */
+.wx .simple > .src { font-size: max(14px, calc(var(--fs) * var(--u) * .68)); text-align: center; bottom: calc(max(.9em, var(--low, 0px) + 4px)); }
+.wx.filled .simple > .chip { top: max(.9em, var(--top, 0px) + 4px); }
 .V-simple.lift .simple { padding-bottom: 3.4em; }
 .V-simple.lift .simple .bigic { width: 4em; height: 4em; }
+.wx .simple.side { grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 1em; justify-items: start; text-align: left; align-items: center; }
+.wx .simple.side .bigic { grid-row: span 2; }
+.wx .simple.side .items { justify-content: start; }
 .wx .chip { position: absolute; top: .9em; right: 1em; font-weight: 700; background: rgba(255,255,255,.2); border-radius: 1em; padding: .2em .65em; }
 
 /* Short for its size: text stays at 14 px or more, so the spacing closes up instead, a step at a time (tight, tighter,
    tightest), until every part fits. fit() measures each step as drawn. A band in Medium keeps to one line (brief). */
 .wx.brief .band > span { display: none; }
+/* (The cards' sides close up too: part way at tight, then to .9em.) */
+.wx.tight { --inset: 1em; }
+.wx:is(.tighter, .tightest) { --inset: .9em; }
 .L-m.tight .in { padding: .7em .8em; gap: .45em; }
 .L-m.tight .temp { font-size: 3.1em; }
 .L-m.tight .hero > .left, .L-m.tight .right { gap: 0; }
-.L-m.tight .card { padding-top: .45em; padding-bottom: .5em; }
+.L-m.tight .card { padding-top: .5em; padding-bottom: .55em; }
 .L-m.tight h3 { margin-bottom: .2em; padding-bottom: .25em; }
 .L-m.tight .week .col { gap: .05em; }
 .L-m.tight .week svg { width: 1.6em; height: 1.6em; }
-.L-m.tight .wl { padding: .3em .5em; }
+.L-m.tight .wl { padding: .35em .65em; }
 .L-m.tight .wl .tg b { padding: .3em .65em; }
 .L-m.tight.has-band .in { gap: .4em; }
 .L-m.tight.has-band .band { padding-top: .3em; padding-bottom: .3em; }
@@ -365,8 +511,8 @@
 .L-m.tighter .wl .dot { width: 1.8em; height: 1.8em; }
 .L-m.tighter .hr .hi { width: 1.5em; height: 1.5em; }
 .L-m.tighter.has-band .temp { font-size: 2.7em; }
-.L-m.tighter.has-band .card { padding-top: .35em; padding-bottom: .4em; }
-.L-m.tighter.has-band .wl { padding: .25em .5em; }
+.L-m.tighter.has-band .card { padding-top: .4em; padding-bottom: .45em; }
+.L-m.tighter.has-band .wl { padding: .3em .65em; }
 .L-m.tighter.has-band .wl .tg b { padding: .2em .6em; }
 .L-m.tightest .week svg { width: 1.1em; height: 1.1em; }
 .L-m.tightest .hr { gap: 0; }
@@ -378,7 +524,7 @@
 .L-l.tight .temp { font-size: 4.2em; }
 .L-l.tight.has-band .temp { font-size: 3.4em; }
 .L-l.tight .hero { gap: .15em; }
-.L-l.tight .card { padding-top: .5em; padding-bottom: .55em; }
+.L-l.tight .card { padding-top: .55em; padding-bottom: .6em; }
 .L-l.tight h3 { margin-bottom: .3em; padding-bottom: .3em; }
 .L-l.tight .days li { min-height: 0; gap: .4em; }
 .L-l.tight .days .di svg { width: 1.15em; height: 1.15em; }
@@ -394,7 +540,7 @@
 .L-l.tighter .in { padding: .6em .7em; gap: .45em; }
 .L-l.tighter .temp { font-size: 3.6em; }
 .L-l.tighter.has-band .temp { font-size: 3em; }
-.L-l.tighter .card { padding-top: .4em; padding-bottom: .45em; }
+.L-l.tighter .card { padding-top: .45em; padding-bottom: .5em; }
 .L-l.tighter h3 { margin-bottom: .2em; padding-bottom: .25em; }
 .L-l.tighter .days li { gap: .3em; }
 .L-l.tighter .days .di svg { width: 1em; height: 1em; }
@@ -406,7 +552,7 @@
 .V-detail.tight .dnow { gap: .45em; }
 .V-detail.tight .dnow .hero { gap: 0 .8em; }
 .V-detail.tight .dnow .cards { gap: .45em; }
-.V-detail.tight .dnow .card { padding-top: .4em; padding-bottom: .45em; }
+.V-detail.tight .dnow .card { padding-top: .45em; padding-bottom: .5em; }
 .V-detail.tight .dnow .card h3 { margin-bottom: .2em; padding-bottom: .25em; }
 .V-detail.tight .windbody { gap: .6em; }
 .V-detail.tight .dnow .big { font-size: 1.6em; }
@@ -420,18 +566,31 @@
 .V-detail.tightest .dnow .windc { grid-row: auto; }
 .V-detail.tightest .dnow .compass { display: none; }
 .V-detail.tightest .dnow .windbody { grid-template-columns: minmax(0, 1fr); }
+/* (What to wear's view closes its spacing, then draws smaller clothes and hours.) */
+.V-detail.tight .dwear { gap: .5em; }
+.V-detail.tight .wtop { gap: .35em; }
+.V-detail.tight .dwear.beside .wtop { column-gap: 1.4em; }
+.V-detail.tighter .dwear .dot { width: 2.8em; height: 2.8em; }
+.V-detail.tighter .dwear .dot svg { width: 1.7em; height: 1.7em; }
+.V-detail.tighter .wh { padding-block: .1em .15em; gap: 0; }
+.V-detail.tighter .wh.why { padding-inline: .25em; }
+.V-detail.tightest .dwear .dot { width: 2.3em; height: 2.3em; }
+.V-detail.tightest .dwear .dot svg { width: 1.4em; height: 1.4em; }
+.V-detail.tightest .dwear .items { gap: .3em .8em; }
+.V-detail.tightest .wrow { row-gap: .25em; }
+.V-detail.tightest .whrs { padding-block: .45em .5em; }
+.V-detail.tightest .whrs h3 { margin-bottom: .3em; padding-bottom: .3em; }
 .L-s .bar2 .title { white-space: normal; overflow: visible; }
 .L-xl.tight .in { padding: .8em 1em; gap: .6em; }
 .L-xl.tight .temp { font-size: 4.4em; }
 .L-xl.tight .hero { gap: .1em; }
-.L-xl.tight .card { padding-top: .45em; padding-bottom: .5em; }
+.L-xl.tight .card { padding-top: .5em; padding-bottom: .55em; }
 .L-xl.tight h3 { margin-bottom: .25em; padding-bottom: .25em; }
 .L-xl.tight .sum { margin-bottom: .3em; }
 .L-xl.tight .hr { gap: .15em; }
 .L-xl.tight .hr .hi { width: 1.5em; height: 1.5em; }
 .L-xl.tight .days li { min-height: 0; gap: .4em; }
 .L-xl.tight .days .di svg { width: 1.2em; height: 1.2em; }
-.L-xl.tight .smalls { gap: .6em; }
 .L-xl.tight .compass { width: 3.6em; height: 3.6em; }
 .L-xl.tight .windbody, .L-xl.tight .moonbody { gap: .6em; }
 .L-xl.tight .moonbody svg { width: 3.2em; height: 3.2em; }
@@ -455,9 +614,41 @@
 .L-xl.tighter .arc { max-height: 2.2em; }
 
 /* Fill the board: clear of the board's buttons in its corners, and of its padlocks while locked */
-.wx.filled .in { padding-top: max(1em, var(--top, 0px)); padding-bottom: max(1em, var(--low, 0px)); }
-.wx.filled.L-l .in { padding-top: max(1.1em, var(--top, 0px)); padding-bottom: max(1.1em, var(--low, 0px)); }
-.wx.filled.L-xl .in { padding-top: max(1.3em, var(--top, 0px)); padding-bottom: max(1.3em, var(--low, 0px)); }
+.wx.filled .in { padding-top: max(1em, var(--top, 0px) + 4px); padding-bottom: max(1em, var(--low, 0px) + 4px); }
+.wx.filled.L-l .in { padding-top: max(1.1em, var(--top, 0px) + 4px); padding-bottom: max(1.1em, var(--low, 0px) + 4px); }
+.wx.filled.L-xl .in { padding-top: max(1.3em, var(--top, 0px) + 4px); padding-bottom: max(1.3em, var(--low, 0px) + 4px); }
+
+/* Filling the window (fill()): each part draws at its own size, set on it in px. The wind's compass and the moon fill
+   the room their words leave (--pic), beside them or over them (.col). */
+.wx .windc .compass, .wx .moonbody > svg { width: var(--pic, 5.4em); height: var(--pic, 5.4em); }
+.wx .windc .compass { width: var(--pic, 6.2em); height: var(--pic, 6.2em); }
+.L-xl .windc .compass { width: var(--pic, 5.6em); height: var(--pic, 5.6em); }
+.wx.laid :is(.windbody, .moonbody):not(.col) { grid-template-columns: auto auto; justify-content: center; }
+.wx .windbody.col, .wx .moonbody.col { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; align-content: center; gap: .6em; }
+.wx .windbody.col .stack, .wx .moonbody.col .stack { justify-items: center; }
+/* (Sized to its room, the moon fills its picture, edge to edge.) */
+.wx:is(.laid, .V-detail) .moonbody > svg > * { transform: scale(1.5); transform-origin: 16px 16px; }
+/* (Sun and moon: the moon's words never break mid-phrase. Its card takes the width they need; the sun's, the rest.) */
+.wx.V-detail .moonbody .stack > * { white-space: nowrap; }
+.wx.V-detail .cards > .moon { min-width: max-content; }
+/* Measuring: each part on its own at its least size, out of the grid */
+.wx.probe .in { display: block; }
+.wx.probe .in > * { position: absolute; left: 0; top: 0; width: max-content; height: auto; min-height: 0; max-width: none; }
+.wx.probe .card > *, .wx.probe .wear .body, .wx.probe .dnow > * { flex: none; }
+.wx.probe .days { grid-auto-rows: 1fr; }
+.wx.probe h3 { width: max-content; }
+.wx.probe .hours { grid-auto-columns: max-content; column-gap: .45em; }
+.wx.probe .hours.two { grid-template-columns: repeat(var(--cols, 6), max-content); }
+.wx.probe .arc { width: 7.5em; height: 3em; }
+.wx.probe .compass, .wx.probe .moonbody > svg { width: 4.2em; height: 4.2em; }
+.wx.probe .aqscale { width: 7em; }
+.wx.probe .chart { width: 15em; height: 9em; }
+.wx.probe .days li { --barmin: 3.5em; }
+.wx:is(.laid, .probe) :is(.windbody, .moonbody) .stack > *, .wx:is(.laid, .probe) .moonline { white-space: nowrap; }
+/* Cards side by side: one heading size, the smallest any card's own size gives (--h3) */
+.wx.laid .in h3 { font-size: var(--h3, max(14px, .74em)); }
+/* A list longer than its window fades at the bottom */
+.wx .scroll.fade { -webkit-mask: linear-gradient(#000 calc(100% - 2.5em), transparent); mask: linear-gradient(#000 calc(100% - 2.5em), transparent); }
 
 /* Location: a sheet over the window, in the board's own colors */
 #sheet[hidden] { display: none; }
@@ -511,6 +702,8 @@
   <symbol id="u-left" viewBox="0 0 24 24"><path d="M14.5 5.5L8 12l6.5 6.5"/></symbol>
   <symbol id="u-right" viewBox="0 0 24 24"><path d="M9.5 5.5L16 12l-6.5 6.5"/></symbol>
   <symbol id="u-chart" viewBox="0 0 24 24"><path d="M4 19h16M5 15l4.5-5 4 3L19 6"/></symbol>
+  <symbol id="m-drop" viewBox="0 0 24 24"><path d="M12 3.5C9.2 7.6 6.5 10.8 6.5 14.2a5.5 5.5 0 0 0 11 0c0-3.4-2.7-6.6-5.5-10.7z" fill="currentColor"/></symbol>
+  <symbol id="m-flake" viewBox="0 0 24 24"><path d="M12 21V3M12 5.8l-1.8 1.8M12 5.8l1.8 1.8M4.2 16.5l15.6-9M17.4 8.9l-2.5-.7M17.4 8.9l-.7 2.5M4.2 7.5l15.6 9M17.4 15.1l-.7-2.5M17.4 15.1l-2.5.7M12 18.2l1.8-1.8M12 18.2l-1.8-1.8M6.6 15.1l2.5.7M6.6 15.1l.7-2.5M6.6 8.9l.7 2.5M6.6 8.9l2.5-.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
   <symbol id="u-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></symbol>
   <!-- What to wear -->
   <symbol id="c-coat" viewBox="0 0 24 24"><path d="M8.5 3.5L4.2 6 2.6 15l3 .8L7 11.2V21h10v-9.8l1.4 4.6 3-.8-1.6-9-4.3-2.5"/><path d="M8.5 3.5c.9 1.7 2 2.5 3.5 2.5s2.6-.8 3.5-2.5M12 6v15M7 14h3.5M13.5 14H17"/></symbol>
@@ -611,14 +804,17 @@
       items: TIER[tier].concat(rain ? ['rain'] : [], snow ? ['boots'] : []) };
   }
   const ADVICE = /^Dress for (very cold|cold|chilly|cool|mild|warm) weather\.( Bring a rain jacket\.)?( Wear boots\.)?$/;
-  // A day's What to wear from the hourly forecast, or none when the forecast doesn't reach its school hours. Today, the
-  // hours still ahead are enough: the Weather Service's forecast starts at this hour.
-  function wearFor(day, hours, today) {
+  // A day's school hours in the hourly forecast, or null when the forecast doesn't reach them. Today, the hours still
+  // ahead are enough: the Weather Service's forecast starts at this hour.
+  function schoolList(day, hours, today) {
     const [a, b] = schoolHours(day), tz = config.place.tz, hr = h => partsOf(h.t * 1000, tz).h;
     const in_ = hours.filter(h => { const p = partsOf(h.t * 1000, tz); return p.ymd === day && p.h >= a && p.h <= b && p.m === 0; });
     const from = day === today ? Math.max(a, partsOf(Date.now(), tz).h) : a;
-    const whole = in_.length >= b - a + 1 || (from <= b && in_.filter(h => hr(h) >= from).length >= b - from + 1);
-    const got = whole && advise(in_);
+    return in_.length >= b - a + 1 || (from <= b && in_.filter(h => hr(h) >= from).length >= b - from + 1) ? in_ : null;
+  }
+  // A day's What to wear from those hours, or none.
+  function wearFor(day, hours, today) {
+    const tz = config.place.tz, in_ = schoolList(day, hours, today), got = in_ && advise(in_);
     if (!got) return { label: day === today ? 'Today' : label(day, today), none: true };
     let high = null, at = null;
     for (const h of in_) if (fin(h.temp) && (high === null || h.temp > high)) { high = h.temp; at = h.t; }
@@ -1002,7 +1198,8 @@
     // What to wear: today and the next school day.
     const w = { today: null, next: null };
     // (A day the forecast in hand doesn't cover, such as today's school hours once the backup is in use: the saved advice.)
-    const live = day => { if (!day) return null; const w0 = wearFor(day, fc.hours, today); return w0.none && s && s.wear[day] && !s.wear[day].none ? kept(day) : w0; };
+    // (A day's advice from the forecast in hand carries the school hours it counted, for What to wear's own view. Never saved.)
+    const live = day => { if (!day) return null; const w0 = wearFor(day, fc.hours, today); if (!w0.none) w0.hrs = schoolList(day, fc.hours, today); return w0.none && s && s.wear[day] && !s.wear[day].none ? kept(day) : w0; };
     const kept = day => (day && s && s.wear[day] ? Object.assign({}, s.wear[day], { label: day === today ? 'Today' : label(day, today) }) : null);
     if (off) { w.today = kept(pln.today); w.next = kept(pln.next); } else { w.today = live(pln.today); w.next = live(pln.next); }
     if (!w.next && w.today) { w.next = w.today; w.today = null; }
@@ -1136,6 +1333,8 @@
   const layout = (w, h, max) => (max && w >= 1100 && h >= 600 ? 'xl' : w < 380 || h < 280 ? 's' : w < 760 || h < 480 ? 'm' : w < 1300 || h < 760 ? 'l' : 'xl');
   const use = (id, cls) => `<svg class="${cls || 'ic'}" aria-hidden="true"><use href="#${id}"/></svg>`;
   const chev = use('u-right', 'chev');
+  // (Medium's What to wear strip draws its chevron after its words: its box is the stroke alone.)
+  const chevIn = '<svg class="chev" viewBox="8 4 10 16" aria-hidden="true"><use href="#u-right" width="24" height="24"/></svg>';
   const U = o => `<span class="unit">${o.c ? 'C' : 'F'}</span>`;
   const go = v => ` data-go="${v}" role="button" tabindex="0"`;
   const WORDS = { clear: ['Sunny', 'Clear'], mostly: ['Mostly sunny', 'Mostly clear'], partly: ['Partly cloudy'], cloudy: ['Cloudy'], fog: ['Fog'],
@@ -1206,24 +1405,24 @@
     const n = d.now, place = `<div class="place">${esc(d.place)}</div>`, hi = T(d.today.hi, o), lo = T(d.today.lo, o);
     if (d.offline) {
       const c0 = d.days[0][1], hiN = `<div class="temp">${num(d.today.hi, o)}<span class="deg">°</span>${U(o)}</div>`;
-      if (L === 's') return `<div class="hero">${place}<div class="hilabel">High</div>${hiN}<div class="cond">${use(icon(c0, 1))}${words(group(c0), 1)}</div><div class="hl">Low <b>${lo}</b></div><div class="src">${credit(d)}</div></div>`;
+      if (L === 's') return `<div class="hero"><div class="left">${place}<div class="hilabel">High</div>${hiN}</div><div class="right"><div class="cond">${use(icon(c0, 1))}${words(group(c0), 1)}</div><div class="hl">Low <b>${lo}</b></div><div class="src">${credit(d)}</div></div></div>`;
       if (L === 'm') return `<div class="hero"><div class="left">${place}<div class="hilabel">Today’s high</div>${hiN}</div><div class="right">${use(icon(c0, 1), 'bigic')}<div class="cond">${words(group(c0), 1)}</div><div class="hl">Low <b>${lo}</b></div></div></div>`;
-      return `<div class="hero">${place}<div class="hilabel">Today’s high</div>${hiN}<div class="cond">${use(icon(c0, 1))}${words(group(c0), 1)}</div><div class="hl">Low <b>${lo}</b></div><div class="foot">${credit(d)}</div></div>`;
+      return `<div class="hero"><div class="left">${place}<div class="hilabel">Today’s high</div>${hiN}</div><div class="right"><div class="cond">${use(icon(c0, 1))}${words(group(c0), 1)}</div><div class="hl">Low <b>${lo}</b></div><div class="foot">${credit(d)}</div></div></div>`;
     }
     const g = n ? group(n.code) : 'cloudy', day = n ? n.day : true;
     const temp = `<div class="temp">${n ? num(n.t, o) : '–'}<span class="deg">°</span>${U(o)}</div>`;
-    if (L === 's') return `<div class="hero">${place}${temp}<div class="cond">${use(icon(CODE[g], day))}${words(g, day)}</div><div class="hl">H <b>${hi}</b>&nbsp; L <b>${lo}</b></div>${src(d, L)}<div class="src">${credit(d)}</div></div>`;
+    if (L === 's') return `<div class="hero"><div class="left">${place}${temp}</div><div class="right"><div class="cond">${use(icon(CODE[g], day))}${words(g, day)}</div><div class="hl">H <b>${hi}</b>&nbsp; L <b>${lo}</b></div>${src(d, L)}<div class="src">${credit(d)}</div></div></div>`;
     if (L === 'm') {
       const aq = d.air && d.air.aqi >= 101 && shown('air') ? `<div class="src more">${aqd(d.air.aqi)}Air quality ${d.air.aqi}</div>` : '';
       return `<div class="hero"${go('now')}><div class="left">${place}${temp}${src(d, L)}${o.mCredit || d.src === 'nws' ? `<div class="src">${credit(d)}</div>` : ''}${aq}</div><div class="right">${use(icon(CODE[g], day), 'bigic')}<div class="cond">${words(g, day)}${chev}</div><div class="hl">H <b>${hi}</b>&nbsp; L <b>${lo}</b></div></div></div>`;
     }
     const wind = !n || !fin(n.wind) ? '' : ` · Wind ${speed(n.wind, o)}${fin(n.dir) && Math.round(n.wind) > 0 ? ' ' + ABBR[dirIdx(n.dir)] : ''}`;
     const c = d.air && aqCat(d.air.aqi);
-    return `<div class="hero"${go('now')}>${place}${temp}${src(d, L)}<div class="cond">${use(icon(CODE[g], day))}${words(g, day)}</div>
+    return `<div class="hero"${go('now')}><div class="left">${place}${temp}${src(d, L)}</div><div class="right"><div class="cond">${use(icon(CODE[g], day))}${words(g, day)}</div>
       <div class="hl">High <b>${hi}</b>&nbsp;&nbsp; Low <b>${lo}</b></div>
       ${n ? `<div class="more">Feels like ${T(n.feels, o)}${shown('wind') ? wind : ''}</div>` : ''}
       ${shown('air') && d.air ? `<div class="more">${aqd(d.air.aqi)}Air quality ${d.air.aqi}, ${c[1].toLowerCase()}</div>` : ''}
-      <div class="foot">${credit(d)}, ${d.updated}</div></div>`;
+      <div class="foot">${credit(d)}, ${d.updated}</div></div></div>`;
   }
 
   function hourly(d, o, max, two, compact) {
@@ -1252,26 +1451,61 @@
   const pickOf = (d, o) => (!d.wear ? null : o.wear === 'next' || !d.wear.today ? 'next' : 'today');
   const toggle = (d, o) => (!d.wear.today ? `<span class="tg"><b class="on">${esc(d.wear.next.label)}</b></span>`
     : `<span class="tg" role="group" aria-label="What to wear"><b data-wear="today" role="button" tabindex="0"${pickOf(d, o) === 'today' ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>Today</b><b data-wear="next" role="button" tabindex="0"${pickOf(d, o) === 'next' ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>${esc(d.wear.next.label)}</b></span>`);
+  // (caps: false, the pictures alone, named for screen readers; 'both', named for screen readers too, so their names
+  // can step aside.)
   function wearItems(items, caps) {
-    return `<div class="items">${items.map(k => `<figure data-item="${k}"><span class="dot"${caps === false ? ` role="img" aria-label="${CLOTHES[k]}"` : ''}>${use('c-' + k)}</span>${caps === false ? '' : `<figcaption>${CLOTHES[k]}</figcaption>`}</figure>`).join('')}</div>`;
+    return `<div class="items">${items.map(k => `<figure data-item="${k}"><span class="dot"${caps === false || caps === 'both' ? ` role="img" aria-label="${CLOTHES[k]}"` : ''}>${use('c-' + k)}</span>${caps === false ? '' : `<figcaption${caps === 'both' ? ' aria-hidden="true"' : ''}>${CLOTHES[k]}</figcaption>`}</figure>`).join('')}</div>`;
   }
-  function note(d, o, k) {
-    const w = d.wear[k], tz = pl().tz, high = fin(w.high) && fin(w.at) ? `High of ${T(w.high, o)} at ${clock(w.at * 1000, tz)}.` : '';
-    if (k === 'today') return (!d.offline && d.now && fin(d.now.feels) ? `Feels like ${T(d.now.feels, o)} now. ` : '') + high;
-    return (fin(w.feels8) ? `Feels like ${T(w.feels8, o)} at 8${NB}AM. ` : '') + high;
+  function note(d, o, k, hrs) {
+    // (Each sentence stays on one line: the note breaks only between them. With the hours, in What to wear's view, today's
+    // feels like now sits in .fnow, which shows only where the hours step aside.)
+    const w = d.wear[k], tz = pl().tz, high = fin(w.high) && fin(w.at) ? `High${NB}of${NB}${T(w.high, o)}${NB}at${NB}${clock(w.at * 1000, tz)}.` : '';
+    if (k === 'today') { const f = !d.offline && d.now && fin(d.now.feels) ? `Feels${NB}like${NB}${T(d.now.feels, o)}${NB}now. ` : ''; return (f && hrs && high ? `<span class="fnow">${f}</span>` : f) + high; }
+    return (fin(w.feels8) ? `Feels${NB}like${NB}${T(w.feels8, o)}${NB}at${NB}8${NB}AM. ` : '') + high;
   }
+  // The advice, where "Dress for" may break from its weather. (whole: each other sentence whole too, as Medium's strip
+  // keeps them. The card keeps its own breaks: its size is planned with them.)
+  const says = (a, whole) => { const s = a.replace(/^Dress for (.+? weather\.)/, 'Dress for <span class="nw">$1</span>'); return whole ? s.replace(/ (Bring a rain jacket\.|Wear boots\.)/g, ' <span class="nw">$1</span>') : s; };
+  // (The card's heading is its button, for keys and screen readers, so the toggle isn't inside a button. A tap anywhere on
+  // the card opens the view too.)
   function wear(d, o) {
     const k = pickOf(d, o), w = d.wear[k];
     const body = w.none ? '<p class="advice">Its forecast isn’t out yet.</p>'
-      : `<p class="advice">${w.advice}</p><p class="eg">For example</p>${wearItems(w.items)}<p class="note">${note(d, o, k).trim()}</p>`;
-    return `<section class="card wear"><h3>${use('u-shirt')}What to wear</h3><div class="body">${body}${toggle(d, o)}</div></section>`;
+      : `<p class="advice">${says(w.advice)}</p><p class="eg">For example</p>${wearItems(w.items)}<p class="note">${note(d, o, k).trim()}</p>`;
+    return `<section class="card wear" data-go="wear"><h3${go('wear')}>${use('u-shirt')}What to wear${chev}</h3><div class="body">${body}${toggle(d, o)}</div></section>`;
   }
-  // Medium shows up to 4: rain jacket and boots first, then the row's clothes.
+  // Medium shows up to 4: rain jacket and boots first, then the row's clothes. (Its chevron, at the end of the last
+  // phrase, is its button.)
   function wearLine(d, o) {
-    const w = d.wear[pickOf(d, o)];
-    if (w.none) return `<section class="card wl">${toggle(d, o)}<span class="says">Its forecast isn’t out yet.</span></section>`;
+    const w = d.wear[pickOf(d, o)], open = `<span class="open"${go('wear')} aria-label="What to wear">${chevIn}</span>`;
+    if (w.none) return `<section class="card wl" data-go="wear">${toggle(d, o)}<span class="says">Its forecast isn’t <span class="nw">out yet.${open}</span></span></section>`;
     const items = w.items.filter(i => i === 'rain' || i === 'boots').concat(w.items.filter(i => i !== 'rain' && i !== 'boots')).slice(0, 4);
-    return `<section class="card wl">${toggle(d, o)}${wearItems(items, false)}<span class="says">${w.advice}</span></section>`;
+    return `<section class="card wl" data-go="wear">${toggle(d, o)}${wearItems(items, false)}<span class="says">${says(w.advice, true).replace(/<\/span>$/, open + '</span>')}</span></section>`;
+  }
+
+  // What to wear's view for a day: the toggle, the advice a sentence a line, the clothes, and the note, then each school
+  // hour's feels like, where the forecast in hand covers them.
+  function wearView(d, o, k) {
+    const w = d.wear[k];
+    if (w.none) return `<div class="wtop">${toggle(d, o)}<p class="advice">Its forecast isn’t out yet.</p></div>`;
+    const lines = w.advice.match(/[^.]+\./g).map((s, i) => `<span class="s${i ? ' nw' : ''}">${s.trim().replace(/^Dress for (.+)$/, 'Dress for <span class="nw">$1</span>')}</span>`).join(' ');
+    const nt = note(d, o, k, !!w.hrs).trim();
+    return `<div class="wtop">${toggle(d, o)}<p class="advice">${lines}</p>${wearItems(w.items, 'both')}${nt ? `<p class="note">${nt}</p>` : ''}</div>${w.hrs ? school(w.hrs, o, k, w.advice) : ''}`;
+  }
+  // Each school hour's feels like, rain or snow where advise() counts it, and the hour that picks the advice: the coldest,
+  // or on a warm day the warmest. (Two hours that show the same number: the first.) Today, the hours gone by are dim,
+  // and this hour reads Now.
+  function school(hs, o, k, advice) {
+    const tz = pl().tz, warm = / warm /.test(advice), now = Date.now();
+    const f = hs.map(h => (fin(h.feels) ? Math.round(o.c ? (h.feels - 32) * 5 / 9 : h.feels) : NaN)), fs = f.filter(fin);
+    const at = fs.length ? f.indexOf((warm ? Math.max : Math.min)(...fs)) : -1;
+    const mark = h => (h.pop >= 40 && h.temp > 32 ? use('m-drop', 'ic mk') + '<span class="sr">Rain</span>' : h.pop >= 40 && fin(h.temp) && h.temp <= 32 ? use('m-flake', 'ic mk snow') + '<span class="sr">Snow</span>' : '');
+    const marks = hs.some(mark);
+    const cells = hs.map((h, i) => {
+      const past = k === 'today' && (h.t + 3600) * 1000 <= now, cur = k === 'today' && !past && h.t * 1000 <= now;
+      return `<div class="wh${i === at ? ' why' : ''}${past ? ' past' : ''}${cur ? ' now' : ''}"><span class="t">${cur ? 'Now' : clock(h.t * 1000, tz)}</span><b class="v">${T(h.feels, o)}</b>${marks ? `<i class="m">${mark(h)}</i>` : ''}${i === at ? `<span class="k">${warm ? 'Warmest' : 'Coldest'}</span>` : ''}</div>`;
+    }).join('');
+    return `<section class="card whrs"><h3>${use('u-thermo')}Feels like</h3><div class="wrow" style="--n:${hs.length};--h:${Math.ceil(hs.length / 2)}">${cells}</div></section>`;
   }
 
   function sunArc(f) {
@@ -1286,7 +1520,7 @@
   }
   function sun(d, o, L) {
     const s = d.sun, m = d.moon;
-    const moonline = L === 'xl' || !shown('moon') ? '' : `<div class="moonline">${moonSvg(m.fraction, m.waxing)}${m.next}</div>`;
+    const moonline = L !== 'l' || !shown('moon') ? '' : `<div class="moonline">${moonSvg(m.fraction, m.waxing)}${m.next}</div>`;
     return `<section class="card sun"${go('sun')}><h3>${use('u-sun')}Sunrise and sunset${chev}</h3>${sunArc(s.f)}
       <div class="sunrow"><div><small>Sunrise</small><b>${s.rise}</b></div><div><small>Sunset</small><b>${s.set}</b></div></div>
       ${s.daylight ? `<div class="daylight">${s.daylight} of daylight</div>` : ''}${moonline}</section>`;
@@ -1313,13 +1547,14 @@
   function airCard(d, mini, here) {
     const v = d.air.aqi, c = aqCat(v), pill = `<span class="aqpill" style="background:${c[2]};color:${c[3]}">${c[1]}</span>`;
     const head = `<h3>${use('u-air')}Air quality${here ? '' : chev}</h3>`, tap = here ? '' : go('air');
-    if (mini) return `<section class="card air"${tap}>${head}<div class="stack" style="flex:1"><div class="row1"><span class="big">${v}</span>${pill}</div></div></section>`;
-    return `<section class="card air"${tap}>${head}<div class="stack" style="flex:1"><div class="big">${v}</div>${pill}<div class="aqscale"><b style="left:${aqPos(v)}%"></b></div></div></section>`;
+    const say = `<span class="aqsay">${c[4]}</span>`;
+    if (mini) return `<section class="card air"${tap}>${head}<div class="stack" style="flex:1"><div class="row1"><span class="big">${v}</span>${pill}${say}</div></div></section>`;
+    return `<section class="card air"${tap}>${head}<div class="stack" style="flex:1"><div class="big">${v}</div>${pill}<div class="aqscale"><b style="left:${aqPos(v)}%"></b></div>${say}</div></section>`;
   }
   function week5(d, o) {
     const list = d.days.slice(0, 5);
     const cols = list.map(x => `<div class="col"><span class="n">${x[0]}</span>${use(icon(x[1], 1))}<span class="h">${T(x[3], o)}</span><span class="l">${T(x[2], o)}</span></div>`).join('');
-    return `<section class="card"${go('days')}><h3>${use('u-cal')}7-day forecast${d.src !== 'nws' ? '<span class="cr">Open-Meteo</span>' : ''}${chev}</h3><div class="week" style="--n:${list.length}">${cols}</div></section>`;
+    return `<section class="card weekc"${go('days')}><h3>${use('u-cal')}7-day forecast${d.src !== 'nws' ? '<span class="cr">Open-Meteo</span>' : ''}${chev}</h3><div class="week" style="--n:${list.length};--m:${list.length - 1}">${cols}</div></section>`;
   }
 
   function frame(L, sc, o, body, extra, grid) {
@@ -1344,14 +1579,20 @@
     if (last) { rows.push('auto'); areas.push(`${wear ? 'wear' : 'hero'} ${bot || top}`); }
     return tpl('minmax(0,1fr) minmax(0,1.08fr)', rows, areas);
   }
+  // (Fill the board: Now over What to wear on the left, the hours across the top, then the days and the small cards, one
+  // or two to a row.)
   function gridXL(band, wear, hr, dy, sm) {
-    const lower = dy && sm ? 'days smalls' : dy ? 'days days' : sm ? 'smalls smalls' : '';
-    const r1 = hr ? 'hourly hourly' : lower, r2 = hr ? lower || 'hourly hourly' : lower;
-    if (!r1) return solo(band, wear);
-    const rows = [], areas = [];
-    if (band) { rows.push('auto'); areas.push('band band band'); }
-    rows.push(hr && lower ? 'auto' : 'minmax(0,1fr)', 'minmax(0,1fr)'); areas.push(`hero ${r1}`, `${wear ? 'wear' : 'hero'} ${r2}`);
-    return tpl('minmax(0,1.2fr) minmax(0,1.15fr) minmax(0,1.9fr)', rows, areas);
+    const n = sm.length, cols = ['minmax(0,1.2fr)'], lo = [[], []];
+    if (dy) { cols.push('minmax(0,1.15fr)'); lo[0].push('days'); lo[1].push('days'); }
+    if (n >= 3) { cols.push('minmax(0,.95fr)', 'minmax(0,.95fr)'); lo[0].push(sm[0], sm[1]); lo[1].push(sm[2], sm[3] || sm[2]); }
+    else if (n) { cols.push('minmax(0,1.9fr)'); lo[0].push(sm[0]); lo[1].push(sm[1] || sm[0]); }
+    if (!dy && !n) { if (!hr) return solo(band, wear); cols.push('minmax(0,3.05fr)'); }
+    const k = cols.length - 1, rows = [], areas = [], left = wear ? 'wear' : 'hero';
+    if (band) { rows.push('auto'); areas.push(Array(k + 1).fill('band').join(' ')); }
+    if (hr && (dy || n)) { rows.push('auto', 'minmax(0,1fr)', 'minmax(0,1fr)'); areas.push(['hero'].concat(Array(k).fill('hourly')).join(' '), [left].concat(lo[0]).join(' '), [left].concat(lo[1]).join(' ')); }
+    else if (hr) { rows.push('minmax(0,1fr)', 'minmax(0,1fr)'); areas.push(['hero'].concat(Array(k).fill('hourly')).join(' '), [left].concat(Array(k).fill('hourly')).join(' ')); }
+    else { rows.push('minmax(0,1fr)', 'minmax(0,1fr)'); areas.push(['hero'].concat(lo[0]).join(' '), [left].concat(lo[1]).join(' ')); }
+    return tpl(cols.join(' '), rows, areas);
   }
   const sceneOf = d => {
     if (d.offline) return scene(group(d.days[0][1]), isDay(Date.now()));
@@ -1359,35 +1600,53 @@
     return d.now ? scene(group(d.now.code), d.now.day, d.now.dusk) : scene(group(d.days[0][1]), isDay(Date.now()));
   };
 
+  // The small cards shown, in order: sunrise and sunset (in Large with the moon's line), wind, the moon, air quality.
+  // Large's one slot takes the moon before wind and air quality, which Now already has as lines.
+  function smalls(d, o, L) {
+    const c = { sun: shown('sun') && sun(d, o, L), wind: !d.offline && shown('wind') && d.now && wind(d, o), moon: shown('moon') && moon(d), air: !d.offline && shown('air') && d.air && airCard(d) };
+    return (L === 'l' ? ['sun', 'moon', 'wind', 'air'] : ['sun', 'wind', 'moon', 'air']).map(k => c[k])
+      .filter(Boolean).filter((x, i, a) => !(L === 'l' && /class="card moon"/.test(x) && /class="card sun"/.test(a[0])));
+  }
   function render(d, o) {
     if (d.empty) return message(o, d.loading ? ['Getting the weather…'] : !online() ? ['You’re offline.', 'The weather shows once you’re online.'] : ['Can’t get the weather.', 'It tries again on its own.'], d.loading);
     if (o.simple) return simple(d, o);
     const L = layout(o.w, o.h, o.max);
     let v = o.view;
-    if (d.offline && v !== 'days' && v !== 'sun') v = 'main';
-    if ((v === 'alert' && !d.alerts.some(watchesOk)) || (v === 'air' && !d.air) || (L === 's' && v !== 'alert')) v = 'main';
+    if (d.offline && v !== 'days' && v !== 'sun' && v !== 'wear') v = 'main';
+    if ((v === 'alert' && !d.alerts.some(watchesOk)) || (v === 'air' && !d.air) || (v === 'wear' && !(d.wear && shown('wear'))) || (L === 's' && v !== 'alert')) v = 'main';
     if (v !== 'main') return detail(d, o, v, L);
     const b = band(d, o, L);
     let body, grid = '', extra = (b ? ' has-band' : '') + (d.offline ? ' is-off' : '');   // (fit() closes up a short window)
     if (L === 's') body = b + hero(d, o, L);
     else if (L === 'm') {
-      const mid = shown('days') ? week5(d, o) : shown('hourly') && !d.offline ? hourly(d, o, 6, false, true) : '';
-      const wl = shown('wear') && d.wear ? wearLine(d, o) : '';
-      body = b + hero(d, Object.assign({}, o, { mCredit: !mid }), L) + mid + wl;
+      // (A tall window has room for the small cards, What to wear as a card, the 7 days as rows when no small card
+      // shows, and 12 hours, all shown in two rows where there's room (one row shows 6). Now with nothing under it shares
+      // the window with up to two small cards. What to wear alone, 480 px tall or more, is a card.)
+      const tall = o.h >= 1.3 * o.w && o.h >= 560, hasWear = shown('wear') && d.wear;
+      const sm0 = smalls(d, o, L), mid0 = shown('days') || (shown('hourly') && !d.offline);
+      const sm = tall || (!mid0 && !hasWear && o.w >= 420 && o.h >= 300) ? sm0.slice(0, tall ? 4 : 2) : [];
+      const mid = shown('days') ? (tall && !sm.length ? days(d, o) : week5(d, o)) : shown('hourly') && !d.offline ? hourly(d, o, tall ? 12 : 6, false, true) : '';
+      const wl = hasWear ? ((tall && o.h >= 760) || (!mid && !sm.length && o.h >= 480) ? wear(d, o) : wearLine(d, o)) : '';
+      body = b + hero(d, Object.assign({}, o, { mCredit: !mid }), L) + mid + sm.join('') + wl;
+      // (The mockup's grid, for when nothing fits at 14 px: then the small cards don't show.)
       grid = 'grid-template-rows:' + [b && 'auto', mid ? 'auto' : 'minmax(0,1fr)', mid && 'minmax(0,1fr)', wl && 'auto'].filter(Boolean).join(' ');
-      if (!mid) extra += ' m-big';
+      if (!mid && !sm.length) extra += ' m-big';
     } else if (L === 'l') {
-      const top = shown('days') ? days(d, o) : '', wr = shown('wear') && d.wear ? wear(d, o) : '';
-      const bot = shown('sun') ? sun(d, o, L) : shown('moon') ? moon(d) : '';
+      // (Two slots: the 7 days, else the hours; then the first small card shown.)
+      const hr = !shown('days') && shown('hourly') && !d.offline ? hourly(d, o, 12 + (d.hours.slice(0, 13).some(h => typeof h[2] !== 'number') ? 1 : 0)) : '';
+      const top = shown('days') ? days(d, o) : hr, wr = shown('wear') && d.wear ? wear(d, o) : '';
+      const bot = smalls(d, o, L)[0] || '';
       body = b + hero(d, o, L) + top + wr + bot;
-      grid = gridL(!!b, !!wr, top && 'days', bot && (shown('sun') ? 'sun' : 'moon'));
+      // (The mockup's grid, for when nothing fits at 14 px: then the hours, the wind, and air quality don't show.)
+      const bn = bot && (bot.match(/class="card (\w+)"/) || [])[1];
+      grid = gridL(!!b, !!wr, shown('days') ? 'days' : '', /^(sun|moon)$/.test(bn) ? bn : '');
       if (!top && !bot) extra += ' l-solo';
     } else {
       const hr = shown('hourly') && !d.offline ? hourly(d, o, 12 + (d.hours.slice(0, 13).some(h => typeof h[2] !== 'number') ? 1 : 0)) : '';
       const wr = shown('wear') && d.wear ? wear(d, o) : '', dy = shown('days') ? days(d, o) : '';
-      const sm = [shown('sun') && sun(d, o, L), !d.offline && shown('wind') && d.now && wind(d, o), shown('moon') && moon(d), !d.offline && shown('air') && d.air && airCard(d)].filter(Boolean);
-      body = b + hero(d, o, L) + hr + wr + dy + (sm.length ? `<div class="smalls n${sm.length}">${sm.join('')}</div>` : '');
-      grid = gridXL(!!b, !!wr, !!hr, !!dy, !!sm.length);
+      const sm = smalls(d, o, L);
+      body = b + hero(d, o, L) + hr + wr + dy + sm.join('');
+      grid = gridXL(!!b, !!wr, !!hr, !!dy, sm.map(c => (c.match(/class="card (\w+)"/) || [])[1]));
     }
     return frame(L, sceneOf(d), o, body, extra, grid);
   }
@@ -1408,6 +1667,12 @@
       const a = d.air.aqi, c = aqCat(a);
       body = back('Air quality') + `<div class="dair"><div class="big">${a}</div><span class="aqpill" style="background:${c[2]};color:${c[3]}">${c[1]}</span>
         <div class="aqscale"><b style="left:${aqPos(a)}%"></b></div><p>${c[4]}</p>${d.air.later ? `<p>${d.air.later}</p>` : ''}</div><p class="foot">U.S. Air Quality Index from Open-Meteo and Copernicus</p>`;
+    } else if (v === 'wear') {
+      // (The day the toggle picks. The other day waits in a template, so fillOne() sizes both together and the toggle
+      // moves nothing. Left out where the two days show different parts.)
+      const k = pickOf(d, o), j = k === 'today' ? 'next' : 'today', a = d.wear[k], b = d.wear.today ? d.wear[j] : null;
+      const alt = b && !a.none && !b.none && !a.hrs === !b.hrs ? `<template>${wearView(d, Object.assign({}, o, { wear: j }), j)}</template>` : '';
+      body = back('What to wear') + `<div class="dwear">${wearView(d, o, k)}${alt}</div><p class="foot">${credit(d)}</p>`;
     } else if (v === 'alert') {
       const list = d.alerts.filter(watchesOk).map(a => `<div class="alert"><h4>${esc(a.event)}</h4><span class="k">${span(a)}</span>${a.text.map(p => `<p>${esc(p)}</p>`).join('')}${a.todo.length ? `<p class="lab">What to do</p>${a.todo.map(p => `<p>${esc(p)}</p>`).join('')}` : ''}</div>`).join('');
       body = back('Watches and warnings') + `<div class="scroll">${list}</div><p class="foot">From the National Weather Service</p>`;
@@ -1500,9 +1765,13 @@
     if (!started) return;
     const info = Board21.context && Board21.context.window;
     const o = { w: innerWidth, h: innerHeight, max: !!(info && info.maximized), c: config.units === 'c', view, wear: wearPick || plan(Date.now()).show, still: config.still, simple: config.simple };
-    let html;
-    if (config.date) { const m = model(); html = renderDate(o, m.today); }
-    else { const m = model(); if (!m.empty) m.allDays = !m.offline && fc ? fc.days : (saved && saved.place === pl().id ? saved.days : []); html = render(m, o); }
+    let html, changed = false;
+    if (config.date) { const m = model(); html = renderDate(o, m.today); wideT = widest([day && day.hi], o); }
+    else {
+      const m = model(); if (!m.empty) m.allDays = !m.offline && fc ? fc.days : (saved && saved.place === pl().id ? saved.days : []); html = render(m, o);
+      // (The temperature's room fits today's widest: Now, the high, and the low. The 7 days' columns fit the week's.)
+      if (!m.empty) { wideT = widest([m.now && m.now.t, m.today && m.today.hi, m.today && m.today.lo], o); wideD = widest((m.days || []).flatMap(x => [x[2], x[3]]), o); }
+    }
     if (html !== drawn) {
       const v = $('view'), a = document.activeElement, keyOf = e => e && e.closest && e.closest('#view') && ['data-go', 'data-wear', 'data-act'].map(k => e.getAttribute(k) || '').join('|');
       const focusKey = keyOf(a), t = document.createElement('template');
@@ -1514,9 +1783,12 @@
         for (const k of [...ow.childNodes]) if (k !== of) k.remove();
         nf.remove(); ow.append(...nw.childNodes);
       } else v.replaceChildren(t.content);
-      if (focusKey) { const e = [...v.querySelectorAll('[data-go], [data-wear], [data-act]')].find(e => keyOf(e) === focusKey); if (e) e.focus(); }
+      if (focusKey) { const e = [...v.querySelectorAll('[data-go], [data-wear], [data-act]')].find(e => keyOf(e) === focusKey && e.tabIndex >= 0); if (e) e.focus(); }
       drawn = html;
+      changed = true;
     }
+    // (The strip's clothes all back first, so a plan never depends on the last fit.)
+    { const wx = $('view').querySelector('.wx'), inn = wx && wx.querySelector(':scope > .in'); if (inn) { for (const f of inn.querySelectorAll('.wl .items > figure')) f.style.removeProperty('display'); fill(wx, inn, changed); } }
     fit();
     const title = config.date ? shortDate(config.date) : '';
     if (title !== titleWas) { titleWas = title; Board21.window.setTitle(title); }
@@ -1539,11 +1811,24 @@
     if (!inn) return;
     wx.classList.remove(...STEPS, 'brief', 'short-date', 'lift');
     const band = inn.querySelector(':scope > .band.warn, :scope > .band.watch');
-    const over = () => inn.scrollHeight > inn.clientHeight + 1 || [...inn.querySelectorAll('.card')].some(c => c.scrollHeight > c.clientHeight + 2) || [...inn.querySelectorAll(':scope > .hero')].some(h => spills(h, inn));
+    // (Each part as fill() checks it, its boxes inside their parents, where fill() sized it; the mockup's own check where
+    // it didn't.)
+    const over = wx.matches('.laid, .V-detail') ? () => inn.scrollHeight > inn.clientHeight + 1 || [...inn.children].some(e => e.matches('.card, .dnow, .cards, .dair, .daysc, .hourly, .dwear') && !fitsIn(e)) || [...inn.querySelectorAll(':scope > .hero')].some(h => spills(h, inn) || !fitsIn(h)) || [...inn.querySelectorAll(':scope > .dwear > .wtop > p')].some(wider)
+      : () => inn.scrollHeight > inn.clientHeight + 1 || [...inn.querySelectorAll('.card')].some(c => c.scrollHeight > c.clientHeight + 2) || [...inn.querySelectorAll(':scope > .hero')].some(h => spills(h, inn));
     // A warning in Medium keeps to one line, without its time span if need be. Tapped, it shows the span.
     if (band && wx.classList.contains('L-m') && wraps(band)) wx.classList.add('brief');
-    if (!wx.matches('.V-simple, .V-date, .L-s:not(.V-detail)')) for (const k of STEPS) { if (!over()) break; wx.classList.add(k); }
+    // (A window fill() sized keeps the steps it measured; the rest close up while they run over.)
+    if (wx.classList.contains('laid')) { if (laid && laid.steps) wx.classList.add(...laid.steps); }
+    // (What to wear's view: the steps both days were sized with, so the toggle never changes its spacing.)
+    else if (inn.querySelector(':scope > .dwear')) { wx.classList.add(...(one.steps || [])); for (const k of STEPS) { if (!over()) break; wx.classList.add(k); } }
+    else if (!wx.matches('.V-simple, .V-date, .L-s:not(.V-detail)')) for (const k of STEPS) { if (!over()) break; wx.classList.add(k); }
     if (band && over()) wx.classList.add('brief');
+    // Medium's What to wear strip: where a phrase of its advice would run out of it, its clothes give way, the last first.
+    for (const wl of wx.querySelectorAll('.wl')) {
+      const s = wl.querySelector('.says'), figs = [...wl.querySelectorAll('.items > figure')];
+      const out = () => { const r = rectOf(s).right + 1; return [...s.querySelectorAll('.nw')].some(n => rectOf(n).right > r); };
+      for (let i = figs.length - 1; i >= 0 && s && out(); i--) figs[i].style.display = 'none';
+    }
     // Simple words: the sentence and the clothes keep clear of the credit under them (lift).
     const cr = wx.classList.contains('V-simple') && inn.querySelector(':scope > .src'), above = cr && cr.previousElementSibling;
     if (above && above.getBoundingClientRect().bottom > cr.getBoundingClientRect().top - 1) wx.classList.add('lift');
@@ -1555,8 +1840,8 @@
     for (const c of wx.querySelectorAll('svg.compass')) {
       const g = c.querySelector('.nesw'), k = c.getBoundingClientRect().width / 100;
       if (!g || !k) continue;
-      const size = Math.max(13, 14 / k), x = 14.5 + 0.6 * size, [, e, , w] = g.querySelectorAll('text');
-      g.setAttribute('font-size', size.toFixed(1)); g.style.display = 14 / k > 17 ? 'none' : '';
+      const size = Math.ceil(Math.max(13, 14 / k) * 10) / 10, x = 14.5 + 0.6 * size, [, e, , w] = g.querySelectorAll('text');
+      g.setAttribute('font-size', size.toFixed(1)); g.style.display = size > 21 ? 'none' : '';
       w.setAttribute('x', x.toFixed(1)); e.setAttribute('x', (100 - x).toFixed(1));
     }
     // On a date's chart: 12 AM and 12 PM only, when 6 AM and 6 PM would touch them.
@@ -1566,8 +1851,1282 @@
       if (r.some((a, i) => i && a.left < r[i - 1].right + 8)) ch.classList.add('few');
     }
   }
+  // ---- Filling the window, front of the room first. Now leads (the temperature, the sky, high and low), then a
+  // warning, What to wear, the days, the hours, and the rest. Each part draws at its own size (its own font px), the
+  // biggest that fits its cell, and the cells are shared by priority:
+  //   1. probe: each part on its own at 14 px, in em. Kept until the parts, what they say, or the letters change.
+  //   2. solve: arithmetic. For each arrangement and each shape of each part, the tracks that give the most
+  //      Σ priority × ln(size), with every card's words at most LEAD of Now's, none under 14 px, and none smaller than
+  //      the mockup draws it at this size unless nothing else fits.
+  //   3. refine: the sizes checked as drawn, each part grown or shrunk on its own until it just fits.
+  //   4. Nothing fits at 14 px, even closed up: the mockup's own layout, which fit() closes up as before.
+  // Measured again only when the window's size, the board's corner marks, the letters, or what the parts say change
+  // (numbers count as 8s, so a new hour's numbers or a new sky keep the sizes while they fit).
+  const PRI = { hero: 3, wear: 1.5, wl: 1.5, days: 1.25, week: 1.25, hourly: 1.1, sun: 1, windc: 1, air: .9, moon: .8, chart: 1.2, side: .8 };
+  const LEAD = .9, LOW = .6, FLOOR = 14;
+  const REGS = [['hero', 'hero'], ['wear', 'wear'], ['wl', 'wl'], ['daysc', 'days'], ['weekc', 'week'], ['hourly', 'hourly'], ['sun', 'sun'], ['windc', 'windc'], ['air', 'air'], ['moon', 'moon'], ['chartc', 'chart'], ['side', 'side']];
+  const regOf = e => (REGS.find(([c]) => e.classList.contains(c)) || [])[1];
+  // A part fits when each of its boxes holds its own: every child's box inside its parent's (a card's inside its padding),
+  // and no line wider than its box. (Boxes, not scroll sizes: the temperature's and big numbers' tight line heights let
+  // their digits run past their line by design.)
+  const INNER = '.card, h3, .left, .right, .days, .days li, .hours, .hr, .week, .week .col, .windbody, .moonbody, .stack, .sunrow, .moonline, .row1, .body, .items, .tg, .dnow, .dnow .hero, .dnow .cards, .cards, .dair, .side, .chart, .wtop, .wrow, .wh';
+  const wider = e => e.scrollWidth > e.clientWidth + 1;
+  const rectOf = e => e.getBoundingClientRect();
+  // (Now's cell as drawn: its longest run across with no words or picture, as a share of its inside width.)
+  function bareOf(e) {
+    const s = getComputedStyle(e), q = rectOf(e), l = q.left + parseFloat(s.paddingLeft), r = q.right - parseFloat(s.paddingRight), iv = [], rg = document.createRange();
+    const tw = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    for (let t = tw.nextNode(); t; t = tw.nextNode()) { if (!t.nodeValue.trim()) continue; rg.selectNodeContents(t); for (const b of rg.getClientRects()) if (b.width > 0) iv.push([b.left, b.right]); }
+    for (const g of e.querySelectorAll('svg, img')) { const b = rectOf(g); if (b.width > 0) iv.push([b.left, b.right]); }
+    let at = l, most = 0;
+    for (const [a, b] of iv.sort((x, y) => x[0] - y[0])) { if (a > at) most = Math.max(most, a - at); at = Math.max(at, b); }
+    return Math.max(most, r - at) / Math.max(1, r - l);
+  }
+  // (A wrapper with no box of its own, display: contents, as the sun's times in a row: its children count in its parent's
+  // box.)
+  const kidsOf = e => [...e.children].flatMap(k => { const q = rectOf(k); return !q.width && !q.height && k.childElementCount ? kidsOf(k) : [[k, q]]; });
+  const boxFits = e => {
+    const r = rectOf(e), s = e.classList.contains('card') ? getComputedStyle(e) : null;
+    if (!r.width && !r.height) return true;
+    const t = r.top + (s ? parseFloat(s.paddingTop) : 0) - 1, b = r.bottom - (s ? parseFloat(s.paddingBottom) : 0) + 1, l = r.left + (s ? parseFloat(s.paddingLeft) : 0) - 1, rt = r.right - (s ? parseFloat(s.paddingRight) : 0) + 1;
+    // (The temperature sits a little left of its block, by design.)
+    return !wider(e) && kidsOf(e).every(([k, q]) => { const dl = k.classList.contains('temp') ? .07 * parseFloat(getComputedStyle(k).fontSize) : 0; return !q.height || !q.width || (q.top >= t && q.bottom <= b && q.left >= l - dl && q.right <= rt); });
+  };
+  const fitsIn = e => boxFits(e) && [...e.querySelectorAll(INNER)].every(boxFits);
+  // Every part fits, inside the window's own box (a centered grid can run out of both sides without scrolling).
+  const fitsAll = (regs, inn) => {
+    const r = rectOf(inn);
+    return inn.scrollHeight <= inn.clientHeight + 1 && inn.scrollWidth <= inn.clientWidth + 1
+      && regs.every(x => { const q = rectOf(x.el); return q.left >= r.left - 1 && q.right <= r.right + 1 && q.top >= r.top - 1 && q.bottom <= r.bottom + 1 && fitsIn(x.el); });
+  };
+  // What the parts say, numbers as 8s: the sizes stay while only the numbers change.
+  const sigOf = inn => inn.textContent.replace(/\s+/g, ' ').replace(/\d/g, '8');
+  // (Classes that come and go with fitting, the sky, and motion: not part of what's drawn.)
+  const STATE = /\b(sc-\S+|still|filled|laid|probe|tight|tighter|tightest|brief|lift|short-date|m-big)\b/g;
+  let fontTurn = 0;
+
+  // The widest a temperature and the sky's words can be, in em, so a new hour's numbers never resize the window's parts.
+  // (Every temperature the forecast holds now, its digits as 8s: so 9° to 10° keeps the same room.)
+  let rulerKey = '', rulerVals = {}, rulerDay = null, wideT = ['88'], wideD = ['88'];
+  // (An ordinary day's numbers: today's widest without a minus sign or a third digit. A layout is chosen for them, so a
+  // day at −13° or 104° keeps the window's layout and only sizes it again.)
+  const usual = a => [...new Set(a.map(n => n.replace(/^[−-](?=\d\d)/, '').replace(/^188$/, '88')))];
+  const widest = (list, o) => { const s = new Set(list.filter(fin).map(f => num(f, o).replace(/\d/g, '8').replace(/^888$/, '188'))); return s.size ? [...s] : ['88']; };
+  function rulers(wx, hero, c, font) {
+    const k = font + fontTurn + (c ? 'c' : 'f') + wx.className.match(/\bL-\w+/) + wideT.join() + '|' + wideD.join();
+    if (k === rulerKey || !hero) { for (const v in rulerVals) wx.style.setProperty(v, rulerVals[v]); return; }
+    const t = hero.querySelector('.temp'), w = hero.querySelector('.cond');
+    if (!t) return;
+    const box = document.createElement('div');
+    box.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap';
+    t.parentNode.appendChild(box);
+    const width = (html, cls) => { const e = document.createElement('div'); e.className = cls; e.style.cssText = 'display:inline-flex;align-items:center;min-width:0;width:auto'; e.innerHTML = html; box.appendChild(e); return e; };
+    const tw = n => width(`${n}<span class="deg">°</span><span class="unit">${c ? 'C' : 'F'}</span>`, 'temp'), temps = wideT.map(tw), tempsU = usual(wideT).map(tw);
+    const conds = w ? ['Thunderstorms', 'Partly cloudy', 'Mostly sunny'].map(x => width(`${use('w-storm')}${x}`, 'cond')) : [];
+    const em = e => e.getBoundingClientRect().width / parseFloat(getComputedStyle(e).fontSize);
+    // (The 7 days' highs and lows: columns as wide as the week's widest number, so a week at −13° or 104° fits its rows.)
+    const dw = n => { const e = width(`${n}°`, ''); e.style.fontWeight = '600'; e.style.fontVariantNumeric = 'tabular-nums'; return e; }, dn = wideD.map(dw), dnU = usual(wideD).map(dw);
+    rulerVals = { '--tw': Math.max(...temps.map(em)).toFixed(3) + 'em', '--dw': (.05 + Math.max(...dn.map(em))).toFixed(3) + 'em' };
+    rulerDay = { '--tw': Math.max(...tempsU.map(em)).toFixed(3) + 'em', '--dw': (.05 + Math.max(...dnU.map(em))).toFixed(3) + 'em' };
+    if (rulerDay['--tw'] === rulerVals['--tw'] && rulerDay['--dw'] === rulerVals['--dw']) rulerDay = null;
+    if (conds.length) rulerVals['--cw'] = Math.max(...conds.map(em)).toFixed(3) + 'em';
+    box.remove();
+    for (const v in rulerVals) wx.style.setProperty(v, rulerVals[v]);
+    rulerKey = k;
+  }
+
+  // 1. Each part's least box, in px, at 14 px and at 22 px: { px: { shape: [[w, h] at 14, [w, h] at 22] } }. Between the
+  // two a box grows in a straight line (lines floored at 14 px stop growing first); above 22 px, in proportion. Now has
+  // two blocks (one over the other, or side by side), the hours one or two rows, the wind and the moon their picture
+  // beside or over, What to wear its clothes under or beside the advice. Now, What to wear, and the sun's card are also
+  // measured half as wide again, shorter.
+  // (KEYX: filling the board, the days and the hours aim for KEYX px or more. NOWX: in Large, Now's band left more than
+  // NOWX empty across gives its room to a card. KEYD: filling the board with three or four small cards, the days run down
+  // the right where they'd draw under KEYD px, well clear of what bigger boards draw. LTK: in Large, the hours' way keeps
+  // LTK of Now's size where it gives the hours their size. LTW, DT, LTL: in Large more than LTW times as wide as tall, the
+  // days run down the right, LTG times as big and DT px or more (DT px where Now draws LTE as big), where the other ways
+  // draw them under KEYX, while Now keeps LTL of its size. LTT: more than LTT times as wide, with the sun and no wind line,
+  // as round 8 drew them. LTE: where Now's band is more than NOWX empty, the days down the right where Now draws LTE as big.)
+  const BIG = 22, BAR = .35, KEY = 18, KEYX = 20, NOWX = .3, NOWK = .75, KEYD = 18.75, LTK = .85, LTW = 2, LTT = 2.2, DT = 18, LTG = 1.1, LTL = .9, LTE = .99, LIFT = .95, HAIRX = .35;
+  // (The lines a teacher reads from the back of the room: the sky, high and low, Now's other lines, What to wear's
+  // advice, the days' highs and lows, the wind, sunrise and sunset, and the hours' temperatures. The smallest, as drawn.)
+  const KEYS = '.hero .cond, .hero .hl, .hero .more, .wear .advice, .days .hi, .days .lo, .windc .big, .sunrow b, .hr .v:not(.sm)';
+  const keyMin = inn => Math.min(...[...inn.querySelectorAll(KEYS)].filter(e => e.getClientRects().length).map(e => parseFloat(getComputedStyle(e).fontSize)));
+  // (Back to each part's own look: no shape, no picture size, no heading size, no band size, nothing hidden.)
+  function plain(inn, regs) {
+    const top = inn.querySelector(':scope > .band, :scope > .bar2');
+    if (top) { top.style.removeProperty('font-size'); top.style.removeProperty('justify-self'); }
+    inn.style.removeProperty('--h3');
+    for (const r of regs) {
+      for (const k of ['--pic', '--sky', 'display']) r.el.style.removeProperty(k);
+      if (r.name === 'hero' || r.name === 'wear') r.el.classList.remove('side', 'stk', 'mid', 'sn');
+      if (r.name === 'days') r.el.classList.remove('dt');
+      if (r.name === 'week') setWr(r.el, 0);
+      if (r.name === 'sun') { r.el.classList.remove('col', 'row'); r.el.style.removeProperty('--arch'); }
+      for (const e of r.el.querySelectorAll('.windbody, .moonbody')) e.classList.remove('col');
+      if (r.name === 'hourly') { const hs = r.el.querySelector('.hours'); hs.classList.remove('two', 'all'); hs.style.removeProperty('--cols'); }
+      if (r.name === 'air') { r.el.classList.remove('nosay', 'row'); const b = r.el.querySelector('.stack > .big'); if (b) b.style.removeProperty('font-size'); }
+    }
+  }
+  // What to wear's box reaches as far as its words, clothes, and toggle do, not its card's width: so a plan sees the room
+  // it can't use.
+  function reach(e) {
+    const q = rectOf(e), s = getComputedStyle(e), g = document.createRange();
+    let r = q.left + parseFloat(s.paddingLeft);
+    for (const k of e.querySelectorAll('h3, .body > :not(.items), .items > *')) {
+      if (k.matches('h3, .advice, .note, .eg')) { g.selectNodeContents(k); for (const t of g.getClientRects()) if (t.width) r = Math.max(r, t.right); }
+      else r = Math.max(r, rectOf(k).right);
+    }
+    return Math.min(q.width, r - q.left + parseFloat(s.paddingRight));
+  }
+  function probe(wx, inn, regs) {
+    plain(inn, regs);
+    // (Measured the same way whatever was drawn before: never as laid.)
+    const wasLaid = wx.classList.contains('laid');
+    wx.classList.remove('laid');
+    wx.classList.add('probe');
+    // (Without the window's side padding, --inset, so a probe holds for any window size. Each part's count of it, ki,
+    // is added back in solve().)
+    wx.style.setProperty('--inset', '0px');
+    try {
+      const sh = {};
+      for (const r of regs) sh[r.name] = { px: {}, sw: [], sh: [] };
+      const hero = regs.find(r => r.name === 'hero'), wr = regs.find(r => r.name === 'wear');
+      [FLOOR, BIG].forEach((f, i) => {
+        for (const r of regs) r.el.style.fontSize = f + 'px';
+        // (Each part's smallest key line, in em of its size: so a plan can keep every key line at KEY px.)
+        if (!i) for (const r of regs) { const v = [...r.el.querySelectorAll(KEYS)].filter(e => e.getClientRects().length).map(e => parseFloat(getComputedStyle(e).fontSize) / f); if (v.length) sh[r.name].kr = Math.min(...v); }
+        const put = (r, k, w, h) => { (sh[r.name].px[k] || (sh[r.name].px[k] = []))[i] = [w, h]; };
+        for (const r of regs) {
+          const q = rectOf(r.el), W = q.width, H = q.height;
+          if (r.name === 'hourly') {
+            // (Two rows measured as drawn: their own spacing, and no rain row when no hour has rain. In Medium, 6 hours show,
+            // in one row or two. A tall window has 12, and a third shape shows them all in two rows: a2.)
+            const hs = r.el.querySelector('.hours'), hq = rectOf(hs), hrs = [...hs.children].filter(e => rectOf(e).width), n = hrs.length || 1, h3 = r.el.querySelector('h3');
+            const cw = Math.max(...hrs.map(e => rectOf(e).width)) + .45 * f, rh = hq.height, h3w = h3 ? rectOf(h3).width : 0, padW = W - Math.max(h3w, hq.width);
+            put(r, 'r1', padW + Math.max(h3w, n * cw), H);
+            const two = (k, m, all) => {
+              hs.classList.add('two'); hs.classList.toggle('all', all); hs.style.setProperty('--cols', Math.ceil(m / 2));
+              const h2 = rectOf(hs).height, c = all ? Math.max(...[...hs.children].map(e => rectOf(e).width)) + .45 * f : cw;
+              hs.classList.remove('two', 'all'); hs.style.removeProperty('--cols');
+              put(r, k, padW + Math.max(h3w, Math.ceil(m / 2) * c), H - rh + h2);
+            };
+            if (n >= 4) two('r2', n, false);
+            if (hs.children.length > n) two('a2', hs.children.length, true);
+          } else if (r.name === 'windc' || r.name === 'moon') {
+            const b = r.el.querySelector('.windbody, .moonbody'), st = b.querySelector('.stack'), pic = b.firstElementChild;
+            const bq = rectOf(b), padW = W - bq.width, padH = H - bq.height, sw = rectOf(st).width, shh = rectOf(st).height, p = rectOf(pic).width;
+            put(r, 'row', padW + p + f + sw, padH + Math.max(p, shh)); put(r, 'col', padW + Math.max(p, sw), padH + p + .6 * f + shh);
+            sh[r.name].sw[i] = sw / f; sh[r.name].sh[i] = shh / f; (sh[r.name].pd || (sh[r.name].pd = []))[i] = [padW / f, padH / f];
+          } else if (r.name === 'days') {
+            // (The range bar's share of its row, BAR or 3.5 em, counted in: the words give way, not the bar. In Large, also
+            // with each day's rain chance under its icon: tall.)
+            const one = k => {
+              const q = rectOf(r.el), li = r.el.querySelector('.days li'), bar = li && li.querySelector('.bar');
+              let w = q.width;
+              if (bar) { const lw = rectOf(li).width, bw = rectOf(bar).width, rest = lw - bw; w = q.width + Math.max(0, Math.max(3.5 * f, BAR / (1 - BAR) * rest) - bw); }
+              put(r, k, w, q.height);
+            };
+            one('one');
+            if (wx.classList.contains('L-l')) { r.el.classList.add('dt'); one('tall'); r.el.classList.remove('dt'); }
+          } else put(r, 'one', W, H);
+        }
+        const atWidth = (r, k, scale, to) => { const q0 = rectOf(r.el); r.el.style.width = (to || q0.width * scale).toFixed(1) + 'px'; const q = rectOf(r.el); put(r, k, r.name === 'wear' ? reach(r.el) : q.width, q.height); r.el.style.width = ''; };
+        for (const r of regs) if (/^(hero|sun|side)$/.test(r.name)) atWidth(r, 'wide', 1.45);
+        // (What to wear wide: as wide as its advice on one line, and as tall as it is half as wide again, so a plan never
+        // counts on the advice staying on one line.)
+        if (wr) {
+          const a = wr.el.querySelector('.advice'), q = rectOf(wr.el), bw = rectOf(wr.el.querySelector('.body')).width;
+          if (a) a.style.width = 'max-content';
+          const to = a ? q.width - bw + rectOf(a).width + 1 : 0;
+          if (a) a.style.width = '';
+          atWidth(wr, 'wide', 1.45);
+          const h = sh.wear.px.wide[i][1];
+          atWidth(wr, 'wide', 1.45, Math.max(to, q.width * 1.45));
+          sh.wear.px.wide[i][1] = Math.max(h, sh.wear.px.wide[i][1]);
+        }
+        if (wr && wr.el.querySelector('.items')) {
+          wr.el.classList.add('side'); atWidth(wr, 'side', 1);
+          if (wx.classList.contains('L-l')) { wr.el.classList.add('sn'); atWidth(wr, 'sn', 1); wr.el.classList.remove('sn'); }
+          wr.el.classList.remove('side');
+        }
+        if (hero && hero.alt) {
+          hero.el.classList.add(hero.alt); atWidth(hero, hero.alt, 1); atWidth(hero, hero.alt + 'W', 1.45);
+          // (Side by side, the temperature's block and the sky's, so a plan knows how far lines() will grow the sky.)
+          if (hero.alt === 'side') { const lq = rectOf(hero.el.querySelector(':scope > .left')), rq = rectOf(hero.el.querySelector(':scope > .right')); (sh.hero.sky || (sh.hero.sky = []))[i] = [lq.height / f, rq.width / f, rq.height / f]; }
+          hero.el.classList.remove(hero.alt);
+        }
+      });
+      // (Now's lines don't wrap, so a wider Now is only wider: its wide shapes count only where they're shorter.)
+      if (hero) for (const [k, w] of [['one', 'wide'], [hero.alt, hero.alt + 'W']]) {
+        const o = sh.hero.px, a = o[k], b = o[w];
+        if (a && b && b.every((q, i) => q[1] >= a[i][1] * .97)) delete o[w];
+      }
+      const band = inn.querySelector(':scope > .band, :scope > .bar2'), bq = band && rectOf(band), bf = band && parseFloat(getComputedStyle(band).fontSize);
+      const w0 = regs.map(r => rectOf(r.el).width);
+      wx.style.setProperty('--inset', '100px');
+      regs.forEach((r, i) => { sh[r.name].ki = Math.max(0, Math.round((rectOf(r.el).width - w0[i]) / 100)); });
+      return { sh, band: bq ? [bq.width / bf, bq.height / bf] : null };
+    } finally {
+      wx.style.removeProperty('--inset');
+      wx.classList.remove('probe');
+      if (wasLaid) wx.classList.add('laid');
+    }
+  }
+  // A shape's box (d: 0 across, 1 down) at a size s, and the biggest size whose box is len or less.
+  const ext = (o, d, s) => (s <= FLOOR ? o[0][d] * s / FLOOR : s <= BIG ? o[0][d] + (o[1][d] - o[0][d]) * (s - FLOOR) / (BIG - FLOOR) : o[1][d] * s / BIG);
+  const inv = (o, d, len) => (len <= o[0][d] ? FLOOR * len / o[0][d] : len <= o[1][d] ? FLOOR + (BIG - FLOOR) * (len - o[0][d]) / Math.max(1e-6, o[1][d] - o[0][d]) : BIG * len / o[1][d]);
+  // (A length measured in em at 14 px and at 22 px, at a size s, the same way.)
+  const at2 = (a, b, s) => ext([[a * FLOOR], [b * BIG]], 0, s);
+
+  // 2. The arrangements to try, as grid areas. The approved one for each layout first; with three cards or fewer, also
+  // Now beside them, over them, or all in a row or a column.
+  function arrangements(L, names, kind) {
+    const has = k => names.includes(k), cards = names.filter(k => k !== 'hero'), out = [];
+    const add = (id, areas) => { if (areas && areas.length && !out.some(a => a.id === id)) out.push({ id, areas }); };
+    const sm = ['sun', 'windc', 'moon', 'air'].filter(has);
+    if (kind === 'date') add('date', has('chart') ? [['hero', 'chart'], ['hero', has('side') ? 'side' : 'chart']] : [['hero', 'side']]);
+    else if (!cards.length) add('solo', [['hero']]);
+    else if (L === 'l') {
+      const top = has('days') ? 'days' : has('hourly') ? 'hourly' : '', wr = has('wear') && 'wear', bot = sm[0] || '';
+      if (!top && !bot) add('l', [['hero', 'wear']]);
+      else add('l', [['hero', top || bot]].concat(wr || (top && bot) ? [[wr || 'hero', bot || top]] : []));
+      // (Or, with the hours and no days, Now beside What to wear or the second slot, the hours across under them, beside
+      // the second slot when What to wear is there too.)
+      if (top === 'hourly' && (wr || bot)) add('lh', wr && bot ? [['hero', 'wear', 'wear'], ['hourly', 'hourly', bot]] : [['hero', wr || bot], ['hourly', 'hourly']]);
+      // (Or, with the hours and What to wear alone, Now over the hours, What to wear down the right.)
+      if (top === 'hourly' && wr && !bot) add('lw', [['hero', 'wear'], ['hourly', 'wear']]);
+      // (Or, with the days, What to wear, and the second slot, Now over What to wear and that card, the days down the right.)
+      if (top === 'days' && wr && bot) add('lt', [['hero', 'hero', 'days'], ['wear', bot, 'days']]);
+    } else if (L === 'xl') {
+      // (Now over What to wear on the left, the hours across the top, then the days and the small cards.)
+      const hr = has('hourly'), wr = has('wear'), dy = has('days');
+      // (With no 7 days, three or four small cards may also stand in one row.)
+      for (const two of sm.length === 2 || (sm.length >= 3 && !dy) ? [false, true] : [false]) {
+        let a = [], b = [];
+        if (sm.length === 1) { a = [sm[0]]; b = [sm[0]]; }
+        else if (sm.length === 2 || two) { a = two ? sm.slice() : [sm[0]]; b = two ? sm.slice() : [sm[1]]; }
+        else if (sm.length === 3) { a = [sm[0], sm[1]]; b = [sm[2], sm[2]]; }
+        else if (sm.length === 4) { a = [sm[0], sm[1]]; b = [sm[2], sm[3]]; }
+        if (dy) { a.unshift('days'); b.unshift('days'); }
+        const n = Math.max(1, a.length), rows = [];
+        if (hr) rows.push(['hero'].concat(Array(n).fill('hourly')));
+        if (a.length) rows.push([hr && wr ? 'wear' : 'hero'].concat(a), [wr ? 'wear' : 'hero'].concat(b));
+        else if (hr) rows.push([wr ? 'wear' : 'hero'].concat(Array(n).fill('hourly')));
+        else rows.push(['hero', 'wear']);
+        add('xl' + (two ? '2' : ''), rows);
+        // (Or Now across the top left, over What to wear and the days, beside the hours.)
+        if (hr && wr && a.length >= 2 && !two) { const h = Math.ceil((n + 1) / 2); add('xlw', [Array(h).fill('hero').concat(Array(n + 1 - h).fill('hourly'))].concat(rows.slice(1))); }
+      }
+      // (Or, with the days, What to wear, and one picture card, Now across the top left over What to wear and the card,
+      // beside the days: a card with a picture gets a cell about as tall as it's wide. Only where Now draws bigger than in
+      // the mockup's way.)
+      if (!hr && wr && dy && sm.length === 1 && sm[0] !== 'air') add('xlt', [['hero', 'hero', 'days'], ['wear', sm[0], 'days']]);
+      // (With the hours and the days, so the hours keep two rows: Now over the hours, and What to wear or the small cards
+      // beside them, the days down the right. A third and fourth small card sit beside Now. Or Now and one or two small
+      // cards across the top, over What to wear, the days, and the hours.)
+      if (hr && dy && !(wr && sm.length)) {
+        const up = sm.slice(0, Math.max(0, sm.length - 2)), low = wr ? ['wear'] : sm.slice(up.length), d = up.length > 1 ? ['days', 'days'] : ['days'];
+        add('xlh', [['hero', 'hero'].slice(low.length ? 0 : 1).concat(up.length ? up : d)].concat((low.length ? low : [null]).map(k => (k === 'wear' ? [k, 'hourly'] : ['hourly'].concat(k ? [k] : [])).concat(d))));
+      }
+      if (hr && dy && wr && sm.length && sm.length <= 2) add('xls', [['hero', 'hero', 'hero'].concat(sm), ['wear', 'days'].concat(Array(sm.length + 1).fill('hourly'))]);
+      // (With the days, What to wear, and three or four small cards, no hours: Now across the top left over What to wear
+      // and the small cards, two to a row, the days down the right. With three, the first card stands beside the other two.)
+      if (!hr && wr && dy && sm.length >= 3) add('xld', [['hero', 'hero', 'hero', 'days'], ['wear', sm[0], sm[1], 'days'], ['wear', sm[3] ? sm[2] : sm[0], sm[3] || sm[2], 'days']]);
+    } else if (L === 'm') {
+      // (Medium: Now, then the week or the hours, the small cards two to a row, and What to wear.)
+      const mid = ['days', 'week', 'hourly'].find(has), wr = ['wear', 'wl'].find(has);
+      if (sm.length > 1) {
+        const rows = [['hero', 'hero']];
+        if (mid) rows.push([mid, mid]);
+        for (let i = 0; i < sm.length; i += 2) rows.push([sm[i], sm[i + 1] || sm[i]]);
+        if (wr) rows.push([wr, wr]);
+        add('m2', rows);
+      }
+      add('m', [['hero']].concat(cards.map(k => [k])));
+      // (Or Now beside the week or the hours, with What to wear's strip across under both.)
+      if (mid && wr === 'wl' && cards.length === 2) add('mb', [['hero', mid], ['wl', 'wl']]);
+    }
+    if (kind === 'main' && cards.length && cards.length <= 3) {
+      add('beside', cards.map(k => ['hero', k]));
+      add('over', [Array(cards.length).fill('hero'), cards]);
+      add('row', [['hero'].concat(cards)]);
+      add('col', [['hero']].concat(cards.map(k => [k])));
+      if (cards.length === 3) { add('over2', [['hero', 'hero'], [cards[0], cards[1]], [cards[2], cards[2]]]); add('beside2', [['hero', cards[0], cards[0]], ['hero', cards[1], cards[2]]]); }
+    }
+    // (Each arrangement holds every part shown, and only those. In Large and filling the board, a small card never takes
+    // a row across the whole window, and Large keeps two rows. Filling the board, the mockup's own ways put a small card
+    // in a strip under the hours; the others never put one in a strip over or under the days, the hours, or What to wear.)
+    const SMALL = /^(sun|windc|moon|air)$/, BIGC = /^(days|hourly|wear)$/;
+    const strip = a => { const c = cellsOf(a.areas), ks = Object.keys(c); return ks.some(k => SMALL.test(k) && ks.some(j => BIGC.test(j) && c[j][0] === c[k][0] && c[j][1] === c[k][1])); };
+    return out.filter(a => { const s = new Set(a.areas.flat()); return s.size === names.length && names.every(k => s.has(k)); })
+      .filter(a => (L !== 'l' && L !== 'xl') || kind !== 'main' || ((L !== 'l' || a.areas.length <= 2) && !a.areas.some(r => SMALL.test(r[0]) && r.every(k => k === r[0]))
+        && (L !== 'xl' || /^xl/.test(a.id) || !strip(a))));
+  }
+
+  // Each part's size as a share of Now's (RHO), by priority. With room to spare a card grows to LEAD of Now's.
+  const EMPTY = { hero: 1, wear: .5, wl: .3, sun: .6, windc: .6, moon: .6, air: .6, chart: 0, days: .1 };
+  const RHO = { wear: .85, wl: .85, days: .8, week: .8, hourly: .8, sun: .75, windc: .75, air: .75, moon: .7, chart: .85, side: .75 };
+  const cellsOf = areas => {
+    const cell = {};
+    areas.forEach((row, r) => row.forEach((k, c) => { const q = cell[k] || (cell[k] = [c, c, r, r]); q[0] = Math.min(q[0], c); q[1] = Math.max(q[1], c); q[2] = Math.min(q[2], r); q[3] = Math.max(q[3], r); }));
+    return cell;
+  };
+  // The least tracks that give each part its room (a part across several tracks shares what it lacks among them).
+  function least(n, items, gap) {
+    const t = Array(n).fill(0);
+    for (const it of items.slice().sort((p, q) => (p.b - p.a) - (q.b - q.a))) {
+      let have = (it.b - it.a) * gap;
+      for (let i = it.a; i <= it.b; i++) have += t[i];
+      if (have < it.need) { const d = (it.need - have) / (it.b - it.a + 1); for (let i = it.a; i <= it.b; i++) t[i] += d; }
+    }
+    return t;
+  }
+  function scoreOf(f) { let s = 0; for (const k in f) s += (PRI[k] || 1) * Math.log(Math.max(1, f[k])); return s; }
+  // For one arrangement and one shape of each part: the biggest Now whose parts all fit, then the room left over shared
+  // out in proportion, and each part as big as its cell then allows.
+  // (A warning or the offline band takes the first row, across. Its words follow Now's lines, BANDK of Now's size, on one
+  // line and in at most BANDH of the height, never under its mockup size: so it takes more room as Now grows.)
+  // (PICF, PICW: in Large, a wind card whose compass beside its words fills less than PICF of its height counts PICW
+  // against for what it leaves. WEARX: filling the board, air quality's card steps aside where it would leave What to wear
+  // a cell more than WEARX times as wide as tall, and in Large What to wear takes no such strip where another way fits.
+  // SKYT: Now's band counted after its sky grows, against SKYT; against NOWT where one small card shares its row. OFFK:
+  // You're offline at most OFFK of the window's text size. LINEX: Medium's What to wear line beside a card, in a cell it
+  // leaves more than LINEX empty down, counts LINEW for each part of it: a line is a strip, and the height goes to the
+  // week.)
+  const BANDK = .9, BANDH = .14, OFFK = 1.2, STRIP = 1.5, PICF = .95, PICW = 1, WEARX = 3.5, SKYT = .33, NOWT = .1, LINEX = .4, LINEW = 3, QS = 20, TIE = .05, ALIKE = .01;
+  // (Now and one small card across the top: the card's column takes the room Now's lines leave, NOWT.)
+  const cpOf = (a, cp) => (a.id === 'xls' && a.areas[0].length === 4 ? Object.assign({}, cp, { nowT: NOWT }) : a.id === 'lt' ? Object.assign({}, cp, { lt: true }) : a.id === 'lw' ? Object.assign({}, cp, { lw: true }) : cp);
+  // (A part's shapes for a way: the 7 days' tall rows and What to wear's narrow words only with the days down the right
+  // (lt). There every card's shape follows the window's shape, so none takes turns as it's dragged: the days take their
+  // tall rows, the sun and air quality their first shape, What to wear its narrow words where the window is less than SNW
+  // times as wide as tall (cap.ltr, set in solve()), else its words beside its clothes, and the moon and the wind their
+  // picture over their words where it's less than PCW times as wide as tall, else beside them, as each draws best. With
+  // the days or the hours down the right (lt, lw), What to wear never takes its one-line advice: there it and the other
+  // shapes plan alike, and took turns every 2 or 3 px.)
+  const SNW = 2.4, PCW = { moon: 2.6, windc: 2.8 };
+  const shapesOf = (o, cap, k) => (cap.lt && o.px.tall ? ['tall'] : cap.lt && PCW[k] && o.px.col ? [cap.ltr < PCW[k] ? 'col' : 'row'] : cap.lt && /^(sun|air)$/.test(k) ? [Object.keys(o.px)[0]]
+    : cap.lt && k === 'wear' && (o.px.sn || o.px.side) ? [cap.ltr < SNW && o.px.sn ? 'sn' : o.px.side ? 'side' : 'sn']
+    : Object.keys(o.px).filter(v => ((v !== 'tall' && v !== 'sn') || cap.lt) && !((cap.lw || cap.lt) && k === 'wear' && v === 'wide')));
+  function bandFor(band, s, W) {
+    if (!band) return { f: 0, h: 0 };
+    const f = Math.max(band.base, Math.min(band.k * s, band.capW, band.capH)), lines = Math.max(1, Math.ceil((band.w * f + band.pad) / Math.max(1, W) - .02));
+    return { f, h: band.h * f * lines + band.gap };
+  }
+  function solveFor(areas, cell, names, sh, pick, W, H, gap, cap, band) {
+    const n = areas[0].length, m = areas.length, lead = names.includes('hero');
+    const hc = cell.hero, mid = !!hc && (!band || names.length === 1) && areas.every(r => r.slice(hc[0], hc[1] + 1).every(k => k === 'hero'));
+    // (cap.kf: each part's least size that keeps its key lines at KEY px, where Large's hours need it.)
+    const kf = k => (cap.kf && cap.kf[k]) || 0;
+    const target = s => { const f = {}; for (const k of names) f[k] = Math.max(kf(k), k === 'hero' || !lead ? Math.max(FLOOR * 1.04, s) : Math.max(FLOOR * 1.04, (RHO[k] || .75) * s)); return f; };
+    const ab = k => sh[k].px[pick[k]], pad = k => (sh[k].ki || 0) * cap.inset;
+    const tracks = s => {
+      const f = target(s);
+      return [least(n, names.map(k => ({ a: cell[k][0], b: cell[k][1], need: ext(ab(k), 0, f[k]) + pad(k) })), gap), least(m, names.map(k => ({ a: cell[k][2], b: cell[k][3], need: ext(ab(k), 1, f[k]) })), gap)];
+    };
+    // (The wind's compass and the moon grow into the room their words leave, as pictures() draws them: beside the words, or
+    // over them. Their box counts so.)
+    const picOf = (k, w, h, fk) => {
+      const o = sh[k], col = pick[k] === 'col';
+      if (!o.pd) return null;
+      const i = fk < BIG ? 0 : 1, pw = o.pd[i][0] * fk + pad(k), ph = o.pd[i][1] * fk, bw = w - pw, bh = h - ph, sw = o.sw[i] * fk, sv = o.sh[i] * fk;
+      const p = Math.max(3.4 * fk, Math.min(16 * fk, col ? Math.min(bw, bh - sv - .6 * fk) : Math.min(bh, bw - sw - fk, .55 * bw)));
+      return { p, w: (col ? Math.max(p, sw) : p + fk + sw) + pw, h: (col ? p + .6 * fk + sv : Math.max(p, sv)) + ph };
+    };
+    const sum = v => v.reduce((a, b) => a + b, 0), SW = W - (n - 1) * gap, SHs = s => H - (m - 1) * gap - bandFor(band, s, W).h;
+    const ok = s => { const [x, y] = tracks(s); return sum(x) <= SW + .01 && sum(y) <= SHs(s) + .01; };
+    let lo = FLOOR, hi = Math.max(FLOOR, cap.hero);
+    const fits = ok(lo);
+    if (fits) { if (ok(hi)) lo = hi; else for (let i = 0; i < 18 && hi - lo > .1; i++) { const s = (lo + hi) / 2; if (ok(s)) lo = s; else hi = s; } }
+    let [x, y] = tracks(lo);
+    const grow = (v, S) => { const t = sum(v); return t > 0 ? v.map(q => q * S / t) : v.map(() => S / v.length); };
+    const bd = bandFor(band, lo, W), SH = SHs(lo);
+    x = grow(x, SW); y = grow(y, SH);
+    const span = (v, a, b) => { let s = (b - a) * gap; for (let i = a; i <= b; i++) s += v[i]; return s; };
+    const judge = sky => {
+      const f = {}, wh = {};
+      let nowE = 0;
+      for (const k of names) { const q = cell[k], o = ab(k); wh[k] = [span(x, q[0], q[1]), span(y, q[2], q[3])]; f[k] = Math.min(inv(o, 0, Math.max(1, wh[k][0] - pad(k))), inv(o, 1, wh[k][1])); }
+      if (lead) f.hero = Math.min(f.hero, cap.hero);
+      for (const k of names) if (k !== 'hero') f[k] = Math.min(f[k], cap.card, lead ? Math.max(FLOOR, LEAD * f.hero) : Infinity);
+      // (A cell too small for 14 px, with a little to spare, counts heavily against; so does a card under LOW of Now,
+      // and a part smaller than the mockup draws it at this size.)
+      let short = 0;
+      for (const k of names) { const need = Math.max(FLOOR * 1.04, kf(k)); if (f[k] < need) short += 60 * (need - f[k]) / FLOOR; f[k] = Math.max(FLOOR, f[k]); }
+      if (lead) for (const k of names) if (k !== 'hero' && f[k] < LOW * f.hero) short += 8 * (LOW * f.hero - f[k]) / f.hero;
+      for (const k of names) if (f[k] < cap.base) short += 20 * (cap.base - f[k]) / cap.base;
+      // (Room a part can't use: its cell less its box, across or down, whichever is more.)
+      let empty = 0;
+      for (const k of names) {
+        const [w, h] = wh[k], o = ab(k), q = picOf(k, w, h, f[k]), across = 1 - (ext(o, 0, f[k]) + pad(k)) / w;
+        // (Air quality's number grows into the room under it, to the card's width and 70% of the temperature.)
+        let bh = ext(o, 1, f[k]);
+        if (k === 'air' && lead) bh += Math.min(.9 * Math.max(0, h - bh), Math.max(0, Math.min((w - pad(k) - 1.6 * f[k]) / 1.2, .7 * cap.tem * f.hero) - 2 * f[k]));
+        empty += (EMPTY[k] || .2) * Math.max(0, 1 - (q ? Math.min(q.w / w, q.h / h) : Math.min(1 - across, bh / h)));
+        // (What to wear in a strip its words and clothes can't fill counts more: the room goes to a card that can use it. So
+        // does Now lined up at the start of a band it leaves mostly empty.)
+        if (k === 'wear') empty += STRIP * Math.max(0, across - .25);
+        if (k === 'wl' && areas.slice(cell.wl[2], cell.wl[3] + 1).some(r => r.some(j => j !== 'wl'))) empty += LINEW * Math.max(0, 1 - bh / h - LINEX);
+        // (In Large beside the wind or the moon, the 7 days stretched across a strip their words can't fill count too: the
+        // bars run long, and the picture card gets a short slot.)
+        if (cap.l && k === 'days' && (names.includes('windc') || names.includes('moon'))) empty += STRIP * Math.max(0, across - .4);
+        // (The wind's or the moon's picture beside its words, as pictures() draws it: a short, wide cell it can't fill from
+        // top to bottom counts against, so the picture over its words, or a cell it fills, wins.)
+        if (cap.l && k === 'windc' && pick[k] !== 'col' && !names.includes('hourly')) {
+          const d = sh[k], bw = w - pad(k) - at2(d.pd[0][0], d.pd[1][0], f[k]), bh = h - at2(d.pd[0][1], d.pd[1][1], f[k]);
+          empty += PICW * Math.max(0, PICF - Math.max(bw - at2(d.sw[0], d.sw[1], f[k]) - f[k], at2(d.sh[0], d.sh[1], f[k])) / Math.max(1, bh));
+        }
+        if (k === 'hero' && !mid && !cap.once) {
+          // (Side by side, the sky's lines grow toward the temperature's height into the room beside them, as lines() draws
+          // them: the band they leave is what counts when the ways are compared. Sharing the room, as before.)
+          let a = across;
+          if (sky && sh.hero.sky && /^side/.test(pick.hero)) { const y = sh.hero.sky, v = j => at2(y[0][j], y[1][j], f[k]), rw = v(1), g = Math.max(1, Math.min(SKY, v(0) / v(2), (w - pad(k) - ext(o, 0, f[k]) + rw) / rw)); a = 1 - (ext(o, 0, f[k]) + (g - 1) * rw + pad(k)) / w; }
+          empty += STRIP * Math.max(0, a - (cap.nowT || (a === across ? .35 : SKYT)));
+          nowE = a;
+        }
+      }
+      const cards = names.filter(k => k !== 'hero');
+      // (The smallest card counts three times more: no part starves for Now.)
+      const least = cards.length ? Math.min(...cards.map(k => f[k])) : 0;
+      return { f, empty, nowE, score: scoreOf(f) - empty - short + (least ? 3 * Math.log(least) : 0) };
+    };
+    // A little more by moving room between neighboring tracks, kept only where it helps.
+    // (With NOWT, the moves count Now's lines grown too, so the card beside Now takes the room they leave.)
+    const sk = !!cap.nowT;
+    let J = judge(sk);
+    const G = (Math.sqrt(5) - 1) / 2, MINT = 24;
+    // (Twice in Large and up, so widths and heights can trade. Medium goes once: a second round there only takes room
+    // from its cards for Now.)
+    for (const v of cap.once ? [x, y] : [x, y, x, y]) for (let i = 0; i + 1 < v.length; i++) {
+      const tot = v[i] + v[i + 1], was = v[i], at = q => { v[i] = q; v[i + 1] = tot - q; return judge(sk).score; };
+      let a = MINT, b = tot - MINT;
+      if (b <= a) continue;
+      let c = b - G * (b - a), d = a + G * (b - a), fc = at(c), fd = at(d);
+      for (let it = 0; it < 12; it++) { if (fc >= fd) { b = d; d = c; fd = fc; c = b - G * (b - a); fc = at(c); } else { a = c; c = d; fc = fd; d = a + G * (b - a); fd = at(d); } }
+      at((a + b) / 2);
+      const nj = judge(sk);
+      if (nj.score > J.score + 1e-6) J = nj; else at(was);
+    }
+    J = judge(true);
+    // (Nothing fits at 14 px: the arrangement that runs over least.)
+    const over = fits ? 0 : Math.max(sum(tracks(FLOOR)[0]) / SW, sum(tracks(FLOOR)[1]) / SHs(FLOOR)) - 1;
+    return { x, y, f: J.f, pick: Object.assign({}, pick), fits, over, empty: J.empty, nowE: J.nowE, judged: J.score, band: bd.f };
+  }
+  // Every mix of shapes when there are few, else each part's shape in turn, from the first, kept where it helps.
+  function solve(areas, sh, W, H, gap, cap, band) {
+    const cell = cellsOf(areas), names = Object.keys(cell);
+    if (W < 40 || H < 40) return null;
+    if (cap.lt) cap = Object.assign({}, cap, { ltr: W / H });
+    const run = pick => {
+      const p = solveFor(areas, cell, names, sh, pick, W, H, gap, cap, band);
+      // (Each part's first shape wins a near tie, whatever was drawn before: a window shows the same plan by any path,
+      // and two plans that score alike don't take turns as it's dragged. What to wear's narrow words win only by TIE over
+      // its words beside the clothes, which plan alike in a wide card.)
+      p.score = p.judged + (p.fits ? 0 : -50 - 100 * p.over) + names.reduce((a, k) => a + (pick[k] === shapesOf(sh[k], cap, k)[0] ? .02 : 0), 0) - (pick.wear === 'sn' ? TIE : 0);
+      return p;
+    };
+    let combos = [{}];
+    for (const k of names) { const o = shapesOf(sh[k], cap, k); combos = combos.flatMap(c => o.map(v => Object.assign({}, c, { [k]: v }))); if (combos.length > 48) break; }
+    let best = null;
+    // (A part whose other shape wins draws its first shape where that draws every part alike, within ALIKE, and scores
+    // within TIE: two shapes that plan the same sizes never take turns as the window is dragged.)
+    const first = () => {
+      for (const k of names) {
+        const k0 = shapesOf(sh[k], cap, k)[0];
+        if (best.pick[k] === k0) continue;
+        const p = run(Object.assign({}, best.pick, { [k]: k0 }));
+        if (p.fits === best.fits && p.score >= best.score - TIE && names.every(j => Math.abs(Math.log(p.f[j] / best.f[j])) < ALIKE)) best = p;
+      }
+      return best;
+    };
+    if (combos.length <= 48) { for (const pick of combos) { const p = run(pick); if (!best || p.score > best.score) best = p; } return first(); }
+    const pick = {};
+    for (const k of names) pick[k] = shapesOf(sh[k], cap, k)[0];
+    best = run(pick);
+    for (let pass = 0; pass < 2; pass++) {
+      let moved = false;
+      for (const k of names) for (const v of shapesOf(sh[k], cap, k)) {
+        if (v === best.pick[k]) continue;
+        const p = run(Object.assign({}, best.pick, { [k]: v }));
+        if (p.score > best.score + 1e-9) { best = p; moved = true; }
+      }
+      if (!moved) break;
+    }
+    // (Then the hours and What to wear at once, shapes that only help together: filling a board, the hours in two rows
+    // only pay once What to wear sits beside its clothes. Kept only where it plans clearly better, by TIE, so a near tie
+    // the single moves left doesn't take turns as the window is dragged.)
+    if (cell.hourly && cell.wear) for (let pass = 0, moved = true; moved && pass < 2; pass++) {
+      moved = false;
+      for (const v of shapesOf(sh.hourly, cap, 'hourly')) for (const w of shapesOf(sh.wear, cap, 'wear')) {
+        if (v === best.pick.hourly || w === best.pick.wear) continue;
+        const p = run(Object.assign({}, best.pick, { hourly: v, wear: w }));
+        if (p.score > best.score + TIE) { best = p; moved = true; }
+      }
+    }
+    return first();
+  }
+
+  // Applies a plan to the drawing: the grid, each part's size and shape. (The grid the HTML brought is kept, for the
+  // mockup's own layout.)
+  function apply(wx, inn, regs, p) {
+    const n = p.areas[0].length, top = inn.querySelector(':scope > .band, :scope > .bar2');
+    if (inn._grid == null) inn._grid = inn.getAttribute('style') || '';
+    inn.style.gridTemplateColumns = p.x.map(v => `minmax(0,${v.toFixed(2)}fr)`).join(' ');
+    inn.style.gridTemplateRows = (top ? 'auto ' : '') + p.y.map(v => `minmax(0,${v.toFixed(2)}fr)`).join(' ');
+    inn.style.gridTemplateAreas = (top ? `"${Array(n).fill(top.matches('.bar2') ? 'bar' : 'band').join(' ')}" ` : '') + p.areas.map(r => `"${r.join(' ')}"`).join(' ');
+    if (top) { top.style.gridArea = top.matches('.bar2') ? 'bar' : 'band'; if (top.matches('.band') && p.band) top.style.fontSize = p.band.toFixed(2) + 'px'; }
+    // (Now in the middle of its cell only when nothing else shares its column; else it lines up with the rest. Alone
+    // under a warning, Now and the warning both sit in the middle.)
+    const hc = cellsOf(p.areas).hero, mid = !!hc && (!top || (regs.length === 1 && !wx.classList.contains('L-s'))) && p.areas.every(row => row.slice(hc[0], hc[1] + 1).every(k => k === 'hero'));
+    if (top) top.style.justifySelf = mid ? 'center' : '';
+    for (const r of regs) {
+      const e = r.el;
+      e.style.gridArea = r.name;
+      e.style.alignSelf = e.style.justifySelf = 'stretch';
+      e.style.fontSize = Math.max(FLOOR, p.f[r.name]).toFixed(2) + 'px';
+      const pk = String(p.pick[r.name]);
+      if (r.name === 'hero') { e.classList.remove('side', 'stk'); const st = pk.replace(/W$/, ''); if (st === 'side' || st === 'stk') e.classList.add(st); e.classList.toggle('mid', mid); if (p.sky > 1) e.style.setProperty('--sky', p.sky.toFixed(3)); else e.style.removeProperty('--sky'); }
+      if (r.name === 'wear') { e.classList.toggle('side', pk === 'side' || pk === 'sn'); e.classList.toggle('sn', pk === 'sn'); }
+      if (r.name === 'days') e.classList.toggle('dt', pk === 'tall');
+      if (r.name === 'week') setWr(e, p.wr || 0);
+      if (r.name === 'sun') { e.classList.toggle('col', pk === 'col'); e.classList.toggle('row', pk === 'row'); e.style.removeProperty('--arch'); }
+      // (Air quality is sized without its advice, and as a card, whatever the last drawing left: its number at its own
+      // size, not beside its scale. pictures() shows the advice, and stands the number beside its scale, where there's room.)
+      if (r.name === 'air') { e.classList.remove('row'); e.classList.add('nosay'); const b = e.querySelector('.stack > .big'); if (b) b.style.removeProperty('font-size'); }
+      if (r.name === 'hourly') hoursTo(wx, e, pk);
+      if (r.name === 'windc' || r.name === 'moon') e.querySelector('.windbody, .moonbody').classList.toggle('col', pk === 'col');
+    }
+    heads(inn, regs, p.f);
+  }
+  // The hours in one row (r1) or two (r2). Medium shows 6 of them; a tall Medium window's two rows may show all 12 (a2).
+  function hoursTo(wx, e, pk) {
+    const hs = e.querySelector('.hours'), all = pk === 'a2', k = +String(pk).slice(1) || 1, m = all || !wx.classList.contains('L-m') ? hs.children.length : Math.min(6, hs.children.length);
+    hs.classList.toggle('two', k > 1); hs.classList.toggle('all', all);
+    if (k > 1) hs.style.setProperty('--cols', Math.ceil(m / k)); else hs.style.removeProperty('--cols');
+  }
+  // Cards side by side share one heading size: the smallest any card's own size gives, never under 14 px. (A lone 7-day
+  // card's heading keeps the size its days had before the range bars took their share: DAYH of the days'.)
+  const DAYH = .925;
+  function heads(inn, regs, f) {
+    const hs = regs.filter(r => r.name !== 'hero' && r.el.querySelector('h3') && r.el.style.display !== 'none');
+    if (hs.length === 1 && hs[0].name === 'days') inn.style.setProperty('--h3', Math.max(FLOOR, DAYH * Math.max(FLOOR, f.days)).toFixed(2) + 'px');
+    else if (hs.length) inn.style.setProperty('--h3', Math.max(FLOOR, .74 * Math.min(...hs.map(r => Math.max(FLOOR, f[r.name])))).toFixed(2) + 'px');
+    else inn.style.removeProperty('--h3');
+  }
+  // Back to the mockup's own layout: the grid the HTML brought, the parts at the window's size.
+  function unfill(wx, inn, regs) {
+    wx.classList.remove('laid', ...STEPS);
+    if (inn._grid != null) { inn.setAttribute('style', inn._grid); inn._grid = null; }
+    const top = inn.querySelector(':scope > .band, :scope > .bar2');
+    if (top) top.style.removeProperty('grid-area');
+    plain(inn, regs);
+    for (const r of regs) for (const k of ['font-size', 'grid-area', 'align-self', 'justify-self']) r.el.style.removeProperty(k);
+  }
+  // 3. Each part checked as drawn: smaller by 2.5% a step while it runs out of its cell (never under 14 px), or 5% bigger
+  // where that still fits and its cap allows. (The plan is close, so this is a layout or two.) The cards' one heading
+  // size follows, and whatever it no longer fits shrinks again.
+  function refine(regs, p, cap, inn) {
+    // (Never under a part's key-line floor, kf, where Large's hours need it: there it fits or the plan fails, so the
+    // next width doesn't come out a step smaller and drop the hours.)
+    const f = {}, set = r => { r.el.style.fontSize = f[r.name].toFixed(2) + 'px'; }, low = k => Math.max(FLOOR, (cap.kf && cap.kf[k]) || 0);
+    for (const r of regs) { if (r.name === 'windc' || r.name === 'moon') r.el.style.setProperty('--pic', '4.2em'); f[r.name] = Math.max(low(r.name), p.f[r.name]); set(r); }
+    // (The heading size follows each step down, so a card never shrinks for a heading that's about to shrink too.)
+    const shrink = () => {
+      let bad = regs.filter(r => !fitsIn(r.el));
+      for (let it = 0; bad.length && it < 16; it++) {
+        for (const r of bad) { f[r.name] = Math.max(low(r.name), f[r.name] * .975); set(r); }
+        heads(inn, regs, f);
+        bad = bad.filter(r => f[r.name] > low(r.name) && !fitsIn(r.el));
+      }
+      return bad;
+    };
+    const bad = shrink();
+    // (What to wear planned wide keeps its advice on one line: smaller rather than broken.)
+    const wraps = r => { const a = r.name === 'wear' && p.pick.wear === 'wide' && r.el.querySelector('.advice'); return !!a && rectOf(a).height > 1.6 * parseFloat(getComputedStyle(a).fontSize); };
+    for (const r of regs) for (let it = 0; it < 8 && wraps(r) && f[r.name] > low(r.name); it++) { f[r.name] = Math.max(low(r.name), f[r.name] * .975); set(r); }
+    const ok = r => fitsIn(r.el) && !wraps(r);
+    const capOf = k => (k === 'hero' ? cap.hero : Math.min(cap.card, f.hero ? LEAD * f.hero : Infinity));
+    const up = regs.filter(r => !bad.includes(r) && f[r.name] * 1.05 <= capOf(r.name));
+    for (const r of up) { f[r.name] *= 1.05; set(r); }
+    for (const r of up) if (!ok(r)) f[r.name] /= 1.05;
+    for (const r of up) set(r);
+    // (A bigger smallest card means bigger headings: a part they no longer fit goes back to its size before the step up.)
+    heads(inn, regs, f);
+    for (const r of up) if (!ok(r) && f[r.name] > p.f[r.name]) { f[r.name] /= 1.05; set(r); }
+    heads(inn, regs, f);
+    shrink();
+    for (const r of regs) p.f[r.name] = f[r.name];
+  }
+  // Now's lines beside the temperature (the sky's block) grow into the room their row leaves, to the temperature's
+  // height, at most SKY times. A warning or You're offline follows Now's size as drawn, BANDK of it, never the sky's
+  // growth, so the two draw alike in the same window. Kept only where
+  // everything still fits; else half the growth, a quarter, then none.
+  const SKY = 1.6;
+  function lines(wx, inn, regs, p, band) {
+    const h = regs.find(r => r.name === 'hero'), e = h && h.el, top = inn.querySelector(':scope > .band'), b0 = p.band;
+    p.sky = 1; p.bandShort = false;
+    if (!e) return;
+    // (The band follows Now's size, not the sky's growth: a warning and You're offline draw alike in the same window.)
+    const follow = () => Math.max(b0 || 0, band.base, Math.min(band.k * p.f.hero, band.capW, band.capH));
+    const side = e.classList.contains('side') && !wx.matches('.L-s, .L-m'), bandTo = (k, keep) => {
+      if (!top || !band || !band.k) return;
+      p.band = keep ? b0 : follow();
+      top.style.fontSize = p.band.toFixed(2) + 'px';
+    };
+    let k0 = 1;
+    if (side) {
+      const lq = rectOf(e.querySelector(':scope > .left')), rq = rectOf(e.querySelector(':scope > .right')), s = getComputedStyle(e);
+      const room = e.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight) - lq.width - parseFloat(s.columnGap);
+      if (rq.height && rq.width) k0 = Math.max(1, Math.min(SKY, lq.height / rq.height, room / rq.width));
+    }
+    // (The band follows the lines where it can. Where it can't, it keeps its size, and fill() plans again with room for it.)
+    for (const keep of top && band && band.k ? [false, true] : [false]) for (const k of k0 > 1.04 ? [k0, 1 + (k0 - 1) / 2, 1 + (k0 - 1) / 4, 1] : [1]) {
+      if (k > 1) e.style.setProperty('--sky', k.toFixed(3)); else e.style.removeProperty('--sky');
+      bandTo(k, keep);
+      if (fitsAll(regs, inn) && !spills(e, inn)) { p.sky = k; p.bandShort = !!(top && band && band.k) && p.band < .95 * follow(); return; }
+    }
+    e.style.removeProperty('--sky');
+    p.band = b0;
+    if (top && b0) top.style.fontSize = b0.toFixed(2) + 'px';
+  }
+  // What to wear in a card its words leave room in, beside Now's grown lines: the advice grows into the room, up to LEAD of
+  // Now's lines as drawn and the card cap. Kept only where everything still fits.
+  // Medium's week, as drawn: each day's words WR em clear of its rules where they fit their columns at the planned size,
+  // else a little less. Where neither fits, the week alone steps down 2% at a time, to WRK of its size at most, until
+  // they do; else it stays as planned. The plan doesn't count it, so no other part draws smaller for it.
+  const WR = [.4, .25], WRK = .92;
+  const setWr = (e, w) => { const wk = e.querySelector('.week'); if (!wk) return; wk.classList.toggle('wr', w > 0); if (w > 0) wk.style.setProperty('--wr', w + 'em'); else wk.style.removeProperty('--wr'); };
+  function weekRoom(inn, regs, p) {
+    const r = regs.find(r => r.name === 'week'), wk = r && r.el.querySelector('.week'), f0 = p.f.week;
+    p.wr = 0;
+    if (!wk) return;
+    const at = f => { p.f.week = f; r.el.style.fontSize = f.toFixed(2) + 'px'; heads(inn, regs, p.f); };
+    const rg = document.createRange(), clear = () => [...wk.children].every(c => {
+      const q = rectOf(c), s = getComputedStyle(c), l = q.left + parseFloat(s.paddingLeft) - .5, rt = q.right - parseFloat(s.paddingRight) + .5;
+      return [...c.children].every(k => { let t = rectOf(k); if (k.tagName.toLowerCase() !== 'svg') { rg.selectNodeContents(k); t = rg.getBoundingClientRect(); } return !t.width || (t.left >= l && t.right <= rt); });
+    });
+    for (let k = 1; k >= WRK - 1e-9; k -= .02) {
+      if (k < 1) at(Math.max(FLOOR, f0 * k));
+      for (const w of WR) { setWr(r.el, w); if (clear() && fitsIn(r.el)) { p.wr = w; return; } }
+    }
+    setWr(r.el, 0);
+    at(f0);
+  }
+  function roomy(inn, regs, p, cap) {
+    const r = regs.find(r => r.name === 'wear');
+    if (!r || !(p.sky > 1)) return;
+    const e = r.el, f0 = p.f.wear, top = Math.min(cap.card, LEAD * p.f.hero * p.sky), a = p.pick.wear === 'wide' && e.querySelector('.advice');
+    if (top < f0 * 1.1) return;
+    const at = f => { p.f.wear = f; e.style.fontSize = f.toFixed(2) + 'px'; heads(inn, regs, p.f); return fitsIn(e) && !(a && rectOf(a).height > 1.6 * parseFloat(getComputedStyle(a).fontSize)); };
+    let lo = f0, hi = top;
+    if (at(hi)) lo = hi; else for (let i = 0; i < 7; i++) { const m = (lo + hi) / 2; if (at(m)) lo = m; else hi = m; }
+    if (lo >= f0 * 1.1 && at(lo) && fitsAll(regs, inn)) return;
+    at(f0);
+  }
+  // The wind's and the moon's card: the picture beside the words or over them, whichever draws both bigger in the cell
+  // the plan gave it. Kept only where everything still fits. (On a day at −13° or 104°, chosen for Now's size on an
+  // ordinary day: such a day shrinks Now, not the card's shape.)
+  // (SUNT: a sun card that much taller than wide puts sunrise over sunset. The cards' wider sides since round 8 narrow
+  // its inside, so a card 1.36 times as tall holds the two times as a card 1.4 times as tall did.)
+  const SUNT = 1.36;
+  function turn(wx, regs, p, sh, cap, inn) {
+    for (const r of regs) {
+      if ((r.name !== 'windc' && r.name !== 'moon') || !sh[r.name].pd) continue;
+      const o = sh[r.name], b = r.el.querySelector('.windbody, .moonbody'), q = rectOf(r.el), pad = (o.ki || 0) * cap.inset;
+      const top = Math.min(cap.card, LEAD * p.f.hero), was = { k: p.pick[r.name], f: p.f[r.name] }, topD = p.dayK ? Math.min(cap.card, top * p.dayK.hero) : top;
+      const est = (k, tp = top) => {
+        const bx = o.px[k], f = Math.max(FLOOR, Math.min(tp, inv(bx, 0, q.width - pad), inv(bx, 1, q.height))), i = f < BIG ? 0 : 1;
+        const bw = q.width - pad - o.pd[i][0] * f, bh = q.height - o.pd[i][1] * f;
+        const pic = Math.max(3.4 * f, Math.min(16 * f, k === 'col' ? Math.min(bw, bh - (o.sh[i] + .6) * f) : Math.min(bh, bw - (o.sw[i] + 1) * f, .55 * bw)));
+        return { k, f, s: Math.log(f) + Math.log(pic) };
+      };
+      const ok = was.k === 'col' ? 'row' : 'col';
+      if (est(ok, topD).s <= est(was.k, topD).s + .05) continue;
+      const other = est(ok), set = (k, f) => { b.classList.toggle('col', k === 'col'); p.pick[r.name] = k; p.f[r.name] = f; r.el.style.fontSize = f.toFixed(2) + 'px'; heads(inn, regs, p.f); };
+      set(other.k, other.f);
+      for (let it = 0; it < 12 && !fitsIn(r.el) && p.f[r.name] > FLOOR; it++) set(other.k, Math.max(FLOOR, p.f[r.name] * .975));
+      if (!fitsAll(regs, inn)) set(was.k, was.f);
+    }
+    // (Medium's hours in a card at least 0.6 times as tall as it's wide: all 12 in two rows, where they draw at least 92%
+    // as big. The room under one row is no use to them. Beside other cards, only where the cards' one heading size stays.)
+    const hr = regs.find(r => r.name === 'hourly');
+    if (hr && sh.hourly.px.a2 && p.pick.hourly !== 'a2') {
+      const e = hr.el, q = rectOf(e), f0 = p.f.hourly, k0 = p.pick.hourly;
+      if (q.height >= .6 * q.width) {
+        const at = f => { e.style.fontSize = f.toFixed(2) + 'px'; return fitsIn(e); };
+        hoursTo(wx, e, 'a2');
+        let lo = .92 * f0, hi = f0, ok = at(hi);
+        if (ok) lo = hi; else if ((ok = at(lo))) for (let i = 0; i < 6; i++) { const m = (lo + hi) / 2; if (at(m)) lo = m; else hi = m; }
+        if (ok && (ok = at(lo))) {
+          const h0 = inn.style.getPropertyValue('--h3'), alone = !regs.some(r => r !== hr && r.name !== 'hero' && r.el.style.display !== 'none');
+          p.f.hourly = lo; p.pick.hourly = 'a2'; heads(inn, regs, p.f);
+          if ((!alone && inn.style.getPropertyValue('--h3') !== h0) || !fitsAll(regs, inn)) { p.f.hourly = f0; p.pick.hourly = k0; ok = false; }
+        }
+        if (!ok) { hoursTo(wx, e, k0); at(f0); heads(inn, regs, p.f); }
+      }
+    }
+    // (The sun's card in a tall cell: sunrise over sunset, where that draws the times at least 8% bigger, or as big where
+    // they're already near their cap, so the card fills down. In a wide, short one: sunrise, the arc, and sunset in one
+    // row, where that draws the times at least 15% bigger and the arc still fills most of the row's height: the times grow
+    // with the card's height.)
+    const sun = regs.find(r => r.name === 'sun');
+    if (!sun) return;
+    const e = sun.el, q = rectOf(e), f0 = p.f.sun, k0 = p.pick.sun, top = Math.min(cap.card, LEAD * p.f.hero);
+    const cs = getComputedStyle(e), h3 = e.querySelector('h3'), body = q.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - (h3 ? rectOf(h3).height + parseFloat(getComputedStyle(h3).marginBottom) : 0);
+    // (Tall, and near its cap, as drawn. On a day at −13° or 104°, as an ordinary day would draw them: the cell its plan
+    // gives the card, and the sizes as drawn, by as much as its plan's differ from today's. Such a day shrinks Now, not
+    // the card's shape.)
+    const D = p.dayK ? { hero: p.f.hero * p.dayK.hero, sun: p.f.sun * p.dayK.sun } : p.f, near = Math.min(cap.card, LEAD * D.hero) < D.sun * 1.08;
+    const tall = p.daySun ? p.daySun[1] >= SUNT * p.daySun[0] : q.height >= SUNT * q.width;
+    const k = tall ? 'col' : q.width > 2.2 * body ? 'row' : '', need = f0 * (k === 'row' ? 1.15 : near ? 1 : 1.08);
+    if (!k || top < need) return;
+    // (In a row, the arc as pictures() will draw it: as tall as the row, as wide as the room between the times allows.)
+    const fills = () => { if (k !== 'row') return true; const g = getComputedStyle(e), rw = g.gridTemplateRows.split(' ').map(parseFloat), cl = g.gridTemplateColumns.split(' ').map(parseFloat); return Math.min(rw[1], cl[1] / 2.5) >= .75 * rw[1]; };
+    const at = f => { e.style.fontSize = f.toFixed(2) + 'px'; return fitsIn(e); };
+    e.classList.add(k);
+    let lo = f0, hi = top;
+    if (at(hi)) lo = hi; else for (let i = 0; i < 7; i++) { const m = (lo + hi) / 2; if (at(m)) lo = m; else hi = m; }
+    if (lo >= need && at(lo) && fills()) {
+      p.f.sun = lo; p.pick.sun = k; heads(inn, regs, p.f);
+      if (fitsAll(regs, inn)) return;
+      p.f.sun = f0; p.pick.sun = k0;
+    }
+    e.classList.remove(k); at(f0); heads(inn, regs, p.f);
+  }
+  // Sunrise and sunset side by side stand at least 1 em apart, so they read as two times from the back of the room. Where
+  // they'd run together, the sun's card steps down a little, never under its key-line floor.
+  function sunGap(inn, regs, p, cap) {
+    const r = regs.find(r => r.name === 'sun');
+    if (!r || r.el.matches('.col, .row')) return;
+    const low = Math.max(FLOOR, (cap.kf && cap.kf.sun) || 0), f0 = p.f.sun;
+    const gap = () => { const b = [...r.el.querySelectorAll('.sunrow > div > b')].map(rectOf); return b.length < 2 ? Infinity : (b[1].left - b[0].right) / parseFloat(getComputedStyle(r.el).fontSize); };
+    for (let it = 0; it < 12 && gap() < 1 && p.f.sun > low; it++) { p.f.sun = Math.max(low, p.f.sun * .975); r.el.style.fontSize = p.f.sun.toFixed(2) + 'px'; }
+    if (p.f.sun !== f0) heads(inn, regs, p.f);
+  }
+  // The wind's compass and the moon: as big as the room their words leave. Air quality's number is its card's picture:
+  // as big as the room left under it, at most 70% of the temperature; its advice shows where there's room for it.
+  function pictures(regs, sh, inn) {
+    const tp = inn.querySelector(':scope > .hero .temp'), tf = tp ? parseFloat(getComputedStyle(tp).fontSize) : Infinity;
+    for (const r of regs) {
+      if (r.name === 'air') { aqNumber(r, tf); continue; }
+      // (The sun's arc in a row: as tall as the row its times leave, as wide as the room between them allows.)
+      if (r.name === 'sun' && r.el.classList.contains('row')) {
+        const cs = getComputedStyle(r.el), rw = cs.gridTemplateRows.split(' ').map(parseFloat), cl = cs.gridTemplateColumns.split(' ').map(parseFloat);
+        if (rw.length > 1 && cl.length > 2) r.el.style.setProperty('--arch', Math.max(0, Math.min(rw[1], cl[1] / 2.5)).toFixed(1) + 'px');
+        continue;
+      }
+      if (r.name !== 'windc' && r.name !== 'moon') continue;
+      // (The words as drawn: the picture takes the height of the body beside them, or the room under them over them.)
+      const b = r.el.querySelector('.windbody, .moonbody'), f = parseFloat(r.el.style.fontSize), q = rectOf(b), st = rectOf(b.querySelector('.stack')), col = b.classList.contains('col'), bs = getComputedStyle(b);
+      const p = col ? Math.min(q.width, q.height - st.height - parseFloat(bs.rowGap)) : Math.min(q.height, q.width - st.width - parseFloat(bs.columnGap));
+      r.el.style.setProperty('--pic', Math.max(3.4 * f, Math.min(p, 16 * f)).toFixed(1) + 'px');
+    }
+  }
+  function aqNumber(r, tf) {
+    const st = r.el.querySelector('.stack'), big = st && st.querySelector(':scope > .big');
+    if (!big) return;
+    big.style.removeProperty('font-size'); r.el.classList.remove('nosay', 'row');
+    const cf = parseFloat(r.el.style.fontSize) || parseFloat(getComputedStyle(r.el).fontSize);
+    const free = () => { const k = [...st.children].filter(e => rectOf(e).height), a = Math.min(...k.map(e => rectOf(e).top)), b = Math.max(...k.map(e => rectOf(e).bottom)); return rectOf(st).height - (b - a) - .3 * cf; };
+    // (Its advice shows where the card holds it with a line to spare, judged by the length of its words, not by where they
+    // happen to wrap: a card a few px narrower wraps them onto one more line, and the advice came and went as the window
+    // was dragged.)
+    const sy = st.querySelector(':scope > .aqsay'), spare = () => {
+      const q = rectOf(sy), s = getComputedStyle(sy), lh = parseFloat(s.lineHeight) || 1.2 * parseFloat(s.fontSize), g = document.createRange();
+      sy.style.whiteSpace = 'nowrap'; g.selectNodeContents(sy); const tw = g.getBoundingClientRect().width; sy.style.whiteSpace = '';
+      return !q.width || free() + q.height >= (tw / q.width + 1) * lh;
+    };
+    if (free() < 0 || (sy && !spare())) r.el.classList.add('nosay');
+    const f0 = parseFloat(getComputedStyle(big).fontSize), rg = document.createRange();
+    rg.selectNodeContents(big);
+    const w0 = rg.getBoundingClientRect().width, room = free();
+    const f = Math.min(f0 + .9 * Math.max(0, room), w0 ? f0 * rectOf(st).width / w0 : f0, .7 * tf);
+    // (As big as still fits, between its own size and that: a few layouts.)
+    const at = v => { big.style.fontSize = v.toFixed(1) + 'px'; return fitsIn(r.el); };
+    const most = (lo, hi, n) => {
+      if (hi <= lo * 1.02) return lo;
+      if (at(hi)) return hi;
+      for (let i = 0; i < n && hi - lo > 1; i++) { const m = (lo + hi) / 2; if (at(m)) lo = m; else hi = m; }
+      return lo;
+    };
+    const a = most(f0, f, 5), say = !r.el.classList.contains('nosay');
+    // (In a short, wide card, the number stands beside its chip, bar, and advice, as tall as the card's body, where that
+    // draws it at least 10% bigger, or as big with the advice shown. Only where it reaches the body's height or its cap: a
+    // number the width holds back stays over its chip.)
+    const q = rectOf(st);
+    if (q.width > 2 * q.height) {
+      r.el.classList.add('row');
+      for (const ns of [false, true]) {
+        r.el.classList.toggle('nosay', ns); big.style.removeProperty('font-size');
+        if (!fitsIn(r.el)) continue;
+        const b = most(f0, Math.max(f0, .7 * tf), 7);
+        if ((b >= .8 * q.height || b >= .69 * tf) && (b >= a * 1.1 || (b >= a && !ns && !say))) { at(b); return; }
+        break;
+      }
+      r.el.classList.remove('row'); r.el.classList.toggle('nosay', !say);
+    }
+    if (a > f0 * 1.02) at(a); else big.style.removeProperty('font-size');
+  }
+
+  let laid = null, laidKey = '';
+  const probes = new Map();
+  function fill(wx, inn, changed) {
+    const kind = wx.classList.contains('V-simple') ? 'simple' : wx.classList.contains('V-date') ? (wx.matches('.d-m, .d-s') ? '' : 'date')
+      : wx.classList.contains('V-detail') ? 'detail' : inn.classList.contains('offmsg') ? '' : 'main';
+    if (!kind) return;
+    if (kind === 'simple' || kind === 'detail') return fillOne(wx, inn, kind, changed);
+    const L = (wx.className.match(/\bL-(\w+)/) || [])[1];
+    const regs = [...inn.children].map(el => ({ el, name: regOf(el) })).filter(r => r.name);
+    const hero = regs.find(r => r.name === 'hero'), names = regs.map(r => r.name);
+    if (!hero) { laid = null; laidKey = ''; return; }
+    if (kind === 'main') hero.alt = L === 'm' ? 'stk' : 'side';
+    const ws = getComputedStyle(wx), font = ws.fontFamily, base = parseFloat(ws.fontSize), cls = wx.className.replace(STATE, '').replace(/\s+/g, ' ').trim(), sig = sigOf(inn);
+    rulers(wx, hero.el, config.units === 'c', font);
+    const size = [innerWidth, innerHeight, corners.low, corners.top, base, font, fontTurn].join('|');
+    const key = [kind, cls, names.join(), size, config.units, wideT.join(), sig].join('|');
+    if (key === laidKey && !changed) return;
+    wx.classList.remove(...STEPS, 'brief', 'lift');
+    // (Parts the mockup's layout never had here go first when there isn't room, or when Now's temperature or another
+    // part would draw smaller than the mockup draws it: Medium's small cards (air quality, the moon, the wind, then the
+    // sun), and Large's hours, wind, and air quality. Then the spacing closes up a step at a time, as fit() would.)
+    // (Filling the board, air quality's card goes first where it would leave What to wear a strip: Now's line has it.)
+    const extra = names.filter(k => (L === 'm' ? /^(sun|windc|moon|air)$/ : L === 'l' ? /^(hourly|windc|air)$/ : kind === 'main' && names.includes('wear') ? /^air$/ : /^$/).test(k));
+    // (Medium with no week or hours under Now: once its small cards go, Now draws as big as it does without them, m-big.)
+    const bigOK = L === 'm' && kind === 'main' && !names.some(k => /^(week|days|hourly)$/.test(k));
+    const hide = drop => { for (const r of regs) r.el.style.display = drop.includes(r.name) ? 'none' : ''; };
+    // (Nothing fits at 14 px, even closed up: the mockup's own layout, closed up by fit() as before, without the parts
+    // it never had.)
+    const fallback = () => { unfill(wx, inn, regs); hide(L === 'xl' ? [] : extra); wx.classList.toggle('m-big', bigOK); laid = { fallback: true }; laidKey = key; };
+    try {
+      // (The same window and the same words, drawn again: the same sizes, while they fit.)
+      if (key === laidKey && laid) {
+        if (laid.fallback) { hide(L === 'xl' ? [] : extra); wx.classList.toggle('m-big', bigOK); return; }
+        const kept = regs.filter(r => !laid.drop.includes(r.name));
+        hide(laid.drop);
+        wx.classList.toggle('m-big', !!laid.big);
+        wx.classList.add('laid', ...laid.steps);
+        apply(wx, inn, kept, laid);
+        if (fitsAll(kept, inn)) { pictures(kept, laid.sh, inn); return; }
+        wx.classList.remove(...STEPS);
+        hide([]);
+      }
+      // (A plan depends on the window and what it shows alone, never on what was drawn before: it comes back when they
+      // do. A near tie goes to the layout's own arrangement, then to each part's first shape.)
+      const pkey = [cls, names.join(), hero.alt, font, fontTurn, config.units, wideT.join(), sig].join('|');
+      const hasBand = wx.classList.contains('has-band'), tEm = L === 'l' ? (hasBand ? 4.2 : 5.4) : hasBand ? 3.4 : 3.9;
+      const mock = base * (L === 'm' && !names.some(k => /^(week|days|hourly|wl|wear)$/.test(k)) ? 5 : tEm), steps = [];
+      for (const step of [null].concat(L === 's' ? [] : STEPS)) {
+        if (step) { wx.classList.add(step); steps.push(step); }
+        const s = getComputedStyle(inn), gap = parseFloat(s.rowGap) || 0;
+        const W = inn.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight), H = inn.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom);
+        const top = inn.querySelector(':scope > .band, :scope > .bar2'), isBand = !!top && top.matches('.band'), inset = parseFloat(getComputedStyle(wx).getPropertyValue('--inset')) || 0;
+        const cap = { hero: Math.max(FLOOR, Math.min(H, W) * .2), card: Math.max(FLOOR, Math.min(H, W) * .09), base, inset, once: L === 'm' || L === 's', tem: L === 'xl' ? 6.4 : tEm, l: L === 'l' && kind === 'main' };
+        // (Large's hours take a slot only while every key line stays at KEY px or more, as drawn. Where no plan with them
+        // does, before the hours go, the same counts are planned again with each part at least the size that keeps its key
+        // lines at KEY px: kf. A part is never drawn under its kf, so a plan holds them or doesn't, alike at the next width.)
+        const nh = L === 'l' && kind === 'main' && extra.includes('hourly') ? extra.length - 1 - extra.indexOf('hourly') : -1, counts = [];
+        let liftId = null;
+        for (let n = 0; n <= extra.length; n++) { if (n === nh + 1) for (let j = 0; j <= nh; j++) counts.push([j, true]); counts.push([n, false]); }
+        for (const [n, floor] of counts) {
+          const drop = extra.slice(extra.length - n), use = names.filter(k => !drop.includes(k)), big = bigOK && n === extra.length;
+          wx.classList.toggle('m-big', big);
+          const k = pkey + '|' + steps.join() + '|' + big;
+          let pr = probes.get(k);
+          if (!pr) { if (probes.size > 24) probes.clear(); pr = probe(wx, inn, regs); probes.set(k, pr); }
+          // (On a day at −13° or 104°, the parts are also measured with an ordinary day's numbers, to choose the layout.)
+          let pu = pr;
+          if (rulerDay && kind === 'main' && (L === 'l' || L === 'xl')) {
+            pu = probes.get(k + '|day');
+            if (!pu) {
+              // (The numbers in the words too: −25° reads 25°, 104° reads 04°, while it measures.)
+              const tw = document.createTreeWalker(inn, NodeFilter.SHOW_TEXT), was = [];
+              for (let t = tw.nextNode(); t; t = tw.nextNode()) { const v = t.nodeValue.replace(/−(?=\d\d)/g, '').replace(/(^|\D)1(\d\d)(?!\d)/g, '$1$2'); if (v !== t.nodeValue) { was.push([t, t.nodeValue]); t.nodeValue = v; } }
+              for (const v in rulerDay) wx.style.setProperty(v, rulerDay[v]);
+              try { pu = probe(wx, inn, regs); } finally { for (const v in rulerVals) wx.style.setProperty(v, rulerVals[v]); for (const [t, v] of was) t.nodeValue = v; }
+              probes.set(k + '|day', pu);
+            }
+          }
+          // (You're offline, or Can't get new weather, never passes OFFK of the window's text size: no louder than a
+          // warning in the same window, whose Now shares its room with the hours, the wind, and air quality.)
+          const band = pr.band && top ? { w: pr.band[0], h: pr.band[1], gap, base: isBand ? Math.max(FLOOR, .82 * base) : parseFloat(getComputedStyle(top).fontSize),
+            k: isBand ? BANDK : 0, pad: inset, capW: Math.min((W - inset) / pr.band[0], top.matches('.off') ? OFFK * base : Infinity), capH: BANDH * H / pr.band[1] } : null;
+          const W0 = W, H0 = H, g0 = gap;
+          const plan = (parts, bd = band, cp = cap, P = pr, W = W0, H = H0, gap = g0) => {
+            // (Lifted: the way the plan before chose, planned again with every part at KEY px, where that fits.)
+            const lf = cp.lift && !(cp.no && cp.no.includes(cp.lift)) && arrangements(L, parts, kind).find(a => a.id === cp.lift), lp = lf && solve(lf.areas, P.sh, W, H, gap, cpOf(lf, cp), bd);
+            if (lp && lp.fits) return Object.assign(lp, { id: lf.id, areas: lf.areas });
+            let best = null, grow = null, wide = null, late = [], own = null, top = null, topS = null;
+            const pool = [];
+            const better = (q, p) => !q || p.score > q.score + 1e-6, sp = (v, a, b) => v.slice(a, b + 1).reduce((t, q) => t + q, 0) + (b - a) * gap;
+            // (With the hours held at KEY px, a way passed over for Now's empty band, below.)
+            const bare = p => !!cp.kf && !!cp.no && cp.no.includes(p.id);
+            // (In Large, What to wear in a strip more than WEARX times as wide as it's tall only where no other way fits.)
+            const strip = p => { const c = cellsOf(p.areas).wear; return L === 'l' && kind === 'main' && !!c && sp(p.x, c[0], c[1]) > WEARX * sp(p.y, c[2], c[3]); };
+            for (const [i, a] of arrangements(L, parts, kind).entries()) {
+              const p = solve(a.areas, P.sh, W, H, gap, cpOf(a, cp), bd);
+              if (!p) continue;
+              p.id = a.id; p.areas = a.areas;
+              if (!i) { p.score += .03; own = p; }
+              if (a.id === 'xlt') grow = p;
+              else if (/^(xl[hsd]|l[htw]|mb)$/.test(a.id)) { if (!bare(p)) late.push(p); }
+              else if (strip(p)) { if (better(topS, p)) topS = p; if (better(wide, p) && !bare(p)) wide = p; }
+              else { if (better(top, p)) top = p; if (better(best, p) && !bare(p)) best = p; pool.push(p); }
+            }
+            if (wide && (!best || (!best.fits && (wide.fits || wide.score > best.score)))) best = wide;
+            // (Filling the board, Now over the hours, or Now and the small cards over the rest, only where the other ways
+            // leave the days or the hours under KEYX px: on a small board they read from the back of the room.)
+            // (In Large, Now beside What to wear or the second slot with the hours across under them, or Now over What to wear
+            // and the second slot with the days down the right, only where the other ways leave Now's band more than NOWX
+            // empty across. The days' way only where Now draws as big too.)
+            // (Filling the board with three or four small cards, the days down the right only where the other ways draw them
+            // under KEYD.)
+            const b0 = top, under = (k, t = KEYX) => !!b0.f[k] && b0.f[k] * (P.sh[k].kr || 1) < t, gap0 = !!b0 && (b0.nowE > NOWX || bare(b0));
+            // (In Large, the hours' way also where the other ways draw the hours under KEYX, with the sun as the second slot,
+            // while Now keeps LTK of its size, before the hours are held at KEY; and Now over the hours with What to wear down the
+            // right only where the hours are held at KEY.)
+            const hourL = !!b0 && L === 'l' && !cp.kf && under('hourly') && parts.includes('sun');
+            // (The hours' way for Now's empty band only where What to wear's strip, the best way of all, leaves it empty too: so
+            // the strip's ratio, WEARX, never lets the hours' way in at one width and not the next.)
+            const gapH = gap0 && (!topS || topS.score <= b0.score || topS.nowE > NOWX);
+            // (Now over What to wear and the second card, the days down the right, as round 8 drew it: where the other ways leave
+            // Now's band more than NOWX empty, Now draws as big, and the days no smaller than KEYX or the other ways' size.)
+            if (b0 && (L === 'xl' ? under('days') || under('hourly') : gap0 || hourL)) for (const p of late) if (p.fits && better(best, p) && (p.id !== 'lt' || (gap0 && p.f.hero >= LTE * b0.f.hero && !(p.f.days < Math.min(KEYX / ((P.sh.days && P.sh.days.kr) || 1), b0.f.days || 0)))) && (p.id !== 'xld' || under('days', KEYD)) && (p.id !== 'lw' || (gap0 && !!cp.kf)) && (p.id !== 'lh' || gapH || (hourL && p.f.hero >= LTK * b0.f.hero))) best = p;
+            // (In Large more than LTW times as wide as it's tall, with the 7 days, What to wear, and a second card: where the
+            // other ways draw the days under KEYX px in a corner, not the window's full height, they run down the right, at
+            // least LTG times as big and DT px or more, while Now keeps LTL of the size the layout's own way gives it. A wind
+            // or air quality card only as a card no more than twice as wide as it's tall. The other ways are every way within
+            // TIE of the best of them, the days at the smallest any of them draws, in a corner where any of them puts them
+            // there: so a near tie between them never turns the rule on and off as the window widens. Where Now draws at least
+            // LTE of the best's size there too, DT px is enough, as round 8c drew them.)
+            // (And, as round 8 drew them, more than LTT times as wide as tall with What to wear and the sun, and no wind line
+            // in Now: the days down the right wherever Now keeps LTL of its size, whatever the other ways draw.)
+            const lt8 = late.find(p => p.id === 'lt' && p.fits);
+            if (b0 && lt8 && kind === 'main' && W > LTT * H && parts.includes('sun') && !shown('wind') && lt8.f.hero >= LTL * (own && own.fits ? own : best).f.hero) best = lt8;
+            const kd = (P.sh.days && P.sh.days.kr) || 1, ties = b0 && b0.fits ? pool.filter(p => p.fits && p.score >= b0.score - TIE) : [];
+            const d0 = Math.min(...ties.map(p => (p.f.days || 0) * kd)), corner = ties.some(p => { const c = cellsOf(p.areas).days; return !!c && c[3] - c[2] + 1 < p.areas.length; });
+            const ltA = ties.length && corner && d0 < KEYX && L === 'l' && kind === 'main' && W > LTW * H && arrangements(L, parts, kind).find(a => a.id === 'lt'), dTo = Math.max(DT, LTG * d0);
+            const ltAt = d => solve(ltA.areas, P.sh, W, H, gap, Object.assign({}, cpOf(ltA, cp), { kf: Object.assign({}, cp.kf, { days: d / kd }) }), bd), ltC = ltA && cellsOf(ltA.areas);
+            const ok = (p, d) => !!p && p.fits && ['windc', 'air'].every(k => !ltC[k] || sp(p.x, ltC[k][0], ltC[k][1]) <= 2 * sp(p.y, ltC[k][2], ltC[k][3])) && p.f.days * kd >= d - .05 && p.f.hero >= LTL * (own && own.fits ? own : b0).f.hero;
+            const lt1 = ltA && ltAt(dTo), lt2 = ltA && !ok(lt1, dTo) && dTo > DT && ltAt(DT);
+            const lt = ok(lt1, dTo) ? lt1 : ok(lt2, DT) && lt2.f.hero >= LTE * b0.f.hero ? lt2 : null;
+            if (lt) best = Object.assign(lt, { id: 'lt', areas: ltA.areas });
+            // (In Medium, where Now would sit beside the week or the hours, or across the top over them, What to wear's strip
+            // runs across under both, where that plans better.)
+            const mb = late.find(p => p.id === 'mb' && p.fits);
+            if (mb && best && (best.id === 'beside' || best.id === 'over') && better(best, mb)) best = mb;
+            // (Now across the top over What to wear and a picture card wins only where Now draws bigger too.)
+            return grow && (!best || (grow.score > best.score + 1e-6 && (!best.fits || grow.f.hero > best.f.hero))) ? grow : best;
+          };
+          // (The layout is chosen at the window's own size, for an ordinary day's numbers, then sized for today. So a day at
+          // −13° or 104° keeps the window's layout and the cards' shapes. Where that layout doesn't fit today, the choice is
+          // made for today.)
+          // (A near tie at the window's size goes to the way chosen for the window a little smaller, to the nearest QS px
+          // below, with its text size, padding, and gaps as they'd draw there: so a resize of a few px doesn't take turns
+          // between two ways that draw alike. The tie is judged at the window rounded down, both ways drawn there, so it holds
+          // across the QS px that round to it: there the best way here scores within TIE of that way, and, as another
+          // arrangement, draws every part within TIE of its size there, or twice TIE where the window's height is on the QS
+          // grid, so only its width is rounded; and here, within half a TIE more. The same arrangement with a card's other
+          // shape scores within twice TIE there, and draws alike here. That way is then drawn at this size, where it fits.)
+          const near = (parts, bd, cp, P, r) => {
+            const q = kind === 'main' && (L === 'l' || L === 'xl') && !wx.classList.contains('filled') ? QS : 1, wq = innerWidth - innerWidth % q, hq = innerHeight - innerHeight % q;
+            if (!r || !r.fits || (wq === innerWidth && hq === innerHeight)) return r;
+            const k = Math.max(.7, Math.min(1.8, Math.min(wq / REF[L][0], hq / REF[L][1]))) / (parseFloat(wx.style.getPropertyValue('--u')) || 1);
+            const Wq = wq - (innerWidth - W0) * k, Hq = hq - (innerHeight - H0) * k;
+            const cq = Object.assign({}, cp, { hero: Math.max(FLOOR, Math.min(Hq, Wq) * .2), card: Math.max(FLOOR, Math.min(Hq, Wq) * .09), base: cp.base * k, inset: cp.inset * k });
+            const c0 = plan(parts, bd && Object.assign({}, bd, { gap: bd.gap * k, base: bd.base * k, pad: bd.pad * k, capW: bd.capW * k, capH: bd.capH * k }), cq, P, Wq, Hq, g0 * k);
+            if (!c0 || !c0.fits || (c0.id === r.id && names0(c0.pick) === names0(r.pick))) return r;
+            const a0 = arrangements(L, parts, kind)[0], bq = bd && Object.assign({}, bd, { gap: bd.gap * k, base: bd.base * k, pad: bd.pad * k, capW: bd.capW * k, capH: bd.capH * k });
+            const at = (w, W, H, g, cx, b) => {
+              const cell = cellsOf(w.areas), ks = Object.keys(cell), p = solveFor(w.areas, cell, ks, P.sh, w.pick, W, H, g, cpOf(w, cx), b);
+              p.score = p.judged + ks.reduce((t, k) => t + (w.pick[k] === Object.keys(P.sh[k].px)[0] ? .02 : 0), 0) + (a0 && a0.id === w.id ? .03 : 0);
+              return p;
+            };
+            const rQ = at(r, Wq, Hq, g0 * k, cq, bq), t = (hq === innerHeight ? 2 : 1) * TIE;
+            const tieOf = c => {
+              const cQ = at(c, Wq, Hq, g0 * k, cq, bq), ks = Object.keys(cellsOf(c.areas));
+              const alike = (a, b, u = t) => ks.every(k => b.f[k] && Math.abs(Math.log(a.f[k] / b.f[k])) < u), p = at(c, W0, H0, g0, cp, bd);
+              if (!p.fits) return null;
+              // (Where the best way here doesn't fit there, the two are compared here, as drawn at this size.)
+              const tie = rQ.fits ? cQ.score - rQ.score < (c.id === r.id ? 2 : 1) * TIE && (c.id === r.id || alike(cQ, rQ)) && alike(p, r, t + TIE / 2) : p.score >= r.score - TIE && alike(p, r);
+              return tie ? Object.assign(p, { id: c.id, areas: c.areas }) : null;
+            };
+            // (Where the window rounded down runs the 7 days down the right and this one doesn't, this way's cards there choose
+            // too: a card whose other shape plans better there takes it here where that's a near tie. So a card's shape doesn't
+            // take turns where the rounded window's days start down the right, as the sun's did at 497 tall, rounded to 480.)
+            let w = tieOf(c0);
+            const cr = Object.assign({}, cpOf(r, cq), { ltr: W0 / H0 });
+            if (!w && c0.id === 'lt' && r.id !== 'lt' && rQ.fits) for (const key of Object.keys(r.pick)) {
+              for (const v of shapesOf(P.sh[key], cr, key)) {
+                if (v === r.pick[key] || w) continue;
+                const c = { id: r.id, areas: r.areas, pick: Object.assign({}, r.pick, { [key]: v }) };
+                if (at(c, Wq, Hq, g0 * k, cq, bq).score > rQ.score) w = tieOf(c);
+              }
+            }
+            return w || r;
+          }, names0 = o => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
+          const decide = (parts, bd = band, cp = cap) => {
+            if (pu === pr) return near(parts, bd, cp, pr, plan(parts, bd, cp));
+            const c = near(parts, bd, cp, pu, plan(parts, bd, cp, pu));
+            if (c && c.fits) {
+              // (Each card's shape as the ordinary day chooses it in that layout, where that fits today. Else, where the two
+              // days choose differently, it's a near tie, and it goes to the card's first shape.)
+              const cell = cellsOf(c.areas), names = Object.keys(cell), t = solve(c.areas, pr.sh, W, H, gap, cpOf(c, cp), bd), mix = {};
+              for (const k of names) mix[k] = !t || t.pick[k] === c.pick[k] ? c.pick[k] : Object.keys(pr.sh[k].px)[0];
+              for (const pick of [c.pick, mix]) {
+                const p = solveFor(c.areas, cell, names, pr.sh, pick, W, H, gap, cpOf(c, cp), bd), sc = cell.sun;
+                if (!p.fits) continue;
+                // (The ordinary day's sizes and sun cell, for the cards' own shapes.)
+                const o = solveFor(c.areas, cell, names, pu.sh, pick, W, H, gap, cpOf(c, cp), bd), sp = (v, a, b) => v.slice(a, b + 1).reduce((t, x) => t + x, 0) + (b - a) * gap;
+                return Object.assign(p, { id: c.id, areas: c.areas, score: p.judged + c.score - c.judged, dayK: { hero: o.f.hero / p.f.hero, sun: sc ? o.f.sun / p.f.sun : 1 }, daySun: sc ? [sp(o.x, sc[0], sc[1]), sp(o.y, sc[2], sc[3])] : null });
+              }
+            }
+            return near(parts, bd, cp, pr, plan(parts, bd, cp));
+          };
+          // (Where the drawing doesn't hold the plan, it's made again with one round of track moves, which leaves the
+          // cards more room: a day at −13° can need it.)
+          const hoursKey = L === 'l' && n < extra.length && use.includes('hourly'), kf = {};
+          if (floor) for (const k of use) if (pr.sh[k].kr) kf[k] = (KEY + .05) / pr.sh[k].kr;
+          // (Now's size without the hours, for the hours at their edge.)
+          let f0 = null;
+          const noHours = () => { if (f0 == null) { const p0 = decide(use.filter(k => !/^(hourly|windc|air)$/.test(k)), band, cap); f0 = p0 && p0.fits ? p0.f.hero : 0; } return f0; };
+          let edged = false;
+          for (const c0 of (cap.once ? [cap] : [cap, Object.assign({}, cap, { once: true })]).map(c => (floor ? Object.assign({}, c, { kf, lift: liftId }) : c))) for (let cp = c0, tries = 0; cp && tries < 3 && !edged; tries++) {
+            const best = decide(use, band, cp), was = cp;
+            cp = null;
+            if (!best || !best.fits || (n < extra.length && L !== 'xl' && (best.f.hero * tEm < .95 * mock || use.some(k => k !== 'hero' && !extra.includes(k) && best.f[k] < .95 * base)))) continue;
+            const span = (v, a, b) => v.slice(a, b + 1).reduce((t, q) => t + q, 0) + (b - a) * gap;
+            if (L === 'xl' && n < extra.length && (c => span(best.x, c[0], c[1]) > WEARX * span(best.y, c[2], c[3]))(cellsOf(best.areas).wear)) continue;
+            // (With the rule above, the hours' key-line rule keeps the temperature at least 95% of the mockup's.)
+            // (Large's wind and air quality cards, which Now's lines already carry, join only as a card about as tall as
+            // it's wide, never a strip.)
+            if (L === 'l' && n < extra.length && ['windc', 'air'].some(k => { const c = cellsOf(best.areas)[k]; return !!c && span(best.x, c[0], c[1]) > 2 * span(best.y, c[2], c[3]); })) continue;
+            // (The plan, drawn and checked. Where the drawing doesn't hold it, the next way is tried.)
+            Object.assign(best, { sh: pr.sh, steps: steps.slice(), drop, big });
+            const kept = regs.filter(r => !drop.includes(r.name));
+            hide(drop);
+            wx.classList.add('laid');
+            const draw1 = (p, c = was) => { apply(wx, inn, kept, p); refine(kept, p, c, inn); turn(wx, kept, p, pr.sh, cap, inn); sunGap(inn, kept, p, c); lines(wx, inn, kept, p, band); roomy(inn, kept, p, cap); weekRoom(inn, kept, p); pictures(kept, pr.sh, inn); return fitsAll(kept, inn); };
+            // (The plan as it was made, to draw it again.)
+            const fp = Object.assign({}, best.f), pk = Object.assign({}, best.pick), bd0 = best.band;
+            const again = c => { Object.assign(best.f, fp); Object.assign(best.pick, pk); best.sky = 1; best.band = bd0; return draw1(best, c); };
+            // (Held at KEY px, or drawn within a hair of it, the hours never leave Now running across a band more than NOWX
+            // empty, as drawn; nor, with What to wear to take their room, across the top under NOWK of its size without them.
+            // There the plan stays only where it keeps every key line at KEY px drawn without the hold, as any plan is. Not
+            // with What to wear planned wide: drawn without the hold, it shrinks to keep its advice on one line at every other
+            // width. With a wind or air quality card, the hair is HAIRX: a few px of window tip such a plan either way.)
+            let edge = floor;
+            const bare = () => bareOf(hero.el) > NOWX || (use.includes('wear') && best.areas[0].every(k => k === 'hero') && best.f.hero < NOWK * noHours());
+            const ok1 = draw1(best);
+            // (A plan whose key lines draw a hair short of KEY px goes to the next count, the same parts at KEY px, which plans
+            // the same way first. Not where a count with fewer cards comes first.)
+            if (ok1 && hoursKey && !floor && !nh && keyMin(inn) < KEY && keyMin(inn) >= LIFT * KEY) { liftId = liftId || best.id; wx.classList.remove('laid'); continue; }
+            const hair = use.some(k => k === 'windc' || k === 'air') ? HAIRX : .1;
+            const held = ok1 && (!hoursKey || (keyMin(inn) >= KEY && (edge = edge || keyMin(inn) < KEY + hair, true)));
+            // (Drawn whole with its hours at the edge, either side of it, a plan goes on to the next count: planned again with
+            // one round of track moves, the same parts draw a hair either side of the edge as the window widens. So does one
+            // drawn LIFT short of it, where no lift takes it.)
+            if (ok1 && hoursKey && !floor && (held ? edge : nh && keyMin(inn) < KEY && keyMin(inn) >= LIFT * KEY)) edged = true;
+            if (held && !(hoursKey && edge && bare() && !(pk.wear !== 'wide' && again(cap) && keyMin(inn) >= KEY))) {
+              // (Now's lines grew, and the band couldn't follow them: planned again with room for the band at their size.)
+              if (best.bandShort) {
+                const two = decide(use, Object.assign({}, band, { k: band.k * Math.min(2, band.k * best.f.hero / best.band) }), was);
+                if (two && two.fits && two.f.hero >= .95 * best.f.hero) {
+                  Object.assign(two, { sh: pr.sh, steps: steps.slice(), drop, big });
+                  if (draw1(two) && !two.bandShort && (!hoursKey || keyMin(inn) >= KEY)) { laid = two; laidKey = key; return; }
+                }
+                apply(wx, inn, kept, best); pictures(kept, pr.sh, inn);
+              }
+              laid = best; laidKey = key; return;
+            }
+            // (Held at KEY px, a way that leaves Now's band too empty as drawn is passed over, and the same parts planned again.)
+            if (held && floor && hoursKey) cp = Object.assign({}, was, { no: (was.no || []).concat(best.id) });
+            wx.classList.remove('laid');
+          }
+        }
+      }
+      fallback();
+    } catch (e) {
+      // (A slip in the arithmetic never leaves the window half drawn: the mockup's own layout, and the error reported.)
+      wx.classList.remove('probe');
+      fallback();
+      setTimeout(() => { throw e; });
+    }
+  }
+
+  // One part filling the view under its bar: the Now view, the days, the hours, sun and moon, air quality, and the list
+  // of watches and warnings; and Simple words, whose picture, sentence, and clothes fill the window between the
+  // temperature and the credit.
+  let one = { key: '' };
+  const WSH = ['beside', 'two', 'brk', 'r3', 'bare', 'nohrs'];
+  function fillOne(wx, inn, kind, changed) {
+    const el = kind === 'simple' ? inn : inn.children[1];
+    if (!el) return;
+    const list = el.matches('.scroll'), mb = kind === 'detail' && el.querySelector('.moonbody'), aq = kind === 'detail' && el.querySelector('.air .aqsay') && el.querySelector('.air');
+    // (What to wear's view: its shape in classes on .dwear, and the other day in a template, sized with this one. Its key
+    // holds both days' words in either order, so the toggle measures nothing.)
+    const dw = kind === 'detail' && el.matches('.dwear'), tp = dw && el.querySelector(':scope > template');
+    const wshape = s => { for (const c of WSH) el.classList.toggle(c, !!(s && s[c])); };
+    const sig = tp ? [...inn.children].filter(e => e !== el).map(sigOf).concat([sigOf(el), sigOf(tp.content)].sort()).join('|') : sigOf(inn);
+    const key = [kind, wx.className.replace(STATE, '').replace(/\s+/g, ' ').trim(), innerWidth, innerHeight, corners.low, corners.top, getComputedStyle(wx).fontFamily, fontTurn, sig].join('|');
+    if (key === one.key && !changed) return;
+    wx.classList.remove(...STEPS, 'brief', 'lift');
+    const ok = kind === 'simple' ? () => {
+      const kids = [...inn.children].filter(e => !e.matches('.chip, .src')), chip = inn.querySelector('.chip'), cr = inn.querySelector(':scope > .src');
+      if (!kids.length) return true;
+      const top = Math.min(...kids.map(e => rectOf(e).top)), bot = Math.max(...kids.map(e => rectOf(e).bottom)), r = rectOf(inn);
+      const t0 = chip ? rectOf(chip).bottom + 4 : r.top, b0 = cr ? rectOf(cr).top - 4 : r.bottom;
+      return top >= t0 && bot <= b0 && !kids.some(e => rectOf(e).width > r.width - 8) && fitsIn(inn);
+    } : list ? () => el.scrollHeight <= el.clientHeight + 1
+      // (What to wear's view: its own overflow first, the quick test.)
+      : () => (!dw || (el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1)) && fitsIn(el) && inn.scrollHeight <= inn.clientHeight + 1 && (!dw || ![...el.querySelectorAll('.wtop > p')].some(wider));
+    // (The same view and words drawn again: the same size, while it fits.)
+    if (key === one.key && !list) {
+      wx.classList.add(...one.steps); el.classList.toggle('side', one.side); if (mb) mb.classList.toggle('col', one.col); if (aq) aq.classList.toggle('nosay', !one.say);
+      if (mb && one.pic) mb.closest('.card').style.setProperty('--pic', one.pic);
+      if (dw) { wshape(one.wsh); if (one.ww) el.style.setProperty('--ww', one.ww); else el.style.removeProperty('--ww'); }
+      el.style.fontSize = one.size.toFixed(2) + 'px';
+      if (ok()) return;
+      wx.classList.remove(...STEPS); el.classList.remove('side'); if (mb) { mb.classList.remove('col'); mb.closest('.card').style.removeProperty('--pic'); }
+      if (dw) { wshape(null); el.style.removeProperty('--ww'); }
+    }
+    if (aq) aq.classList.add('nosay');
+    const mc = mb && mb.closest('.card');
+    if (mc) mc.style.removeProperty('--pic');
+    const top = Math.max(FLOOR, Math.min(innerWidth, innerHeight) * (kind === 'simple' ? .09 : .08));
+    const search = from => {
+      let lo = from, hi = Math.max(from, top);
+      el.style.fontSize = hi + 'px';
+      if (ok()) lo = hi;
+      for (let it = 0; it < 9 && hi - lo > .25; it++) { const m = (lo + hi) / 2; el.style.fontSize = m.toFixed(2) + 'px'; if (ok()) lo = m; else hi = m; }
+      return lo;
+    };
+    if (list) {
+      // (Watches and warnings: as big as the whole list fits, never smaller than before. A longer list scrolls, and fades
+      // at the bottom.)
+      el.style.removeProperty('font-size');
+      const b = parseFloat(getComputedStyle(el).fontSize), size = ok() ? search(b) : 0;
+      if (size) el.style.fontSize = size.toFixed(2) + 'px'; else el.style.removeProperty('font-size');
+      el.classList.toggle('fade', el.scrollHeight > el.clientHeight + 1);
+      one = { key, size, side: false, col: false, steps: [] };
+      return;
+    }
+    let lo, wsh = null, ww = '';
+    const steps = [];
+    if (dw) {
+      // (What to wear's view. Its shapes: the words beside the clothes or over them, and the hours in one row or two (two
+      // rows only in a window less than 1.6 times as wide as it's tall). Each in turn, the first that draws biggest, a
+      // later one only where it draws 3% bigger. Tight at 14 px, or not fitting there, it closes up a step at a time, as
+      // the other views do, where that lets it fit or draw bigger. Each sentence of the advice is whole on its line; where
+      // no shape fits that way, the first breaks after "Dress for" (brk). Where it's tight, more than three clothes also try
+      // rows of three (r3). Where nothing fits, the clothes go without their names (bare). Then the hours step aside, and
+      // the names come back. Both days fit at the size chosen: the other day is put in to check.)
+      const fe = document.activeElement, items = !!el.querySelector('.wtop .items'), hrs = !!el.querySelector('.wrow'), sents = !!el.querySelector('.advice .s');
+      const many = Math.max(...[el, tp && tp.content].filter(Boolean).map(e => e.querySelectorAll('.wtop .items > figure').length)) > 3;
+      el.style.removeProperty('--ww');
+      const swap = () => { const a = [...el.children].filter(e => e !== tp), b = [...tp.content.children]; tp.content.append(...a); tp.before(...b); };
+      const both = () => { if (!ok()) return false; if (!tp) return true; swap(); const r = ok(); swap(); return r; };
+      // (The biggest size on a .25 px grid from `from` up to `cap` that fits, or null. With a guess, such as the size the
+      // last measure chose, it steps out from there, so a drag tests few sizes. The grid gives the same size from any
+      // start.)
+      const most = (from, cap, g) => {
+        if (from > cap) return null;
+        const n = Math.floor((cap - from) / .25 + 1e-6), at = k => { el.style.fontSize = (from + k * .25).toFixed(2) + 'px'; return ok(); };
+        let lo = -1, hi = n + 1;
+        if (g == null) { if (!at(0)) return null; lo = 0; } else {
+          const k = Math.min(n, Math.max(0, Math.round((g - from) / .25)));
+          let d = 1;
+          if (at(k)) { lo = k; while (lo < n) { const j = Math.min(n, lo + d); if (at(j)) { lo = j; d *= 2; } else { hi = j; break; } } }
+          else { hi = k; while (hi > 0) { const j = Math.max(0, hi - d); if (at(j)) { lo = j; break; } hi = j; d *= 2; } }
+          if (lo < 0) return null;
+        }
+        while (hi - lo > 1) { const m = (lo + hi) >> 1; if (at(m)) lo = m; else hi = m; }
+        return from + lo * .25;
+      };
+      // (The biggest size both days fit: this day's, then the other day's up to it. One swap each way.)
+      const fit2 = (from, g) => {
+        let s = most(from, top, g);
+        if (s !== null && tp) { swap(); s = most(from, s, s); swap(); }
+        return s === null ? { s: from, f: false } : { s, f: true };
+      };
+      const g0 = one.wsh ? one.size : null;
+      const beats = (c, b) => !b || (c.f && !b.f) || (c.f === b.f && c.s > 1.03 * b.s);
+      const run = v => {
+        const SH = [];
+        for (const [beside, two] of [[false, false], [true, false], [false, true], [true, true]]) if ((!beside || items) && (!two || (hrs && !v.nohrs && innerWidth < 1.6 * innerHeight))) SH.push(Object.assign({}, v, { beside, two }));
+        // (A later shape is searched only from the size it must beat: one test where it can't.)
+        const best = (b = null) => {
+          for (const sh of SH) { wshape(sh); const c = Object.assign(b && b.f ? fit2(b.s * 1.03, g0 == null ? null : Math.max(b.s * 1.03, g0)) : fit2(FLOOR, g0), { sh }); if (beats(c, b)) b = c; }
+          return b;
+        };
+        // (Each step closes up more than the one before, so a step that doesn't help may still lead to one that does.)
+        wx.classList.remove(...STEPS);
+        let b = best();
+        b.steps = [];
+        if (b.s < FLOOR * 1.2 || !b.f) STEPS.forEach((st, i) => { wx.classList.add(st); const c = best(b.f ? b : null); if (c !== b && (!b.f || (c.f && beats(c, b)))) { b = c; b.steps = STEPS.slice(0, i + 1); } });
+        return b;
+      };
+      // (Each way whole first, then with the first sentence broken.)
+      const go2 = v => { const c = run(v); return c.f || !sents ? c : run(Object.assign({ brk: true }, v)); };
+      let b = go2({});
+      if (many && (!b.f || b.s < FLOOR * 1.3)) { const c = run(Object.assign({ r3: true }, b.sh.brk ? { brk: true } : {})); if (beats(c, b)) b = c; }
+      if (!b.f && items && hrs) { const c = go2({ r3: many, bare: true }); if (c.f) b = c; }
+      if (!b.f && hrs) { const c = go2({ nohrs: true }); if (c.f) b = c; }
+      wx.classList.remove(...STEPS); wx.classList.add(...b.steps); steps.push(...b.steps);
+      wshape(b.sh); lo = b.s; wsh = b.sh;
+      el.style.fontSize = lo.toFixed(2) + 'px';
+      // (Beside the clothes, the words' column is as wide as the wider day's, so the clothes stay put when the toggle
+      // turns: where both days still fit.)
+      if (tp && wsh.beside && b.f) {
+        const col = () => parseFloat(getComputedStyle(el.querySelector('.wtop')).gridTemplateColumns) || 0, c0 = col();
+        swap(); const c1 = col(); swap();
+        el.style.setProperty('--ww', Math.max(c0, c1).toFixed(1) + 'px');
+        if (both()) ww = Math.max(c0, c1).toFixed(1) + 'px'; else el.style.removeProperty('--ww');
+      }
+      if (fe && fe.isConnected && document.activeElement !== fe) fe.focus({ preventScroll: true });
+    } else {
+      lo = search(FLOOR);
+      // (A view that's tight at 14 px: closed up a step at a time, where that lets it draw bigger.)
+      if (kind === 'detail' && lo < FLOOR * 1.2) for (const st of STEPS) { wx.classList.add(st); const s = search(FLOOR); if (s > lo * 1.03) { lo = s; steps.push(st); } else { wx.classList.remove(st); break; } }
+    }
+    // (Simple words in a wide window: the picture beside the sentence and the clothes, where that draws them bigger. The
+    // moon in Sun and moon: its picture over its words, where that draws them bigger.)
+    let side = false, col = false;
+    if (kind === 'simple') {
+      el.classList.add('side');
+      const s = search(FLOOR);
+      if (s > lo * (one.side ? .97 : 1.03)) { lo = s; side = true; } else el.classList.remove('side');
+    }
+    if (mb) {
+      // (Over its words, the moon is sized after them: measured at its least, then grown into the room they leave.)
+      mb.classList.add('col'); mc.style.setProperty('--pic', '3.4em');
+      const s = search(FLOOR);
+      if (s > lo * (one.col ? .97 : 1.03)) { lo = s; col = true; } else { mb.classList.remove('col'); mc.style.removeProperty('--pic'); }
+    }
+    el.style.fontSize = lo.toFixed(2) + 'px';
+    // (Air quality's advice, in the Now view: where the view draws at least 90% as big with it, and no smaller than the
+    // mockup's size.)
+    let say = false;
+    if (aq) {
+      aq.classList.remove('nosay');
+      const s = search(FLOOR);
+      el.style.fontSize = s.toFixed(2) + 'px';
+      if (s >= Math.max(parseFloat(getComputedStyle(wx).fontSize), lo * (one.say ? .88 : .9)) && ok()) { lo = s; say = true; } else aq.classList.add('nosay');
+      el.style.fontSize = lo.toFixed(2) + 'px';
+    }
+    // (The moon over its words grows into the room they leave: the card's width, or its height less the words.)
+    let pic = '';
+    if (mc && col) {
+      const b = rectOf(mb), st = rectOf(mb.querySelector('.stack')), f = parseFloat(getComputedStyle(mc).fontSize), p = Math.min(b.width, b.height - st.height - parseFloat(getComputedStyle(mb).rowGap), 16 * f);
+      pic = Math.max(3.4 * f, p).toFixed(1) + 'px'; mc.style.setProperty('--pic', pic);
+      if (!ok()) { pic = '3.4em'; mc.style.setProperty('--pic', pic); }
+    }
+    one = { key, size: lo, side, col, steps, say, pic, wsh, ww };
+  }
+
   let drawSoon = 0;
   const redraw = () => { if (!drawSoon) drawSoon = requestAnimationFrame(() => { drawSoon = 0; fitCorners(); draw(); }); };
+  // (A font that finishes loading keeps its family's name: the parts are measured again.)
+  if (document.fonts) document.fonts.addEventListener('loadingdone', () => { fontTurn++; redraw(); });
 
   // ---- The window menu: the Show list, On a date, Location, Simple words, No motion, units, and the credits.
   // On a date… has a calendar page with one day marked, and Location… a map pin.
@@ -1647,7 +3206,10 @@
 
   // ---- Taps, keys, and the date picker.
   $('view').addEventListener('click', e => {
-    const t = e.target.closest('[data-go], [data-wear], [data-act]');
+    let t = e.target.closest('[data-go], [data-wear], [data-act]');
+    // (A tap on What to wear's toggle, around or between its days: the nearer day, never the card under it.)
+    const tg = e.target.closest('.tg'), days = tg ? [...tg.querySelectorAll('[data-wear]')] : [];
+    if (days.length && !(t && tg.contains(t))) { const x = q => { const r = q.getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - e.clientX); }; t = days.reduce((a, b) => (x(b) < x(a) ? b : a)); }
     if (!t) return;
     if (t.dataset.wear) { wearPick = t.dataset.wear; draw(); }
     else if (t.dataset.go) { view = t.dataset.go; draw(); }
@@ -1697,7 +3259,9 @@
   document.addEventListener('visibilitychange', () => { if (visible()) { stale(false); draw(); } });
 
   // The widget's own rules, for its tests: which day What to wear shows, a day's name, school hours, the advice.
-  self.B21Weather = { plan: ms => plan(ms), label, hours: schoolHours, advise, refresh: () => stale(true) };
+  // (And how the window is laid out: the arrangement, each part's shape and size in px, and the steps closed up.)
+  self.B21Weather = { plan: ms => plan(ms), label, hours: schoolHours, advise, refresh: () => stale(true),
+    laid: () => (laid && !laid.fallback ? { id: laid.id, pick: Object.assign({}, laid.pick), f: Object.fromEntries(Object.entries(laid.f).map(([k, v]) => [k, +v.toFixed(1)])), steps: laid.steps.slice() } : laid ? { id: 'mockup' } : null) };
 
   async function start() {
     const ctx = await Board21.ready();

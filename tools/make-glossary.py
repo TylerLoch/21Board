@@ -283,14 +283,14 @@ WE = [
  ('temperature', 'Temperatura', 'Температура', 'Температура', ['HB-RU p35'], ''),
  ('feels like', 'Sensación térmica', 'Ощущается как', 'Відчувається як', [], ''),
  ('high / low', 'Máxima / Mínima', 'Макс. / Мин.', 'Макс. / Мін.', [], 'uk "Мін." with і.'),
- ('sunrise', 'Salida del sol', 'Восход', 'Схід сонця', [], 'widgets/weather/index.html:1232.'),
+ ('sunrise', 'Salida del sol', 'Восход', 'Схід сонця', [], 'widgets/weather/index.html:1431.'),
  ('sunset', 'Puesta del sol', 'Закат', 'Захід сонця', [], 'uk "захід", not "закат".'),
 ]
 for i, (en, es, ru, uk, s, n) in enumerate(WE):
-    if i == 0: n = 'Condition words follow widgets/weather/index.html:1141-1142. ' + n
+    if i == 0: n = 'Condition words follow widgets/weather/index.html:1340-1341. ' + n
     add(C, en, es, ru, uk, s, n)
 add(C, 'air quality', 'Calidad del aire', 'Качество воздуха', 'Якість повітря', ['AIRNOW-ES'],
-    'AQI levels below agree with the noun: ru neuter (качество), uk feminine (якість). widgets/weather/index.html:1178-1183.')
+    'AQI levels below agree with the noun: ru neuter (качество), uk feminine (якість). widgets/weather/index.html:1377-1382.')
 AQ = [
  ('Good', 'Bueno', 'Хорошее', 'Добра'),
  ('Moderate', 'Moderado', 'Умеренное', 'Помірна'),
@@ -314,11 +314,11 @@ CL = [
  ('shorts', 'Shorts', 'Шорты', 'Шорти', 'Mexico says "shorts".'),
 ]
 for i, (en, es, ru, uk, n) in enumerate(CL):
-    if i == 0: n = 'What to wear: widgets/weather/index.html:602-610. ' + n
+    if i == 0: n = 'What to wear: widgets/weather/index.html:795-803. ' + n
     add(C, en, es, ru, uk, [], n)
 add(C, 'Dress for … weather (tier words)', 'helado, muy frío, frío, fresco, templado, caluroso',
     'очень холодно, холодно, прохладно, свежо, тепло, жарко', 'дуже холодно, холодно, прохолодно, свіжо, тепло, спекотно', [],
-    'Tiers very cold, cold, chilly, cool, mild, warm (widgets/weather/index.html:603-610). The sentence is built; translate each whole sentence, e.g. "Hace frío. Ponte el abrigo.", "Холодно. Надень куртку.", "Холодно. Одягни куртку."')
+    'Tiers very cold, cold, chilly, cool, mild, warm (widgets/weather/index.html:796-803). The sentence is built; translate each whole sentence, e.g. "Hace frío. Ponte el abrigo.", "Холодно. Надень куртку.", "Холодно. Одягни куртку."')
 
 C = 'Games and traffic light'
 add(C, 'die; dice', 'dado; dados', 'кубик; кубики', 'кубик; кубики', [], 'ru "игральные кости" is formal; kids say "кубик". "Number of dice": "Número de dados", "Количество кубиков", "Кількість кубиків".')

@@ -11,14 +11,14 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.27-1';
+const VERSION = '2026.11.27-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'b180c0db';
+const BUILD = '385ac411';
 const FILES = {
-  './': 'cca19f1d1823fcc3',
-  'index.html': 'cca19f1d1823fcc3',
-  'board.js': '88a6f5316c6f9310',
+  './': 'e492c632712eaec4',
+  'index.html': 'e492c632712eaec4',
+  'board.js': '467a00701d44b29d',
   'sdk/board21.js': '08906190c5acd9e7',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': 'ab3f1ec62f52697e',
@@ -71,7 +71,7 @@ const FILES = {
   'widgets/image/index.html': 'af8342c7d8c343fa',
   'widgets/calculator/index.html': '3896197f020c6ab2',
   'widgets/calculator/calc-engine.js': 'bef93f908446ec8e',
-  'widgets/weather/index.html': '1b8face7bdbe9970',
+  'widgets/weather/index.html': '35319fc7f732ebb7',
   'widgets/weather/calendar.js': '6b801ee9abb6d70d',
   'widgets/sdk-playground/index.html': '6f72b8cc9da26bdd'
 };

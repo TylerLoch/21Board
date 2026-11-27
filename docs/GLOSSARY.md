@@ -298,7 +298,7 @@ uk "збудження / збуджений". Use "emocionado", "восторг"
 | English | Español (MX/US) | Русский | Українська | Source | Note |
 | --- | --- | --- | --- | --- | --- |
 | weather | clima; tiempo | погода | погода | HB-ES p49, NL-2024-01-ES p2, HB-RU p48, NL-2024-01-UK p2 | Mexico/US say "el clima" for weather ("inclemencias del clima"); Spain says "el tiempo". |
-| sunny | Soleado | Солнечно | Сонячно | — | Condition words follow widgets/weather/index.html:1141-1142.  |
+| sunny | Soleado | Солнечно | Сонячно | — | Condition words follow widgets/weather/index.html:1340-1341.  |
 | clear (night) | Despejado | Ясно | Ясно | — |  |
 | mostly sunny | Mayormente soleado | Преимущественно солнечно | Переважно сонячно | — | uk "переважно", never "преимущественно". |
 | mostly clear | Mayormente despejado | Преимущественно ясно | Переважно ясно | — |  |
@@ -313,16 +313,16 @@ uk "збудження / збуджений". Use "emocionado", "восторг"
 | temperature | Temperatura | Температура | Температура | HB-RU p35 |  |
 | feels like | Sensación térmica | Ощущается как | Відчувається як | — |  |
 | high / low | Máxima / Mínima | Макс. / Мин. | Макс. / Мін. | — | uk "Мін." with і. |
-| sunrise | Salida del sol | Восход | Схід сонця | — | widgets/weather/index.html:1232. |
+| sunrise | Salida del sol | Восход | Схід сонця | — | widgets/weather/index.html:1431. |
 | sunset | Puesta del sol | Закат | Захід сонця | — | uk "захід", not "закат". |
-| air quality | Calidad del aire | Качество воздуха | Якість повітря | AIRNOW-ES | AQI levels below agree with the noun: ru neuter (качество), uk feminine (якість). widgets/weather/index.html:1178-1183. |
+| air quality | Calidad del aire | Качество воздуха | Якість повітря | AIRNOW-ES | AQI levels below agree with the noun: ru neuter (качество), uk feminine (якість). widgets/weather/index.html:1377-1382. |
 | air quality: Good | Bueno | Хорошее | Добра | AIRNOW-ES | Spanish is EPA's own wording (its page prints "Insalubres" for red; singular is correct). |
 | air quality: Moderate | Moderado | Умеренное | Помірна | AIRNOW-ES |  |
 | air quality: Unhealthy for sensitive groups | Insalubre para grupos sensibles | Вредное для чувствительных групп | Шкідлива для чутливих груп | AIRNOW-ES |  |
 | air quality: Unhealthy | Insalubre | Вредное | Шкідлива | AIRNOW-ES |  |
 | air quality: Very unhealthy | Muy insalubre | Очень вредное | Дуже шкідлива | AIRNOW-ES |  |
 | air quality: Hazardous | Peligroso | Опасное | Небезпечна | AIRNOW-ES |  |
-| coat | Abrigo | Зимняя куртка | Зимова куртка | — | What to wear: widgets/weather/index.html:602-610. ru/uk "пальто" is a dress coat; kids wear a winter jacket. |
+| coat | Abrigo | Зимняя куртка | Зимова куртка | — | What to wear: widgets/weather/index.html:795-803. ru/uk "пальто" is a dress coat; kids wear a winter jacket. |
 | jacket | Chamarra | Куртка | Куртка | — | Mexico "chamarra" (Spain "chaqueta"). |
 | rain jacket | Impermeable | Дождевик | Дощовик | — |  |
 | hat (winter) | Gorro | Шапка | Шапка | — | es "sombrero" is a brimmed hat; "gorra" is a cap. |
@@ -331,7 +331,7 @@ uk "збудження / збуджений". Use "emocionado", "восторг"
 | boots | Botas | Сапоги | Чоботи | — | uk "чоботи", not "сапоги". |
 | T-shirt | Playera | Футболка | Футболка | — | Mexico "playera" (Spain "camiseta"). |
 | shorts | Shorts | Шорты | Шорти | — | Mexico says "shorts". |
-| Dress for … weather (tier words) | helado, muy frío, frío, fresco, templado, caluroso | очень холодно, холодно, прохладно, свежо, тепло, жарко | дуже холодно, холодно, прохолодно, свіжо, тепло, спекотно | — | Tiers very cold, cold, chilly, cool, mild, warm (widgets/weather/index.html:603-610). The sentence is built; translate each whole sentence, e.g. "Hace frío. Ponte el abrigo.", "Холодно. Надень куртку.", "Холодно. Одягни куртку." |
+| Dress for … weather (tier words) | helado, muy frío, frío, fresco, templado, caluroso | очень холодно, холодно, прохладно, свежо, тепло, жарко | дуже холодно, холодно, прохолодно, свіжо, тепло, спекотно | — | Tiers very cold, cold, chilly, cool, mild, warm (widgets/weather/index.html:796-803). The sentence is built; translate each whole sentence, e.g. "Hace frío. Ponte el abrigo.", "Холодно. Надень куртку.", "Холодно. Одягни куртку." |
 
 ### Games and traffic light
 

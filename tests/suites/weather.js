@@ -151,13 +151,25 @@ module.exports = T => {
         l: x => x.hero && x.feels && x.windLine && x.airLine && x.days === 7 && x.wear === 'card' && x.sun && x.moonline && !x.hourly && !x.wind,
         xl: x => x.hero && x.hourly && x.wear === 'card' && x.days === 7 && x.sun && x.wind && x.moon && x.air };
       const SIZES = [['s', 'Small at its smallest', 260, 220], ['s', 'Small', 340, 260], ['m', 'Medium at its smallest', 380, 280], ['m', 'Medium', 480, 360], ['l', 'Large at its smallest', 760, 480], ['l', 'Large', 900, 560], ['xl', 'Fill the board’s layout', 1600, 860]];
-      const bad = [], seen = [], ref = [];
+      const bad = [], seen = [], ref = [], bold = [];
       for (const theme of ['light', 'dark']) {
         await setTheme(page, theme);
         for (const [L, label, w, h] of SIZES) {
           await WXT.size(page, w, h);
           const p = await WXT.problems(page, false), x = await WXT.parts(page);
-          if (L === 'l' && w === 900) ref.push(`${theme}: ` + await WXT.F(page, () => { const wx = document.querySelector('#app .wx'); return (['tight', 'tighter', 'tightest'].filter(c => wx.classList.contains(c)).join('+') || 'no step') + ', ' + (parseFloat(getComputedStyle(wx.querySelector('.temp')).fontSize) / parseFloat(getComputedStyle(wx).fontSize)).toFixed(2) + 'em'; }));
+          // (The temperature at Small's smallest, Large, and Fill the board: the digits' weight, and the F's weight, size, and
+          // line.)
+          if (theme === 'light' && [260, 900, 1600].includes(w)) bold.push(Object.assign({ size: `${w} × ${h}` }, await WXT.F(page, () => {
+            const t = document.querySelector('#app .wx .temp'), u = t.querySelector('.unit'), g = document.createRange(), cs = e => getComputedStyle(e);
+            g.selectNodeContents(t.firstChild);
+            return { digits: +cs(t).fontWeight, unit: +cs(u).fontWeight, same: cs(u).fontSize === cs(t).fontSize, line: Math.abs(g.getBoundingClientRect().bottom - u.getBoundingClientRect().bottom) <= 1 };
+          })));
+          // (At Large's own size: its step, the temperature in em, and the biggest other text, in px.)
+          if (L === 'l' && w === 900) ref.push(Object.assign({ theme }, await WXT.F(page, () => {
+            const wx = document.querySelector('#app .wx'), t = wx.querySelector('.temp'), fs = e => parseFloat(getComputedStyle(e).fontSize);
+            const words = [...wx.querySelectorAll('*')].filter(e => !e.closest('.sr, .temp') && e.getClientRects().length && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
+            return { step: ['tight', 'tighter', 'tightest'].filter(c => wx.classList.contains(c)).join('+') || 'no step', em: +(fs(t) / fs(wx)).toFixed(2), temp: fs(t), next: Math.max(...words.map(fs)) };
+          })));
           if (!x || x.layout !== L) p.list.push(`the layout is ${x && x.layout}, not ${L}`);
           else if (!WANT[L](x)) p.list.push(`its parts: ${JSON.stringify(x)}`);
           if (x && x.gaps.length) p.list.push(...x.gaps);
@@ -179,8 +191,9 @@ module.exports = T => {
         await page.setViewportSize({ width: 1680, height: 1000 }); await page.waitForTimeout(300);
       }
       ok(!bad.length && seen.length === 26, `Small, Medium, Large, and Fill the board, each at its smallest too, light and dark, and filling the board unlocked and locked: each layout’s parts, no text under 14 px, nothing cut off or out of its card, no gap, nothing under the board’s corner marks (${bad.join(' | ') || seen.length + ' layouts'})`);
-      // (A card 2 px into its own padding takes no step, so Large's own size looks as the mockup does.)
-      ok(ref.length === 2 && ref.every(r => /: no step, 5\.40em$/.test(r)), `at 900 × 560, Large’s own size, it draws the mockup’s sizes: no step, and the temperature at 5.4em (${ref.join(' | ')})`);
+      ok(bold.length === 3 && bold.every(b => b.digits >= 700 && b.unit === 400 && b.same && b.line), `the temperature’s digits are bold, and its F is regular, as big as them, and on their line (${JSON.stringify(bold)})`);
+      // (A card 2 px into its own padding takes no step. The temperature grows into the room from the mockup's 5.4em.)
+      ok(ref.length === 2 && ref.every(r => r.step === 'no step' && r.em >= 5.4 && r.temp > r.next), `at 900 × 560, Large’s own size: no step, and the temperature at 5.4em or more, the biggest text in the window (${JSON.stringify(ref)})`);
       await ctx.close();
     });
 
@@ -306,6 +319,22 @@ module.exports = T => {
         if (w === 480) now480 = Object.assign({}, await compass(), { temp: await WXT.F(b.page, () => Math.round(parseFloat(getComputedStyle(document.querySelector('#app .dnow .temp')).fontSize))) });
         await WXT.wf(b.page).locator('#app [data-go="main"]').first().click(); await b.page.waitForTimeout(200);
       }
+      // What to wear's view, from Medium's smallest up: everything fits. Where its school hours can't fit, they step aside,
+      // and the advice, the clothes, and the note stay.
+      const wears = [], wbad = [];
+      for (const [w, h] of [[380, 280], [420, 320], [480, 360], [600, 420], [760, 480], [900, 560]]) {
+        await WXT.size(b.page, w, h);
+        await WXT.wf(b.page).locator('#app .wear[data-go="wear"] h3, #app .wl[data-go="wear"] .says').first().click(); await b.page.waitForTimeout(250);
+        const p = await WXT.problems(b.page, false), x = await WXT.F(b.page, () => ({ title: (document.querySelector('#app .bar2 .title') || {}).textContent, advice: (document.querySelector('#app .dwear .advice') || {}).textContent,
+          items: document.querySelectorAll('#app .dwear figure').length, hours: [...document.querySelectorAll('#app .dwear .wh')].filter(e => e.getBoundingClientRect().width).length }));
+        if (x.title !== 'What to wear' || x.advice !== 'Dress for chilly weather.' || x.items !== 1) p.list.push(JSON.stringify(x));
+        if (w >= 480 && x.hours !== 8) p.list.push(`${x.hours} school hours`);
+        if (p.list.length) wbad.push(`${w} × ${h}: ${p.list.join(', ')}`);
+        wears.push(`${w} × ${h}: ${x.hours} hours`);
+        if (w === 380 || w === 480) await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + `weather-wear-${w}x${h}.png` });
+        await WXT.wf(b.page).locator('#app [data-go="main"]').first().click(); await b.page.waitForTimeout(200);
+      }
+      ok(wears.length === 6 && !wbad.length, `What to wear’s view from 380 × 280 to 900 × 560: the advice and its coat, the school hours from 480 × 360 up, every word 14 px or more, and nothing cut off (${wbad.join(' | ') || wears.join(' | ')})`);
       // At its default size the Now view draws as the mockup does: a 99 px compass with its letters, and a 58 px temperature.
       ok(!!now480 && now480.px >= 95 && now480.letters && now480.temp >= 56, `the Now view at 480 × 360 keeps the mockup’s compass, with N, E, S, and W, and its temperature (${JSON.stringify(now480)})`);
       // W and E clear of their ticks as the letters grow to 14 px: Fill the board's wind card, and the Now view without air quality.
@@ -365,6 +394,77 @@ module.exports = T => {
       await b.ctx.close();
     });
 
+    // ---- 6b. Room for the days: Medium's week keeps each day's words clear of its rules, and a long, short Large window
+    // runs the 7 days down the right where they'd be small in a corner.
+    await part('Room for the days', async () => {
+      const b = await WXT.board(browser, errors);
+      await WXT.open(b.page);
+      await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: [] })); await b.page.waitForTimeout(250);
+      await WXT.size(b.page, 950, 470);
+      // (Each column's widest word or number, in em of the week, from its column's edges. Today is the longest word.)
+      const gap = await WXT.F(b.page, () => [...document.querySelectorAll('#app .week .col')].map(c => {
+        const q = c.getBoundingClientRect(), fs = parseFloat(getComputedStyle(c).fontSize), r = document.createRange();
+        return Math.min(...[...c.children].map(k => { r.selectNodeContents(k); const t = k.tagName.toLowerCase() === 'svg' ? k.getBoundingClientRect() : r.getBoundingClientRect(); return Math.min(t.left - q.left, q.right - t.right) / fs; }));
+      }));
+      ok(gap.length === 5 && gap.every(g => g >= .24), `at 950 × 470 with everything, each of the week’s words and numbers stands a quarter em or more clear of its column’s edges (${gap.map(g => g.toFixed(2)).join(', ')})`);
+      await WXT.size(b.page, 1066, 480);
+      const lt = await WXT.F(b.page, () => { const l = window.B21Weather.laid(), d = [...document.querySelectorAll('#app .days :is(.hi, .lo)')].map(e => parseFloat(getComputedStyle(e).fontSize)); return { id: l && l.id, days: Math.min(...d), rows: !!document.querySelector('#app .daysc.dt') }; });
+      ok(lt.id === 'lt' && lt.rows && lt.days >= 18, `at 1066 × 480 with everything, the 7 days run down the right, each day’s rain chance under its picture, at 18 px or more (${JSON.stringify(lt)})`);
+      await b.ctx.close();
+      // (A school day the next week, where round 8d put them back in the corner with a smaller temperature.)
+      const d = await WXT.board(browser, errors, { at: '2026-11-30T11:50:00-06:00' });
+      d.wx.shift = 7 * 86400;
+      await WXT.open(d.page);
+      await WXT.put(d.page, 'config', Object.assign({}, await WXT.conf(d.page), { hide: [] })); await d.page.waitForTimeout(250);
+      await WXT.size(d.page, 1066, 480);
+      const mon = await WXT.F(d.page, () => {
+        const l = window.B21Weather.laid(), fs = e => parseFloat(getComputedStyle(e).fontSize), t = document.querySelector('#app .wx .temp');
+        const words = [...document.querySelectorAll('#app .wx *')].filter(e => !e.closest('.sr, .temp') && e.getClientRects().length && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()));
+        return { id: l && l.id, rows: !!document.querySelector('#app .daysc.dt'), temp: t && fs(t), next: Math.max(...words.map(fs)) };
+      });
+      ok(mon.id === 'lt' && mon.rows && mon.temp > mon.next, `on Monday, November 30, at 1066 × 480 with everything, the 7 days run down the right, and the temperature is the biggest text (${JSON.stringify(mon)})`);
+      await d.ctx.close();
+    });
+
+    // ---- 6c. Steady as it widens: a resize of 2 px doesn't make the hours, a card, or a card's shape come back where
+    // round 8 flipped (the hours and What to wear at 480 tall; with the sun and air quality; with the moon at 490;
+    // everything at 497, where the 7 days ran down the right and back).
+    await part('Steady as it widens', async () => {
+      const b = await WXT.board(browser, errors);
+      await WXT.open(b.page);
+      const ALL = ['hourly', 'days', 'wear', 'sun', 'moon', 'wind', 'air', 'watches'];
+      for (const [mix, h, w0, w1] of [['hourly+wear', 480, 1086, 1100], ['hourly+wear+sun+air', 480, 958, 972], ['hourly+wear+moon', 490, 1040, 1054], ['all', 497, 1040, 1090]]) {
+        const show = mix === 'all' ? ALL : mix.split('+');
+        await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: ALL.filter(k => !show.includes(k)) })); await b.page.waitForTimeout(250);
+        const seen = [];
+        for (let w = w0; w <= w1; w += 2) {
+          await b.page.evaluate(([k, w, h]) => { const b = window.__board21; b.setMaximized(k, false); b.setRect(k, { x: 20, y: 20, w, h: h + 40 }); }, [WXT.K, w, h]); await b.page.waitForTimeout(120);
+          const l = await WXT.F(b.page, () => { const l = window.B21Weather.laid(), cards = [...document.querySelectorAll('#app .wx > .in > .card')].filter(e => e.offsetParent).map(e => e.className.split(' ')[1]).sort().join(); return l && l.id + JSON.stringify(l.pick) + cards; });
+          if (seen[seen.length - 1] !== l) seen.push(l);
+        }
+        ok(new Set(seen).size === seen.length, `${mix} at ${h} tall, ${w0} to ${w1} wide in 2 px steps: no layout comes back after another (${seen.length} in turn)`);
+      }
+      await b.ctx.close();
+    });
+
+    // ---- 6d. The same window by any path: reached from a wider window or a narrower one, a window draws the same layout
+    // and the same cards, air quality's advice too (it showed from one side only at 1244 × 480 and 1326 × 510).
+    await part('The same window by any path', async () => {
+      const b = await WXT.board(browser, errors);
+      await WXT.open(b.page);
+      const ALL = ['hourly', 'days', 'wear', 'sun', 'moon', 'wind', 'air', 'watches'];
+      await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: ALL.filter(k => !['days', 'wear', 'air'].includes(k)) })); await b.page.waitForTimeout(250);
+      const look = () => WXT.F(b.page, () => { const l = window.B21Weather.laid(), parts = [...document.querySelectorAll('#app .wx > .in > *')].filter(e => e.offsetParent).map(e => e.className).join(', '); return l && `${l.id} ${JSON.stringify(l.pick)} ${parts}`; });
+      for (const [w, h] of [[1244, 480], [1326, 510]]) {
+        await WXT.size(b.page, w + 60, h); await WXT.size(b.page, w, h);
+        const wider = await look();
+        await WXT.size(b.page, w - 60, h); await WXT.size(b.page, w, h);
+        const narrower = await look();
+        ok(!!wider && wider === narrower, `${w} × ${h} with the 7 days, What to wear, and air quality draws the same from a wider window and from a narrower one (${wider} | ${narrower})`);
+      }
+      await b.ctx.close();
+    });
+
     // ---- 7. Settings › Appearance › Text style reaches every word, and the window still fits in wider letters.
     await part('Text style', async () => {
       const { ctx, page } = await WXT.board(browser, errors, { opts: { viewport: { width: 1680, height: 1000 } } });
@@ -379,6 +479,16 @@ module.exports = T => {
           return [...out]; }, fam);
         await page.keyboard.press('Escape'); await page.waitForTimeout(200);
         ok(!off.length, `${key}: every word in Weather is in ${fam}, the Location sheet too (${off.slice(0, 5).join(', ') || 'all'})`);
+        // What to wear's view fits in these letters too.
+        const wv = [];
+        for (const [w, h] of [[380, 280], [480, 360], [760, 480], [1600, 860]]) {
+          await WXT.size(page, w, h);
+          await WXT.wf(page).locator('#app .wear[data-go="wear"] h3, #app .wl[data-go="wear"] .says').first().click(); await page.waitForTimeout(300);
+          const p = await WXT.problems(page, false), t = await WXT.F(page, () => (document.querySelector('#app .bar2 .title') || {}).textContent);
+          if (t !== 'What to wear' || p.list.length) wv.push(`${w} × ${h}: ${t}, ${p.list.join(', ')}`);
+          await WXT.wf(page).locator('#app [data-go="main"]').first().click(); await page.waitForTimeout(200);
+        }
+        ok(!wv.length, `${key}: What to wear’s view fits from 380 × 280 to 1600 × 860 (${wv.join(' | ') || 'all'})`);
         if (key !== 'legible') continue;
         for (const [w, h] of [[260, 220], [380, 280], [480, 360], [760, 480], [900, 560], [1600, 860]]) for (const hide of [[], ['days'], ['wear', 'days'], ['hourly', 'wear', 'sun', 'wind', 'air']]) {
           await WXT.size(page, w, h);
@@ -451,6 +561,158 @@ module.exports = T => {
       ok(w2.b === 'Today,Wed*' && w2.advice === 'Dress for cold weather.' && w2.note === 'Feels like 18° at 8 AM. High of 40° at 2 PM.', `tapping Wed shows its advice and its note (${JSON.stringify(w2)})`);
       await sd.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-school-day.png' });
       await sd.ctx.close();
+    });
+
+    // ---- 1b. What to wear's own view, as the other cards have: tap the card (or its chevron) for the day its toggle picks,
+    // big, with each school hour's feels like and the hour that picks the advice marked.
+    await part('What to wear view', async () => {
+      // (The view as drawn: its title, toggle, advice a sentence a line, clothes and their names, the note as it shows, and
+      // each school hour shown, with its rain or snow and its mark; whether the advice is the biggest line in the window; and
+      // where the clothes sit.)
+      const look = p => F(p, () => {
+        const t = e => (e ? e.textContent.replace(/ /g, ' ').replace(/\s+/g, ' ').trim() : null), q = s => document.querySelector('#app ' + s), fs = e => parseFloat(getComputedStyle(e).fontSize);
+        const adv = q('.dwear .advice'), words = [...document.querySelectorAll('#app .wx *')].filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && e.getBoundingClientRect().width && !e.closest('.sr'));
+        const oneLine = e => { const g = document.createRange(); g.selectNodeContents(e); return new Set([...g.getClientRects()].filter(r => r.width > 1).map(r => Math.round(r.bottom))).size === 1; };
+        const items = q('.dwear .items');
+        return { title: t(q('.bar2 .title')), toggle: [...document.querySelectorAll('#app .dwear .tg b')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')).join(','),
+          advice: t(adv), lines: adv ? [...adv.querySelectorAll(':scope > .s')].map(s => t(s) + (oneLine(s) ? '' : ' (wraps)')) : [], advicePx: adv ? fs(adv) : 0,
+          items: [...document.querySelectorAll('#app .dwear [data-item]')].map(e => e.dataset.item).join(), names: [...document.querySelectorAll('#app .dwear figcaption')].map(t).join(','),
+          note: q('.dwear .note') ? q('.dwear .note').innerText.replace(/ /g, ' ').trim() : null,
+          hours: [...document.querySelectorAll('#app .dwear .wh')].filter(e => e.getBoundingClientRect().width).map(e => [...e.querySelectorAll('.t, .v, .sr, .k')].map(t).join(' ')),
+          dim: [...document.querySelectorAll('#app .dwear .wh')].filter(e => +getComputedStyle(e).opacity < 1).map(e => t(e.querySelector('.t'))),
+          tile: (e => (e ? getComputedStyle(e).backgroundColor : null))(q('.dwear .wh.why')),
+          itemsX: items ? Math.round(items.getBoundingClientRect().left) : null, biggest: !!adv && words.every(e => adv.contains(e) || fs(e) < fs(adv)), main: !!q('.wx:not(.V-detail)') };
+      });
+      const openWear = p => WXT.wf(p).locator('#app .wear[data-go="wear"] h3, #app .wl[data-go="wear"] .says').first().click().then(() => p.waitForTimeout(300));
+      const tap = (p, sel) => WXT.wf(p).locator('#app ' + sel).first().click().then(() => p.waitForTimeout(300));
+      // (No button inside another, anywhere in the window: the toggle's days are buttons of their own.)
+      const nested = p => F(p, () => [...document.querySelectorAll('#app [role="button"] [role="button"], #app [role="button"] button')].length);
+      // On a school day (Tue Dec 1, the fixtures moved 8 days), Large: the card's heading is its button, with a chevron.
+      let b = await WXT.board(browser, errors, { at: '2026-12-01T11:50:00-06:00' });
+      b.wx.shift = 8 * 86400;
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560);
+      const card = await F(b.page, () => { const c = document.querySelector('#app .wear'), h = c.querySelector('h3'); return { go: c.dataset.go, role: c.getAttribute('role'), head: h.getAttribute('role'), tab: h.tabIndex, hgo: h.dataset.go, chev: !!h.querySelector('.chev') }; });
+      ok(card.go === 'wear' && !card.role && card.head === 'button' && card.tab === 0 && card.hgo === 'wear' && card.chev && !(await nested(b.page)),
+        `What to wear’s card opens its own view, its heading the button with a chevron, so the toggle isn’t inside a button (${JSON.stringify(card)})`);
+      // Its toggle still picks the day, without opening the view.
+      await tap(b.page, '.wear [data-wear="next"]');
+      const picked = await F(b.page, () => ({ view: !!document.querySelector('#app .bar2'), b: [...document.querySelectorAll('#app .wear .tg b')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')).join(',') }));
+      ok(!picked.view && picked.b === 'Today,Wed*', `its toggle picks Wed and stays on the card (${JSON.stringify(picked)})`);
+      await tap(b.page, '.wear [data-wear="today"]');
+      // Tapped, the view: the day the toggle picks, its advice, clothes, and note, then 8 AM to 3 PM. The coldest picks
+      // the advice, on a soft tile. The hours gone by are dim, and this hour reads Now. (The note leaves out how it feels
+      // now: the hours show it.)
+      await openWear(b.page);
+      let v = await look(b.page);
+      const today = v;
+      ok(v.title === 'What to wear' && v.toggle === 'Today*,Wed' && v.advice === 'Dress for cold weather.' && v.items === 'coat,hat,gloves' && v.names === 'Coat,Hat,Gloves' && v.note === 'High of 40° at 2 PM.',
+        `tapped, What to wear fills the window: Today, “Dress for cold weather.”, a coat, a hat, and gloves with their names, and its note (${JSON.stringify(v).slice(0, 400)})`);
+      ok(v.hours.join(' | ') === '8 AM 24° Coldest | 9 AM 25° | 10 AM 27° | Now 29° | 12 PM 30° | 1 PM 31° | 2 PM 31° | 3 PM 30°' && v.dim.join() === '9 AM,10 AM',
+        `today’s school hours, 8 AM to 3 PM: the coldest marked, the hours gone by dim, and this hour Now (${v.hours.join(' | ')}; dim ${v.dim.join()})`);
+      { const a = (/rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)/.exec(v.tile) || []).slice(1).map(Number); ok(a.length === 4 && a[3] < 0.5, `the coldest hour sits on a soft tile, not the white of the picked day (${v.tile})`); }
+      ok(v.biggest, 'the advice is the biggest line in the window');
+      { const pr = await WXT.problems(b.page, false); ok(!pr.list.length, `What to wear’s view fits at 900 × 560 (${pr.list.join(', ') || pr.size})`); }
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-wear-view.png' });
+      // Its toggle switches the day inside the view, and moves nothing: both days are sized together.
+      await tap(b.page, '.dwear [data-wear="next"]');
+      v = await look(b.page);
+      ok(v.title === 'What to wear' && v.toggle === 'Today,Wed*' && v.note === 'Feels like 18° at 8 AM. High of 40° at 2 PM.' && v.hours.length === 8 && v.hours[0] === '8 AM 18° Coldest' && !v.dim.length && !v.hours.some(h => /Now/.test(h)),
+        `its toggle shows Wed in the view: its note and its hours, 18° at 8 AM the coldest (${JSON.stringify(v).slice(0, 300)})`);
+      ok(v.advicePx === today.advicePx && Math.abs(v.itemsX - today.itemsX) <= 1, `the toggle moves nothing: the advice at ${today.advicePx} px and the clothes at x ${today.itemsX} both days (${v.advicePx} px, x ${v.itemsX})`);
+      // Back returns to the main view, Wed still picked.
+      await tap(b.page, '[data-go="main"]');
+      const back = await F(b.page, () => ({ view: !!document.querySelector('#app .bar2'), card: !!document.querySelector('#app .wear'), b: [...document.querySelectorAll('#app .wear .tg b')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')).join(',') }));
+      ok(!back.view && back.card && back.b === 'Today,Wed*', `Back returns to the main view, with Wed still picked (${JSON.stringify(back)})`);
+      // Medium's What to wear strip opens it too, from anywhere on it, and its chevron always shows: the strip's button,
+      // named What to wear. Its toggle picks the day, even a tap on the toggle's edge.
+      await tap(b.page, '.wear [data-wear="today"]');
+      await WXT.size(b.page, 480, 360);
+      // (The chevron comes right after the advice and takes no room of its own, so no window draws smaller for it.)
+      const strip = await F(b.page, () => { const w = document.querySelector('#app .wl'), o = w && w.querySelector('.open'), c = o && o.querySelector('.chev'), s = w && w.querySelector('.says'), r = e => e.getBoundingClientRect();
+        return { go: w && w.dataset.go, role: w && w.getAttribute('role'), chev: !!c && r(c).width > 0, button: o && o.getAttribute('role'), name: o && o.getAttribute('aria-label'), tab: o && o.tabIndex,
+          inside: !!c && r(c).right <= r(w).right - 2 && r(c).left >= r(s).right - r(c).width - 4, room: !!o && Math.round(r(o).width) }; });
+      ok(strip.go === 'wear' && !strip.role && strip.chev && strip.button === 'button' && strip.name === 'What to wear' && strip.tab === 0 && strip.inside && strip.room === 0 && !(await nested(b.page)),
+        `at 480 × 360, Medium’s What to wear strip opens it too, its chevron its button, right after the advice and taking no room (${JSON.stringify(strip)})`);
+      await tap(b.page, '.wl [data-wear="next"]');
+      ok(!(await look(b.page)).title, 'the strip’s toggle picks the day without opening the view');
+      { const bb = await WXT.wf(b.page).locator('#app .wl .tg').boundingBox(); await b.page.mouse.click(bb.x + 1.5, bb.y + bb.height / 2); await b.page.waitForTimeout(300); }
+      const edge = await F(b.page, () => ({ view: !!document.querySelector('#app .bar2'), b: [...document.querySelectorAll('#app .wl .tg b')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')).join(',') }));
+      ok(!edge.view && edge.b === 'Today*,Wed', `a tap on the toggle’s edge picks the nearer day, Today, and doesn’t open the view (${JSON.stringify(edge)})`);
+      await tap(b.page, '.wl [data-wear="next"]');
+      await openWear(b.page);
+      v = await look(b.page);
+      ok(v.title === 'What to wear' && v.toggle === 'Today,Wed*' && v.hours.length === 8, `tapping the strip opens the view on Wed (${JSON.stringify(v).slice(0, 200)})`);
+      { const pr = await WXT.problems(b.page, false); ok(!pr.list.length, `and it fits at 480 × 360 (${pr.list.join(', ') || pr.size})`); }
+      await b.page.keyboard.press('Escape'); await b.page.waitForTimeout(300);
+      ok((await look(b.page)).main, 'Escape returns to the main view');
+      // With only What to wear at 950 × 470, the strip's chevron shows too.
+      await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: ['hourly', 'days', 'sun', 'moon', 'wind', 'air', 'watches'] })); await b.page.waitForTimeout(250);
+      await WXT.size(b.page, 950, 470);
+      const only = await F(b.page, () => { const c = document.querySelector('#app .wl .open .chev'); return { chev: !!c && c.getBoundingClientRect().width > 0, says: (document.querySelector('#app .wl .says') || {}).textContent }; });
+      ok(only.chev && only.says === 'Dress for cold weather.', `at 950 × 470 with only What to wear, the strip shows its chevron (${JSON.stringify(only)})`);
+      await b.ctx.close();
+      // Rain: Fri Dec 4 (the fixtures' Thanksgiving, 51% to 78% from 8 AM) marks every hour, and the coldest is the first 35°.
+      // Each sentence of the advice sits whole on its own line.
+      b = await WXT.board(browser, errors, { at: '2026-12-03T11:50:00-06:00' });
+      b.wx.shift = 8 * 86400;
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560);
+      await openWear(b.page); await tap(b.page, '.dwear [data-wear="next"]');
+      v = await look(b.page);
+      ok(v.advice === 'Dress for chilly weather. Bring a rain jacket.' && v.lines.join(' / ') === 'Dress for chilly weather. / Bring a rain jacket.' && v.items === 'coat,rain' && v.hours.length === 8 && v.hours.every(h => / Rain/.test(h)) && v.hours[0] === '8 AM 35° Rain Coldest',
+        `a rainy school day: each sentence whole on its own line, a rain mark on each hour with rain at 40% or more, and the first of two 35° hours the coldest (${JSON.stringify(v).slice(0, 400)})`);
+      for (const [w, h] of [[480, 360], [1600, 860]]) {
+        await WXT.size(b.page, w, h);
+        const r = await look(b.page), pr = await WXT.problems(b.page, false);
+        ok(r.lines.join(' / ') === 'Dress for chilly weather. / Bring a rain jacket.' && r.hours.length === 8 && !pr.list.length, `at ${w} × ${h}, each sentence keeps to its line, with the hours, and it fits (${r.lines.join(' / ')}; ${r.hours.length} hours; ${pr.list.join(', ') || 'fits'})`);
+      }
+      await b.ctx.close();
+      // On the Weather Service's forecast, today's hours start at this hour: the hours still ahead, as the advice counts them.
+      b = await WXT.board(browser, errors, { at: '2026-12-01T11:50:00-06:00', more: { 'api.open-meteo.com/v1/forecast': { status: 429, headers: { 'retry-after': '5400', 'access-control-expose-headers': 'retry-after' }, json: { error: true } } } });
+      b.wx.shift = 8 * 86400;
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560); await b.page.waitForTimeout(500);
+      await openWear(b.page);
+      v = await look(b.page);
+      ok(v.advice === 'Dress for cold weather.' && v.hours.join(' | ') === 'Now 31° Coldest | 12 PM 32° | 1 PM 34° | 2 PM 33° | 3 PM 32°', `on the Weather Service’s forecast, today shows this hour to 3 PM (${v.hours.join(' | ')})`);
+      // Offline, from the save: the advice and the clothes, and no hours.
+      await b.ctx.setOffline(true); await b.page.waitForTimeout(600);
+      v = await look(b.page);
+      ok(v.title === 'What to wear' && v.advice === 'Dress for cold weather.' && v.items === 'coat,hat,gloves' && v.note === 'High of 40° at 1 PM.' && !v.hours.length, `offline, the view shows the saved advice and clothes, and no hours (${JSON.stringify(v).slice(0, 300)})`);
+      await b.ctx.close();
+      // Past the forecast (Dec 18 after 2 PM, Jan 5 next): no clothes and no hours.
+      b = await WXT.board(browser, errors, { at: '2026-12-18T14:30:00-06:00' });
+      b.wx.shift = 25 * 86400;
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560);
+      await openWear(b.page);
+      v = await look(b.page);
+      ok(v.toggle === 'Today,Tue, Jan 5*' && v.advice === 'Its forecast isn’t out yet.' && !v.items && !v.hours.length, `past the forecast: Tue, Jan 5, “Its forecast isn’t out yet.”, no clothes, and no hours (${JSON.stringify(v).slice(0, 300)})`);
+      await b.ctx.close();
+      // A warm day (the forecast 45° warmer: 69° to 76° feels like): the warmest hour picks the advice, and is marked.
+      const warm = WX_FIX('om-forecast-wheeling.json');
+      for (const k of ['temperature_2m', 'apparent_temperature']) warm.hourly[k] = warm.hourly[k].map(x => (typeof x === 'number' ? x + 45 : x));
+      b = await WXT.board(browser, errors, { more: { 'api.open-meteo.com/v1/forecast': { json: warm } } });
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560);
+      await openWear(b.page);
+      v = await look(b.page);
+      { const w = v.hours.filter(h => / Warmest$/.test(h)), n = v.hours.map(h => +(/ (\d+)°/.exec(h) || [])[1]);
+        ok(v.advice === 'Dress for warm weather.' && w.length === 1 && !v.hours.some(h => /Coldest/.test(h)) && +(/ (\d+)°/.exec(w[0]) || [])[1] === Math.max(...n), `a warm day marks its warmest hour, which picks the advice (${v.advice} ${v.hours.join(' | ')})`); }
+      await b.ctx.close();
+      // A long day (Wed very cold, with snow and then rain): Medium's strip keeps each sentence whole. At 420 × 320, where
+      // they can't all sit beside its four clothes, the clothes give way, the last first. The view fits too.
+      const long = WX_FIX('om-forecast-wheeling.json'), lh = long.hourly, put8 = (k, v) => v.forEach((x, i) => { lh[k][32 + i] = x; });
+      put8('temperature_2m', [27, 28, 29, 30, 33, 34, 35, 34]); put8('apparent_temperature', [6, 8, 10, 12, 22, 24, 25, 23]); put8('precipitation_probability', [80, 85, 90, 70, 60, 55, 50, 45]);
+      b = await WXT.board(browser, errors, { at: '2026-12-01T11:50:00-06:00', more: { 'api.open-meteo.com/v1/forecast': { json: T.wxShift(long, 8 * 86400) } } });
+      b.wx.shift = 8 * 86400;
+      await WXT.open(b.page); await WXT.size(b.page, 420, 320);
+      await tap(b.page, '.wl [data-wear="next"]');
+      const lg = await F(b.page, () => {
+        const s = document.querySelector('#app .wl .says'), lines = e => { const g = document.createRange(); g.selectNodeContents(e); return new Set([...g.getClientRects()].filter(r => r.width > 1).map(r => Math.round(r.bottom))).size; };
+        return { says: s.textContent, whole: [...s.querySelectorAll('.nw')].every(e => lines(e) === 1), shown: [...document.querySelectorAll('#app .wl figure')].filter(f => f.getBoundingClientRect().width).length };
+      });
+      { const pr = await WXT.problems(b.page, false); ok(lg.says === 'Dress for very cold weather. Bring a rain jacket. Wear boots.' && lg.whole && lg.shown >= 1 && lg.shown < 4 && !pr.list.length, `a long day in a 420 × 320 strip: each sentence whole, ${lg.shown} of its 4 clothes shown, and it fits (${JSON.stringify(lg)}; ${pr.list.join(', ') || 'fits'})`); }
+      await openWear(b.page);
+      v = await look(b.page);
+      { const pr = await WXT.problems(b.page, false); ok(v.lines.join(' / ') === 'Dress for very cold weather. / Bring a rain jacket. / Wear boots.' && !pr.list.length, `its view fits at 420 × 320, a sentence a line (${v.lines.join(' / ')}; ${pr.list.join(', ') || 'fits'})`); }
+      await b.ctx.close();
     });
 
     // ---- 2. °C from the menu, rounded once from the sources' numbers: never −0. km/h.
