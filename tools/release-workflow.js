@@ -65,7 +65,7 @@ Strings: ${JSON.stringify(built.strings)}
 Tests changed: ${JSON.stringify(built.tests_changed)}
 
 ${r.lens}
-Also check every new or changed string against ${CLAUDE_MD} ("Voice") and ("Languages"): window words in all four languages, docs/GLOSSARY.md's words first, that the Teacher Guide says and shows what the board now does, and that the tests follow docs/RELEASING.md ("Writing tests"): flag checks the change doesn't need.
+Also check every new or changed string against ${CLAUDE_MD}, "Voice" and "Languages": window words in all four languages, docs/GLOSSARY.md's words first. Check that the Teacher Guide says and shows what the board now does, and that the tests follow docs/RELEASING.md ("Writing tests"): flag checks the change doesn't need.
 Report only problems you reproduced or can show from the code or docs, each with evidence (scripts and logs next to your worktree) and a concrete fix.`, { label: 'review-' + r.key, phase: 'Review', schema: REVIEW_SCHEMA })))
 const findings = reviews.flatMap((r, i) => r ? (r.findings || []).map(f => ({ ...f, from: REVIEWS[i].key })) : [])
 const lost = REVIEWS.filter((r, i) => !reviews[i]).map(r => r.key)

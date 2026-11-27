@@ -505,9 +505,9 @@ Language row and stays English.
 ### Trying a language
 
 - On the board: tap the window's name, then **Language**, and pick one.
-- In the dev window: **Language** in the toolbar sets every window. **Pseudo** is the pseudo language. Every word from
-  your table shows in ［brackets］, longer, with accents and a Cyrillic letter. English outside the brackets isn't in
-  your table yet. *⋯ ▸ Open in every language* opens one window in each.
+- In the dev window: **Language** in the toolbar sets every window. **Pseudo** shows every word from your table in
+  ［brackets］, longer, with accents and a Cyrillic letter. English outside the brackets isn't in your table yet.
+  *⋯ ▸ Open in every language* opens one window in each.
 - On its own: add `#b21-bare&b21-lang=es`, `ru`, `uk`, or `qps` to the widget's address. Reload to change it.
 
 ---
@@ -618,7 +618,7 @@ the theme, accent, and size of windows and menus in Settings.
 | **Language** | English, Español, Русский, Українська, or Pseudo, for every window. *⋯ ▸ Open in every language* opens one window in each. |
 | **Data** | The window's saved content and config as JSON. Edit it and *Send as a change from another tab* to test your `data` and `config` handlers. Copy it or clear it. |
 | **Events** | Every message between the widget and the board, and the widget's errors in red. |
-| **Checks** | Common problems: the SDK not first, files loaded from the Internet, localStorage, `alert()`, menu items the board will drop (more than 24, swatches that aren't `#hex`), a words table with no `"languages"`, `words.js` in a file that can't load it, and words missing from the table… Each has *Copy fix request*, a sentence to paste back to the AI tool. |
+| **Checks** | Common problems: the SDK not first, files loaded from the Internet, localStorage, `alert()`, menu items the board will drop (more than 24, swatches that aren't `#hex`), a words table with no `"languages"`, `words.js` in a file that can't load it, and words missing from the table. Each has *Copy fix request*, a sentence to paste back to the AI tool. |
 | **⋯** | Reload the widget, reset its window, open another window, open one in every language, switch the board shape, show the widget on its own, and *Copy for 21Board* (the HTML with its SDK path set for the `widgets/` folder, plus a `widgets/registry.js` entry). |
 
 The footer shows the window's content size, shape lock, minimum size, and board size.
@@ -630,7 +630,7 @@ The footer shows the window's content size, shape lock, minimum size, and board 
 - **Just the widget:** *⋯ ▸ Show the widget on its own*, or add `#b21-bare` to the address, or
   `data-dev="off"` to the SDK's script tag. This is standalone mode: data in `localStorage`, window calls
   ignored, menu items in a small dropdown in the corner. Add `&b21-lang=es`, `ru`, or `uk` after `#b21-bare` to see
-  the widget in that language. The dev window starts in it too.
+  the widget alone in that language. Without `#b21-bare`, `#b21-lang=es` starts the dev window in it.
 - If the SDK **isn't the first script** in `<head>`, the widget runs on its own with a note saying so.
 - Without a manifest block, a widget in this repo's `widgets/` folder uses its `widgets/registry.js`
   entry; otherwise the window is 400 × 300.

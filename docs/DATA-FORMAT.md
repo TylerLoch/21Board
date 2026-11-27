@@ -90,10 +90,10 @@ device only. Never synced or exported, and not in Board history.
   accentColor: "#8040c0",  // from 2026.11.18-2: the accent chosen, one of the six or a custom "#rrggbb" (lowercase);
                            //   "" before any. It shows while accent goes with it: itself, or "blue" for a custom color.
                            //   Otherwise a release before 2026.11.18-2 chose accent since, and accent shows.
-  themeAt: 1794460416170,  // when the theme, the accent, and the text style were last chosen on this device (ms; set by
-  accentAt: 1794460410000, //   a change made here, never by Board Sync): of two choices made apart, the later wins on
-  lettersAt: 1794460420000,//   every device (lettersAt from 2026.11.17-2, accentColorAt from 2026.11.18-2,
-  accentColorAt: 1794460410000,  // widgetLanguageAt from 2026.11.27-2)
+  themeAt: 1794460416170,  // when the theme, the accent, the text style, and the default widget language were last
+  accentAt: 1794460410000, //   chosen on this device (ms; set by a change made here, never by Board Sync): of two
+  lettersAt: 1794460420000,//   choices made apart, the later wins on every device (lettersAt from 2026.11.17-2,
+  accentColorAt: 1794460410000,     // accentColorAt from 2026.11.18-2, widgetLanguageAt from 2026.11.27-2)
   widgetLanguageAt: 1794460430000,
   locked: false,           // Lock in the Widget Picker: false | "all" (Lock everything) | "widgets" (Widgets still work)
   awake: "off",            // Settings → Classroom → Stay awake: "off" | "on" (the screen is kept on while 21Board is showing)
@@ -111,17 +111,16 @@ device only. Never synced or exported, and not in Board history.
 }
 ```
 
-Only `theme`, the accent, `letters`, the text style, and `widgetLanguage`, the default widget language, go into
-exported files, and so into the device files in the Google Drive folder. Before 2026.11.17-2, `letters` stayed on
-the device. `widgetLanguage` is new in 2026.11.27-2. It syncs board-wide like `theme`. An export's `accent` is the accent shown:
-one of the six, or a custom color. A device file has `accent` and `accentColor` as they are stored. With Board Sync
-they are the board's, on every device linked to the folder, and the later choice wins, as for a page's name (see
-`link:sync.style` below). *Import › Replace this page* takes the file's values as a choice made here, so they sync.
-A file without `letters` leaves the text style as it is, and one without `widgetLanguage` the default widget
-language. Its Undo puts back the values it replaced, again as a
-choice made here, so that syncs too. The other ways to import, and going back in Board history, never change them.
-`locked`, `awake`, and `clock` belong to this device. They are never in exports, Board history, or the Google Drive
-folder, and an import leaves them as they are.
+Only `theme`, the accent, `letters`, the text style, and `widgetLanguage`, the default widget language, go into exported
+files, and so into the device files in the Google Drive folder. Before 2026.11.17-2, `letters` stayed on the device.
+`widgetLanguage` is new in 2026.11.27-2. It syncs board-wide like `theme`. An export's `accent` is the accent shown: one
+of the six, or a custom color. A device file has `accent` and `accentColor` as they are stored. With Board Sync they are
+the board's, on every device linked to the folder, and the later choice wins, as for a page's name (see
+`link:sync.style` below). *Import › Replace this page* takes the file's values as a choice made here, so they sync. A
+file without `letters` leaves the text style as it is, and one without `widgetLanguage` the default widget language. Its
+Undo puts back the values it replaced, again as a choice made here, so that syncs too. The other ways to import, and
+going back in Board history, never change them. `locked`, `awake`, and `clock` belong to this device. They are never in
+exports, Board history, or the Google Drive folder, and an import leaves them as they are.
 
 Before 2026.11.18-18, `locked` was a switch in Settings, `true` or `false`, that kept windows in place. A device
 locked then now reads as `"widgets"`, which does the same. So does any other truthy value but `"all"`. An older
@@ -274,9 +273,10 @@ there, the folder's board is joined as on a first set-up.
 **A window's language** (`inst.language`, from 2026.11.27-2) is the window part `language`, the later change winning.
 Two rules keep older boards and releases safe. Rule 1: a version is stamped only for a language chosen, or English
 chosen after one. A window never given one has an entry with no `v`, so a device that updates never stamps English
-over a language chosen elsewhere. Rule 2: a window's language never brings back a deleted window or page. Fingerprints
-(`keep`, `keepW`, and a file's parts) leave it out until it has a version, as on 2026.11.27-1, and a tombstone that
-release wrote, with no `language` in its cover, still covers the window. A device on 2026.11.27-1 reads past the part.
+over a language chosen elsewhere. Rule 2: a window's language never brings back a deleted window or page. `keep` and
+`keepW` always leave it out, and a file's parts leave it out until it has a version, as on 2026.11.27-1. A tombstone
+that release wrote, with no `language` in its cover, still covers the window. A device on 2026.11.27-1 reads past the
+part.
 
 **The theme, accent, text style, and default widget language** (`settings.theme`, `settings.accent` and
 `settings.accentColor`, `settings.letters`, `settings.widgetLanguage`) are five more parts, of the board as a whole,
@@ -313,9 +313,9 @@ A device on 2026.11.16-4 doesn't know the text style: its files have no `letters
 says nothing about it (never a change, never a reset back to Standard), and it reads past both in a newer device's
 file, so the text style chosen on a newer device never reaches it and its rounds stay as quiet as before.
 
-A device on 2026.11.27-1 doesn't know the default widget language or a window's language, in the same way. Each
-linked device writes its file once after it updates to 2026.11.27-2, since the new style part changes the file's
-fingerprint. Nothing in the board changes.
+A device on 2026.11.27-1 doesn't know the default widget language or a window's language, in the same way. A copy it
+keeps from a clash opens in English. Each linked device writes its file once after it updates to 2026.11.27-2, since
+the new style part changes the file's fingerprint. Nothing in the board changes.
 
 A vector is written with its devices in sorted order, in files and in the ledger, so that the same version joined
 from the same devices in another order (two or more devices setting up one folder at once) is the same text and
@@ -357,12 +357,11 @@ Google Drive may make a `Photos (1)` or `Board history (1)` beside the first. 21
 Other files are left alone. A renamed device (set-up's last step, or Settings → Board Sync) writes its file under
 the new name at its next write, then deletes the old one.
 
-**A device file** is an all-pages backup (see "The .21board file": Import opens it) with, for each page's `board`
-and each instance, `v`: the version of each part; instances also carry `wid` (and `copyOf` on a labeled copy, and
-`language` for a window in another language),
-boards `pos`; content clash versions not yet settled go in an instance's `pending`; and a top-level `sync` block.
-Pictures of 32,768 characters or more in windows' content are named in `Photos/`, not held. Smaller ones stay in the
-file. See "The .21board file".
+**A device file** is an all-pages backup (see "The .21board file": Import opens it) with, for each page's `board` and
+each instance, `v`: the version of each part; instances also carry `wid` (and `copyOf` on a labeled copy, and `language`
+for a window in another language), boards `pos`; content clash versions not yet settled go in an instance's `pending`;
+and a top-level `sync` block. Pictures of 32,768 characters or more in windows' content are named in `Photos/`, not
+held. Smaller ones stay in the file. See "The .21board file".
 
 ```js
 "sync": { "v": 2, "dev": "k3j9a1b2c3d4", "folder": "f7q2m9x0c1d4", "name": "the laptop",
@@ -565,7 +564,9 @@ goal }`. `goal` is `"short"` or `"long"`, and the rest are `true` or `false`. A 
 Hundredths and Laps on, the rest off, and Shortest. Records are content, so a template never carries them.
 
 The Traffic Light (`traffic-light`) saves `{ active: "red" | "yellow" | "green" | null }`, the color the teacher
-chose. Its config is `{ follow: true }` while Follow timers is on. The color it follows is never saved.
+chose. Its config is `{ follow: true }` while Follow timers is on. The color it follows is never saved. A color
+tapped while following is kept as the window closes, with `over` naming the window and color it followed then, such as
+`"timer:1 green"`. The window drops `over` when it starts again, and the tap shows until that color changes.
 
 The Clock (`clock`) saves `{ set, markAt }`, the lesson. `set` is `null` when not setting the time, `{ at: null }`
 while setting it but following the real time after *Now*, and `{ at }` for a set time, in minutes since midnight from
@@ -665,19 +666,19 @@ the body holds `{ "b21pic": "<key>" }` in its place. `pics` lists the keys. Read
 A picture stays while any version names it. A version of a page with pictures costs what the page costs without
 them, usually a few KB.
 
-`sig` is the content fingerprint, so identical versions aren't saved twice. Window stacking order doesn't count,
-nor do the theme, accent, text style, and default widget language, which going back never changes. Versions saved before Board Sync merged
-boards may have `reason: "load"` and `link: "sent" | "loaded"`; `link` is ignored now. While the board is linked to
-a folder, versions saved when 21Board opens aren't copied to it unless saved by hand. They may hold only work merged
-from other devices, which those devices copy themselves. Retention is in README, "Board history". Settings for this
-device only: `historyEvery` (minutes, 0 = off; default 10) and `historyFolder` (default true).
+`sig` is the content fingerprint, so identical versions aren't saved twice. Window stacking order doesn't count, nor do
+the theme, accent, text style, and default widget language, which going back never changes. Versions saved before Board
+Sync merged boards may have `reason: "load"` and `link: "sent" | "loaded"`; `link` is ignored now. While the board is
+linked to a folder, versions saved when 21Board opens aren't copied to it unless saved by hand. They may hold only work
+merged from other devices, which those devices copy themselves. Retention is in README, "Board history". Settings for
+this device only: `historyEvery` (minutes, 0 = off; default 10) and `historyFolder` (default true).
 
 **Folder copies:** `<shared folder>/Board history/<board name> <YYYY-MM-DD> <HH.MM>[ saved] (<device>) [<uid6>-<dev4>].21board`
-(local time; `uid6` and `dev4` are the first characters of the board's uid and the device id). A valid `.21board`
-file: the version's body plus `history: {at, kind, label, by, from}`, without theme, accent, text style, default
-widget language, or the photo.
-Its windows' pictures are named in `Photos/` (put there first), and it is then `formatVersion: 2`.
-Each device thins only files with its own `dev4` (by name only); files ending in ` saved` are never removed.
+(local time; `uid6` and `dev4` are the first characters of the board's uid and the device id). A valid `.21board` file:
+the version's body plus `history: {at, kind, label, by, from}`, without theme, accent, text style, default widget
+language, or the photo. Its windows' pictures are named in `Photos/` (put there first), and it is then
+`formatVersion: 2`. Each device thins only files with its own `dev4` (by name only); files ending in ` saved` are never
+removed.
 
 ## Instances: numbering, closing, reopening
 
@@ -884,11 +885,10 @@ the file is made anyway, the teacher is told which pages are incomplete, and it 
 
 Importing a one-page file offers three choices:
 
-- **Open as a new page**, the suggested choice. The file becomes a new page right after the page shown, with the
-  file's name, background, photo, size, and shape, but not its theme, accent color, text style, or default widget
-  language. It keeps the file's `board.uid`
-  unless a page on this device already has it (then it gets a new one), so the same file opened on two linked
-  devices is one page. Undo takes the page away again.
+- **Open as a new page**, the suggested choice. The file becomes a new page right after the page shown, with the file's
+  name, background, photo, size, and shape, but not its theme, accent color, text style, or default widget language. It
+  keeps the file's `board.uid` unless a page on this device already has it (then it gets a new one), so the same file
+  opened on two linked devices is one page. Undo takes the page away again.
 - **Replace this page** removes this page's windows and content, then loads the file, with its board name,
   background, theme, accent color, text style, and default widget language. The page keeps its `board.uid`, whatever
   board the file was. With Board Sync, the new content reaches the same page on the other devices as edits. The
@@ -896,10 +896,10 @@ Importing a one-page file offers three choices:
   the other devices too. The dialog says so when they differ from this board's. Its Undo goes back to the version
   saved before, and chooses again the theme, accent color, text style, and default widget language it replaced.
 - **Add to this page** keeps everything here, including the theme, accent color, text style, and default widget
-  language, and adds the file's windows, each in its own language. Each gets the next free instance number for its widget, and windows are nudged into free
-  space. Each added window gets a new `wid` and a `createdAt` of its own; *Replace this page* keeps the file's
-  `wid`s (or makes the default from their `createdAt`), so a restored backup of a page is the same windows on every
-  device.
+  language, and adds the file's windows, each in its own language. Each gets the next free instance number for its
+  widget, and windows are nudged into free space. Each added window gets a new `wid` and a `createdAt` of its own;
+  *Replace this page* keeps the file's `wid`s (or makes the default from their `createdAt`), so a restored backup of a
+  page is the same windows on every device.
 
 Importing an all-pages file offers two choices:
 

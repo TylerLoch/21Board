@@ -126,6 +126,17 @@ module.exports = T => {
     const said = await eventually(async () => await B(() => document.querySelector('.win[data-ikey="traffic-light:1"] .sub').textContent) === EN_TL.t('red'));
     ok(said && (await instOf(page, 'traffic-light:1')).language === 'ru' && red === RU_TL.t('red'),
       `a new Traffic Light opens in Русский, its red lamp named ${RU_TL.t('red')}; tapped, its title bar says ${EN_TL.t('red')} (${red})`);
+    // Following the running Timer, a color tapped stays through a switch of language (the window starts again).
+    const lamp = () => inWin(page, 'traffic-light:1', () => (document.querySelector('.lamp.on') || { dataset: {} }).dataset.c || null);
+    await openMenu(page, 'traffic-light:1'); await page.click('#menu [data-act="widget"][data-id="follow"]');
+    const follows = await eventually(async () => await lamp() === 'green');
+    await inWin(page, 'traffic-light:1', () => document.querySelector('.lamp.red').click());
+    const tapped = await eventually(async () => await lamp() === 'red');
+    await choose(page, 'traffic-light:1', 'es');
+    ok(follows && tapped && await eventually(async () => frameName(page, 'traffic-light:1') === 'b21-board:traffic-light:1;es') && await up(page, 'traffic-light:1') &&
+      await eventually(async () => await lamp() === 'red') && (await page.waitForTimeout(1200), await lamp()) === 'red' &&
+      await B(() => document.querySelector('.win[data-ikey="traffic-light:1"] .sub').textContent) === EN_TL.t('red'),
+      `following the running Timer, red tapped stays red when the Traffic Light switches to Español (${follows}, ${tapped}, ${await lamp()})`);
     await B(() => window.__board21.openWidget('notes')); await up(page, 'notes:1');
     await openMenu(page, 'notes:1');
     const notes = { inst: await instOf(page, 'notes:1'), row: await page.locator('#menu [data-act="lang"]').count(), name: frameName(page, 'notes:1') };
@@ -147,8 +158,8 @@ module.exports = T => {
     // 12. Export and import carry each window's language, and the default widget language.
     const exp = await B(async () => ({ full: await window.__board21.buildExport('full'), tpl: await window.__board21.buildExport('template') }));
     const langOf = (e, w, n) => { const i = e.instances.find(x => x.widgetId === w && x.instance === n); return i ? i.language || 'en' : null; };
-    ok(langOf(exp.full, 'timer', 1) === 'uk' && langOf(exp.full, 'traffic-light', 1) === 'ru' && !exp.full.instances.filter(i => i.widgetId === 'notes' || (i.widgetId === 'timer' && i.instance === 2)).some(i => 'language' in i) &&
-      exp.full.widgetLanguage === 'ru' && langOf(exp.tpl, 'timer', 1) === 'uk' && langOf(exp.tpl, 'traffic-light', 1) === 'ru',
+    ok(langOf(exp.full, 'timer', 1) === 'uk' && langOf(exp.full, 'traffic-light', 1) === 'es' && !exp.full.instances.filter(i => i.widgetId === 'notes' || (i.widgetId === 'timer' && i.instance === 2)).some(i => 'language' in i) &&
+      exp.full.widgetLanguage === 'ru' && langOf(exp.tpl, 'timer', 1) === 'uk' && langOf(exp.tpl, 'traffic-light', 1) === 'es',
       `a full backup and a template keep each window’s language (none for English), and the backup the default widget language (${JSON.stringify(exp.full.instances.map(i => [i.widgetId, i.instance, i.language]))}; ${exp.full.widgetLanguage})`);
     await openSettings(page, ['widget-language']); await page.click('#settings [data-act="widget-language"][data-val="en"]');
     await eventually(() => B(() => window.__board21.state.settings.widgetLanguage === 'en')); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
@@ -161,9 +172,13 @@ module.exports = T => {
     await page.waitForTimeout(1200);
     const added = (await B(() => Array.from(window.__board21.state.insts.entries(), ([k, i]) => [k, i.widgetId, i.language || 'en']))).filter(([k]) => !before.has(k));
     const addedLangs = w => added.filter(a => a[1] === w).map(a => a[2]).sort().join();
-    ok(/So is the default widget language\./.test(sub) && addedLangs('timer') === 'en,uk' && addedLangs('traffic-light') === 'ru' && await B(() => window.__board21.state.settings.widgetLanguage) === 'en' &&
+    ok(/So is the default widget language\./.test(sub) && addedLangs('timer') === 'en,uk' && addedLangs('traffic-light') === 'es' && await B(() => window.__board21.state.settings.widgetLanguage) === 'en' &&
       await eventually(async () => added.filter(a => a[2] !== 'en').every(a => frameName(page, a[0]) === `b21-board:${a[0]};${a[2]}`)),
       `Import: Replace says “So is the default widget language.”; Add opens the windows in the file’s languages, and the default stays English (${sub}; ${JSON.stringify(added)})`);
+    // A stored default that isn't one of the four reads as English in Settings, and goes into a backup as English too.
+    const junk = await B(async () => { const s = window.__board21.state, was = s.settings; s.settings = Object.assign({}, was, { widgetLanguage: 'xx' });
+      try { return (await window.__board21.buildExport('full')).widgetLanguage; } finally { s.settings = was; } });
+    ok(junk === 'en', `a stored default widget language that isn’t one of the four is exported as English (${junk})`);
 
     // 13. Locked from another tab with the flyout open: both close. Locked, no Language row. Unlocked with the menu open:
     // the row is back, and the flyout stays closed.
@@ -207,16 +222,34 @@ module.exports = T => {
     ok(fl.sub.r <= fl.menu.l + 0.5 && fl.sub.l >= 0 && fl.sub.t >= 0 && fl.sub.r <= fl.vw && fl.sub.b <= fl.vh, `at the right edge the flyout opens on the menu’s left, fully on screen (${JSON.stringify({ menu: fl.menu, sub: fl.sub })})`);
     await page.screenshot({ path: OUT + 'language-flyout-edge.png' });
     await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+    // At Size 200%, the menu in two columns: the flyout beside it, as compact and tight as the menu, fully on screen.
+    await B(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(400);
+    await B(() => window.__board21.setRect('timer:1', { x: 10, y: 10, w: 300, h: 250 })); await page.waitForTimeout(400); await up(page, 'timer:1');
+    await openMenu(page, 'timer:1'); await page.click('#menu [data-act="lang"]'); await page.waitForSelector('#menu-sub.open'); await page.waitForTimeout(300);
+    fl = await flyout(page);
+    const cls = await B(() => ['menu', 'menu-sub'].map(id => ['compact', 'tight', 'cols'].filter(c => document.getElementById(id).classList.contains(c)).join(' ')));
+    ok(cls[0] === 'compact tight cols' && cls[1] === 'compact tight' && (fl.sub.l >= fl.menu.r - 0.5 || fl.sub.r <= fl.menu.l + 0.5) && fl.sub.l >= 0 && fl.sub.t >= 0 && fl.sub.r <= fl.vw && fl.sub.b <= fl.vh,
+      `at Size 200%, beside the menu in two columns, as compact and tight, fully on screen (${JSON.stringify({ cls, menu: fl.menu, sub: fl.sub })})`);
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+    await B(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
 
     // 16. No page errors, and every window found all its words.
     const ws = {};
     for (const ik of await B(() => Array.from(window.__board21.state.wins.keys()))) ws[ik] = await words(page, ik);
     ok(Object.values(ws).every(clean), `every window found all its words (${JSON.stringify(ws)})`);
+
+    // 17. A page deleted: the toast that names it is kept from the browser's translation too.
+    await B(() => window.__board21.pages.create({ end: true, name: 'Spelling' })); await page.waitForTimeout(700);
+    await B(() => { window.__board21.pages.remove(); });
+    await page.locator('#modal.open .btn', { hasText: 'Delete page' }).click();
+    const gone = page.locator('#toasts .toast', { hasText: 'Spelling' });
+    await gone.waitFor({ timeout: 8000 });
+    ok(await gone.getAttribute('translate') === 'no', `translate="no" on the toast that names a deleted page (${(await gone.innerText()).replace(/\s+/g, ' ')})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
 
-  ['Languages: every converted widget in the pseudo language, inside the board: no English left, nothing cut off', async (browser) => {
+  ['Languages: every converted widget in the pseudo language, inside the board: no English left, nothing cut off, and a language from its menu ends it', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage(), errors = [];
     page.on('pageerror', e => errors.push(e.message));
@@ -240,6 +273,14 @@ module.exports = T => {
         ok(a.html === 'en-XA' && !a.audit.missed.length && !a.audit.cut.length && clean(a.words), `${id} at ${a.size} in the pseudo language: no English left, nothing cut off, and no word missing (${JSON.stringify(a)})`);
       }
     }
+    // A language chosen from the window's menu ends the pseudo language: the window starts again in it, and the row says so.
+    await B(() => window.__board21.setRect('timer:1', { x: 120, y: 60, w: 400, h: 330 })); await page.waitForTimeout(300);
+    await choose(page, 'timer:1', 'ru');
+    const back = await eventually(async () => frameName(page, 'timer:1') === 'b21-board:timer:1;ru') && await up(page, 'timer:1');
+    await openMenu(page, 'timer:1');
+    const val = await B(() => document.querySelector('#menu [data-act="lang"] .value').textContent);
+    await page.keyboard.press('Escape');
+    ok(back && val === 'Русский' && (await instOf(page, 'timer:1')).language === 'ru', `Русский chosen in its menu: the Timer leaves the pseudo language for Русский, and its row says so (${frameName(page, 'timer:1')}; ${val})`);
     if (errors.length) ok(false, 'no page or console errors: ' + errors.join(' | '));
     await ctx.close();
   }]

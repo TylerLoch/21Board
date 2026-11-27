@@ -91,10 +91,9 @@ where your language needs it.
 ## The Sheet
 
 Reviewers who don't edit files use the Google Sheet
-["21Board words"](https://docs.google.com/spreadsheets/d/107RhnGYFn33v23lR9u0lvW4Zh0ePw5TJz60BoHrne-U/edit), with a
-tab for each widget. Edit your
-language's cell, tick OK, and add a comment if you like. The words files stay the source. Edits come back to them
-on request.
+["21Board words"](https://docs.google.com/spreadsheets/d/107RhnGYFn33v23lR9u0lvW4Zh0ePw5TJz60BoHrne-U/edit), with a tab
+for each widget. Edit your language's cell, tick OK, and add a comment if you like. The words files stay the source.
+Edits come back to them on request.
 
 **For IT.** `node tools/words.js --sheet timer` prints the Timer's tab. `node tools/words.js --apply edits.tsv`
 brings a tab's edits back, and names any word changed in both places.

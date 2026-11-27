@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.27-2';
-  const BOARD_BUILD = '90d32643';
+  const BOARD_BUILD = 'fdccfabc';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2058,8 +2058,9 @@
       // 'b21-board:<ikey>;<language>' in another language. (Set before inserting the frame: a later change doesn't reach
       // the widget's window.name.) The language is decided here, once (frameLang), and hello sends the same: a change
       // starts the page again (Lang.apply). Not for a district app: it's another site's page, with no SDK. (Its address
-      // is the registry's, never saved data.)
-      this.pseudo = this.pseudo || labPseudo;
+      // is the registry's, never saved data.) The dev window's Pseudo reaches a window as it is made: a language chosen
+      // in its menu afterwards ends it (Menu.act).
+      if (this.pseudo === undefined) this.pseudo = labPseudo;
       this.frameLang = Lang.want(this);
       if (!this.widget.external) f.name = 'b21-board:' + this.ikey + (this.frameLang === 'en' ? '' : ';' + this.frameLang);
       if (sealed) {
@@ -3668,10 +3669,12 @@
       switch (act) {
         case 'lang': this.sub = this.sub ? null : 'lang'; this.render(); this.position(); break;
         case 'lang-set': {
-          // Saved with the window (English: no field), which starts again in it. Its own language again: nothing to do.
+          // Saved with the window (English: no field), which starts again in it. Its own language again: nothing to do,
+          // unless the window is in the pseudo language, which a choice ends.
           this.close();
-          if (!w.widget.languages.includes(id) || id === winLang(w)) break;
-          saveInst(w.ikey, withLanguage(w.inst, id));
+          if (!w.widget.languages.includes(id)) break;
+          w.pseudo = false;
+          if (id !== winLang(w)) saveInst(w.ikey, withLanguage(w.inst, id));
           Lang.apply(w);
           break;
         }
@@ -3979,13 +3982,14 @@
       Picker.renderControls();
     },
     // These pages are deleted (their records stay until the Undo is over: see purge). Undo puts them back in their
-    // places, and onUndo then runs (an import of several pages takes its own pages away again).
+    // places, and onUndo then runs (an import of several pages takes its own pages away again). say names a page or a
+    // file: no browser translation.
     drop(list, say, onUndo) {
       const before = this.ids();
       updateSettings(Object.assign({ boards: before.filter(x => !list.includes(x)) }, this.goneWith(list)));
       Picker.renderControls();
       for (const b of list) { clearTimeout(this.purges.get(b)); this.purges.set(b, setTimeout(() => this.purge([b]), PAGE_UNDO_MS + 3000)); }
-      if (say) toast(say, { action: 'Undo', pages: true, timeout: PAGE_UNDO_MS, onAction: () => this.undrop(list, before, onUndo) });
+      if (say) toast(say, { action: 'Undo', pages: true, timeout: PAGE_UNDO_MS, onAction: () => this.undrop(list, before, onUndo), noTranslate: true });
     },
     // Board Sync (section 13d): pages a merge deleted (its transaction listed them in deletedBoards) go as a deletion
     // here does, once their Undo is over; pages a merge brought back don't go after all.
@@ -5784,7 +5788,7 @@
       theme: S.settings.theme,
       accent: accentNow(),   // what the board shows: a key of ACCENTS or a custom '#rrggbb'
       letters: S.settings.letters,   // the text style
-      widgetLanguage: S.settings.widgetLanguage || 'en',   // the default widget language
+      widgetLanguage: Merge.LANGS.includes(S.settings.widgetLanguage) ? S.settings.widgetLanguage : 'en',   // the default widget language, as Settings shows it
       board: Object.assign({ name: board.name, background: board.background || { color: null, pattern: 'none' }, scale: sc, shape: free ? 'free' : '16:9' },
         kind === 'full' && board.uid ? { uid: board.uid } : {},   // which board this is (see section 13b)
         kind === 'full' && typeof board.pos === 'number' && isFinite(board.pos) ? { pos: board.pos } : {}),   // its place among the pages
@@ -6040,7 +6044,7 @@
     const name = file ? file.name.replace(/\.21board$/i, '') : '';
     if (replace) { Pages.drop(was, `Replaced your pages with the ${made.length} in “${name}”.`, () => Pages.discard(made)); return; }
     const say = made.length > 1 ? `Added ${made.length} pages.` : `Opened “${name}” as a new page.`;
-    toast(say, { action: 'Undo', pages: true, timeout: PAGE_UNDO_MS, onAction: async () => { await Pages.discard(made, from); } });
+    toast(say, { action: 'Undo', pages: true, timeout: PAGE_UNDO_MS, onAction: async () => { await Pages.discard(made, from); }, noTranslate: true });
     Picker.renderControls();
   }
 
@@ -10977,7 +10981,7 @@
     pageShown(uid) {
       const q = Link.quietNote(uid);
       if (!q || !q.from || !q.from.length) return;
-      toast(`Changed on ${this.names(q.from)} ${when(q.t || q.at)}.`, { action: 'Board history', timeout: 8000, onAction: () => HistorySheet.open(Settings.side || 'left') });
+      toast(`Changed on ${this.names(q.from)} ${when(q.t || q.at)}.`, { action: 'Board history', timeout: 8000, onAction: () => HistorySheet.open(Settings.side || 'left'), noTranslate: true });
     }
   };
 

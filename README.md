@@ -367,15 +367,14 @@ of your devices show up on the others, usually within a minute."
   pages were added at the end." A page both have, from the same import, keeps the folder's values, and this device's
   different content stays beside it as a copy. This device's own theme, accent color, text style, and default widget
   language don't count as a change, so they never replace the board's.
-- **A folder with another board,** after *Change…* to another class's folder, or after *Unlink* and linking a
-  different folder: this device switches to that board, and to its theme, accent color, text style, and default
-  widget language. Its own pages
-  stay in the other folder, and under Board history › Deleted pages for 30 days. Two boards are never combined.
-  Before it leaves, *Change…* writes this device's file once more, with the work done here since its last write and
-  a note that it left, as *Unlink* does. So the devices still on that folder get the work and stop listing this one.
-  When both folders have the same name, the last step says "…the “21Board” folder this device used before".
-  Switching back within 20 seconds, while Undo for the pages it left is still offered, waits until that Undo is
-  gone, so those pages come back with the work this device's file there holds.
+- **A folder with another board,** after *Change…* to another class's folder, or after *Unlink* and linking a different
+  folder: this device switches to that board, and to its theme, accent color, text style, and default widget language.
+  Its own pages stay in the other folder, and under Board history › Deleted pages for 30 days. Two boards are never
+  combined. Before it leaves, *Change…* writes this device's file once more, with the work done here since its last
+  write and a note that it left, as *Unlink* does. So the devices still on that folder get the work and stop listing
+  this one. When both folders have the same name, the last step says "…the “21Board” folder this device used before".
+  Switching back within 20 seconds, while Undo for the pages it left is still offered, waits until that Undo is gone, so
+  those pages come back with the work this device's file there holds.
 - **The same folder again,** after *Unlink*, or after the folder was renamed or moved: it carries on. Changes made
   here while unlinked join the board, a theme, accent color, or text style too. If another device chose one since,
   the later choice wins. Nothing is deleted anywhere because of how this device looked while it wasn't syncing.
@@ -413,24 +412,23 @@ being typed in, is due again.
   locking takes away an Undo already shown. A clash where your text stayed in the window says so without Undo,
   because the other device kept its own version as the copy. Several pages deleted at once on another device make
   one message, "3 pages were deleted on the laptop.", with one Undo that leaves you on the page you're on.
-- **Theme, accent color, text style, and default widget language belong to the board.** The latest choice, made on
-  any device, shows on all of them at once, in every tab, even while the board is locked. Set the laptop to Dark and the smartboard turns dark.
-  Choose Early readers on the laptop, and the smartboard's text and widgets change too. If Settings is open, it shows
-  the new choice in place without being redrawn. The device that shows the change says who made it, in one message:
-  "The laptop changed the theme to Dark and the accent color to Green.", "The laptop changed the text style to “Early
-  readers”.", "The laptop changed the accent color to a custom one.", or "The laptop changed the default widget
-  language to Español." There's no Undo, since changing it back in
-  Settings is one tap, and syncs. Auto stays Auto everywhere, so each device follows its own light or dark setting.
-  A device that only ever had the defaults, or the folder's, never replaces another's choice. A choice made while
-  unlinked counts when the same folder is linked again, and of two made apart, the later wins on every device. Board
-  history never changes them, and neither does Undo on an "Updated from…" message. A device still on 2026.11.16-4
-  doesn't know the text style. It keeps its own, and changes nobody's, until it updates. Then each device keeps its
-  text style until one is chosen on any of your devices, or takes one already chosen on another updated device. A
-  device on a release before 2026.11.18-2 shows Blue for a custom accent color until it updates. The page shown,
-  Lock, Stay awake, the clock, and the Widget Picker's corners stay on each device. Settings says "On all your
-  devices." beside Theme, Accent color, Text style, and Default widget language, "This device only." beside Stay
-  awake and the clock,
-  and "This page, on all your devices." beside the page's own settings.
+- **Theme, accent color, text style, and default widget language belong to the board.** The latest choice, made on any
+  device, shows on all of them at once, in every tab, even while the board is locked. Set the laptop to Dark and the
+  smartboard turns dark. Choose Early readers on the laptop, and the smartboard's text and widgets change too. If
+  Settings is open, it shows the new choice in place without being redrawn. The device that shows the change says who
+  made it, in one message: "The laptop changed the theme to Dark and the accent color to Green.", "The laptop changed
+  the text style to “Early readers”.", "The laptop changed the accent color to a custom one.", or "The laptop changed
+  the default widget language to Español." There's no Undo, since changing it back in Settings is one tap, and syncs.
+  Auto stays Auto everywhere, so each device follows its own light or dark setting. A device that only ever had the
+  defaults, or the folder's, never replaces another's choice. A choice made while unlinked counts when the same folder
+  is linked again, and of two made apart, the later wins on every device. Board history never changes them, and neither
+  does Undo on an "Updated from…" message. A device still on 2026.11.16-4 doesn't know the text style. It keeps its own,
+  and changes nobody's, until it updates. Then each device keeps its text style until one is chosen on any of your
+  devices, or takes one already chosen on another updated device. A device on a release before 2026.11.18-2 shows Blue
+  for a custom accent color until it updates. The page shown, Lock, Stay awake, the clock, and the Widget Picker's
+  corners stay on each device. Settings says "On all your devices." beside Theme, Accent color, Text style, and Default
+  widget language, "This device only." beside Stay awake and the clock, and "This page, on all your devices." beside the
+  page's own settings.
 
 **Settings → Board Sync** has three rows:
 

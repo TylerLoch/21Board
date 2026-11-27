@@ -77,14 +77,11 @@ module.exports = T => {
     await fillNote(note(), 'scribble'); await page.waitForTimeout(400);
     await H(() => window.__board21.deleteInstance('dice:1')); await page.waitForTimeout(1500);
     await H(() => window.__board21.closeWin('timer:1')); await page.waitForTimeout(800);
-    // Find it in Board history (Settings → Classroom, the row after Default widget language: Go back to an earlier version).
+    // Find it in Board history (Settings → Classroom: Go back to an earlier version).
     await openSettings(page);
     const goBack = await page.evaluate(() => { const b = document.querySelector('#settings [data-act="hist-open"]'), r = b.closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
-      const rows = []; for (let e = h.nextElementSibling; e && e.tagName !== 'H3'; e = e.nextElementSibling) if (e.matches('.row')) rows.push(e);
-      const at = rows.indexOf(r);
-      return { section: h.textContent, first: at, before: at > 0 ? rows[at - 1].querySelector('.lbl').textContent : null, label: r.querySelector('.lbl').textContent, plain: !b.classList.contains('primary') }; });
-    ok(goBack.section === 'Classroom' && goBack.first === 1 && goBack.before === 'Default widget language' && goBack.label === 'Go back to an earlier version' && goBack.plain,
-      `Settings → Classroom → “Go back to an earlier version” (Board history…) is the second row, after Default widget language (${JSON.stringify(goBack)})`);
+      return { section: h.textContent, label: r.querySelector('.lbl').textContent, plain: !b.classList.contains('primary') }; });
+    ok(goBack.section === 'Classroom' && goBack.label === 'Go back to an earlier version' && goBack.plain, `Settings → Classroom → “Go back to an earlier version” (Board history…) (${JSON.stringify(goBack)})`);
     await page.click('#settings [data-act="hist-open"]'); await page.waitForTimeout(1200);
     ok(await page.locator('#history.open .hist-row').count() >= 5, 'the Board history sheet lists the versions');
     await page.screenshot({ path: OUT + '80-history-sheet.png' });

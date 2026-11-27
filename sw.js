@@ -14,13 +14,13 @@
 const VERSION = '2026.11.27-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '90d32643';
+const BUILD = 'fdccfabc';
 const FILES = {
-  './': 'a815ca73b3da3d1e',
-  'index.html': 'a815ca73b3da3d1e',
-  'board.js': '2104751c09e287d8',
+  './': '57ada3b9278e9168',
+  'index.html': '57ada3b9278e9168',
+  'board.js': 'bd605c8dbe47b341',
   'sdk/board21.js': '08906190c5acd9e7',
-  'sdk/board21-dev.js': 'ec785ecbfaa7430d',
+  'sdk/board21-dev.js': '8a581bec97559eaf',
   'sdk/dev/board-shell.js': '49c875caff4259fa',
   'sdk/lab.html': '0f64e592aad54c02',
   'widgets/registry.js': '0bc966acbae82c8b',
@@ -64,7 +64,7 @@ const FILES = {
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
   'widgets/zones-check-in/index.html': '9264fcdf821b3af2',
   'widgets/dice/index.html': '7e6e22547b32875e',
-  'widgets/traffic-light/index.html': '16a8b931b0dc6d66',
+  'widgets/traffic-light/index.html': 'aef3d9ed351ee704',
   'widgets/traffic-light/words.js': 'fdb19ea10bfd8c2b',
   'widgets/youtube-player/index.html': '176df55af520e59f',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',

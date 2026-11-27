@@ -424,12 +424,13 @@ SCENES.menu = async () => {
   await ctx.close();
 };
 
-// ---- 5b. language.jpg: a Timer switched to Español through its menu, at the size it opens at with room on its right,
-// its menu open again with Language tapped and the four languages beside it
+// ---- 5b. language.jpg: a Timer switched to Español through its menu, wide enough that its digits and Spanish chips
+// show on both sides of the menu, with room on its right; its menu open again with Language tapped and the four
+// languages beside it
 SCENES.language = async () => {
   const { ctx, p } = await newBoard();
   const ik = await addWin(p, 'timer');
-  await setRect(p, ik, { x: 560, y: 120, w: 380, h: 300 });
+  await setRect(p, ik, { x: 440, y: 120, w: 760, h: 440 });
   await wait(p, 800);
   await deselect(p);
   await p.click(`.win[data-ikey="${ik}"] .win-label`); await wait(p, 400);

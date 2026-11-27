@@ -219,7 +219,8 @@
       add('err', 'No "languages" for this widget', 'Without it, the window has no Language row and stays English.', 'Add "languages": ["en", "es", "ru", "uk"] to the manifest block and to its registry entry.');
     if (Array.prototype.some.call(scripts, function (n) { return /(^|\/)words\.js([?#]|$)/.test(n.getAttribute('src') || ''); }) && !info.widget.inRepo)
       add('warn', 'words.js won’t load in an uploaded file', 'A widget you upload is one file. It can’t load others.', 'Put the words table in the page, right after the manifest: <script>Board21.words({ … });</script>');
-    (words || []).forEach(function (w) { add(w.level, w.title, w.detail, 'Add the missing words to the words table, in English, Spanish, Russian, and Ukrainian.'); });
+    // (a detail that lists rows, "go: Spanish. stop: Ukrainian.", goes in the fix request too: the title doesn't name them)
+    (words || []).forEach(function (w) { add(w.level, w.title, w.detail, 'Add the missing words to the words table, in English, Spanish, Russian, and Ukrainian.' + (/^[\w.]+:/.test(w.detail) ? ' ' + w.detail : '')); });
     if (lastMenu) {
       var items = lastMenu.items || [];
       if (items.length > 24) add('warn', 'The menu has ' + items.length + ' items', 'The board shows the first 24.', 'Keep the window menu to 24 items or fewer.');

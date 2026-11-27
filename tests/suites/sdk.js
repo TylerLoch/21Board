@@ -789,6 +789,16 @@ module.exports = T => {
     ok(labPaste.open && !labPaste.paste, `the test board’s Widget Picker has no Paste (${JSON.stringify(labPaste)})`);
     await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-act="edit"]').click()); await page.waitForTimeout(300);
     ok(await page.evaluate(() => !document.getElementById('editor').hidden && !document.getElementById('b21-dev')), '"Edit code" goes back to the code');
+    // A words table row without Spanish and Russian: Checks says so, and Copy fix request names the row and what it lacks.
+    await page.evaluate(() => { window.__copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__copied.push(t); return Promise.resolve(); } } }); });
+    await page.fill('#code', (await page.inputValue('#code')).replace(/\s*es: 'Sumar uno',/, '').replace(/\s*ru: 'Прибавить один',/, ''));
+    await page.click('#run'); await page.waitForTimeout(3000);
+    await page.locator('#b21-dev [data-drawer="checks"]').click(); await page.waitForTimeout(300);
+    const rows = page.locator('#b21-dev .chk', { hasText: 'row needs more languages' });
+    if (await rows.count()) { await rows.first().locator('[data-act="copy-fix"]').click(); await page.waitForTimeout(200); }
+    const rowFix = await page.evaluate(() => window.__copied[window.__copied.length - 1] || '');
+    ok(/^Please fix this in my 21Board widget: 1 row needs more languages\. Add the missing words to the words table, in English, Spanish, Russian, and Ukrainian\. add: Spanish and Russian\.$/.test(rowFix),
+      `Copy fix request for a row that needs more languages names the row and the languages it lacks (${rowFix || 'no such check'})`);
 
     // ---- The board shell is up to date with index.html.
     let built = true;
