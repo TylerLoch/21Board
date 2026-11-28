@@ -26,6 +26,16 @@ Before: "Everything you make stays on this device. 21Board sends nothing to a se
 window loads its video, and the titles of the videos in its History, from YouTube."
 After: "Your work is stored only on this device."
 
+## Priorities
+
+Polish and a solid foundation matter. So do time and usage.
+
+- Fix what breaks first: text cut off, overlapping, too small to read, or an error. Check for those at many sizes.
+- Polish starts where teachers look: Tyler's sizes, his screenshots, a full board, and the default settings. Go wider from
+  there. If it starts to drag on, check with Tyler.
+- When fixes start causing new problems, stop. Report the trade-off and let Tyler choose.
+- Before a new round, a new test tool, or a large sweep, say what it will cost in time and usage, and ask.
+
 ## Releasing
 
 Every release follows docs/RELEASING.md, from the spec to the report. A small change takes its short path. Every other
