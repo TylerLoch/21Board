@@ -1,0 +1,175 @@
+{
+ "tests": {
+  "findings": [
+   {
+    "id": "TESTS-1",
+    "severity": "high",
+    "where": "§5.2 F1 item 7; §5.4 tests/lib.js addWin (:350) and boardUp (:489); settings.js:1593-1645 (the code it ports)",
+    "problem": "Item 7 can't work as written. (1) §5.4 makes addWin wait up to 2 s for document.fonts.ready in the new frame. With every .woff2 held about 3 s, the first addWin waits its full 2 s, so by the second or third window Inter has already arrived. That breaks 'open the widgets before it arrives', and the run is timing-bound and flaky. Only boardUp gets { fonts: false }. (2) The ported checks need their listeners in place before the font lands: window.__drawn and __fontsIn for Task Timer's pie, and Board21.on('resize') with loadingdone for the resize. Today's test installs them, then triggers the font by choosing a text style (settings.js:1596-1599, :1636-1639). After this release a frame starts loading Inter as soon as the SDK runs, so listeners added after the frame opens can miss it. (3) Holding fonts on a 3 s timer with fixed waits is the flaky part. Today's 0.7 s hold worked because the test itself chose when the font was asked for.",
+    "fix": "In §5.2 item 7, replace \"with every `.woff2` held back about 3 s, open the widgets before it arrives (with `boardUp(page, { fonts: false })`, so the helper doesn't wait for it)\" with: \"hold every `.woff2` request behind a gate the test opens (`ctx.route(/\\.woff2$/, async r => { await gate; await r.continue(); })`, no timer). Record draws and font arrival in every frame from the start with `ctx.addInitScript` (wrap `CanvasRenderingContext2D.prototype.fillText` into `window.__drawn`, note `loadingdone` times, and listen for the window's `resize`). Open the board with `boardUp(page, { fonts: false })` and each widget with `addWin(page, id, { fonts: false })`. Then open the gate.\" In §5.4's lib.js row, add: \"`addWin(p, id, { fonts: false })` skips the frame's wait too.\""
+   },
+   {
+    "id": "TESTS-2",
+    "severity": "medium",
+    "where": "§5.4 name-picker.js rows; tests/suites/name-picker.js:2451-2454",
+    "problem": "§5.4 deletes `fitTools.letters` (name-picker.js:298-299) and lists the Versus resize suite only for :2526-2542. But the same suite, 'Name Picker: Versus names as windows resize, in dark theme, and the docs' (:2444), also takes `letters` at :2451 and calls `await letters('standard')` at :2454, before the part that goes. With the helper gone, :2451 destructures undefined and :2454 throws 'letters is not a function', so the whole 159 s suite crashes. §5.7 doesn't run this suite either, so only CI would find it.",
+    "fix": "In §5.4 change the row `name-picker.js:2526-2542 | the Early readers dark pass goes` to `name-picker.js:2451-2454, :2526-2542 | drop letters from the fitTools destructuring and the letters('standard') call at :2454; the Early readers dark pass goes`. In §5.7 step 9, add `\"Name Picker: Versus names\"`."
+   },
+   {
+    "id": "TESTS-3",
+    "severity": "medium",
+    "where": "§5.7 step 2; §5.2 suite titles",
+    "problem": "The filter `\"The board's font\"` uses a straight apostrophe. Suite titles in this repo mix the two kinds: 29 use ’ and 2 use '. A builder who writes F1 and F2 with ’, in the house style, gets 0 suites from this filter. tests/run.js then prints \"0 passed, 0 failed\" and exits 0 (run.js:84-87, :101-103), which reads as a pass.",
+    "fix": "Give F1 and F2 a word the filter can match without an apostrophe, and say so. Replace §5.7 step 2 with: \"`node tests/run.js \\\"font: Inter in 21Board\\\"` and `node tests/run.js \\\"font: the widget dev window\\\"` (each runs one suite: check the count it prints is more than 0).\" Add under §5.7: \"A filter that prints 0 passed ran nothing. Check every count.\""
+   },
+   {
+    "id": "TESTS-4",
+    "severity": "medium",
+    "where": "§5.2 F1 item 2; §3.1 step 4 (build_fonts.py's arrow search)",
+    "problem": "F1 item 2 checks only `->`. In Inter 4.001, `<-` is made into ← by another route: calt lookup 48, a chaining lookup with input [less][hyphen], calls ligature lookups 49 (less+hyphen → arrowleft) and 50 (.case). The recipe's search only finds ligature lookups listed directly in calt (47 and 51), so 48 stays and the built font still turns `<-` into an arrow. The decision says arrow ligatures are dropped. I found this by reading the source TTF's GSUB with fontTools. Lookup 52 calls only 53, case forms, so it is not an arrow.",
+    "fix": "In §3.1 step 4 write: \"Drop the calt lookups that make `*rrow*` or `uni27F*` glyphs, directly or through the lookups they call (47, 48, and 51 in 4.001; 49 and 50 are called only by 48). Assert exactly 3 are dropped.\" In §5.2 F1 item 2 write: \"`->`, `<-`, and `=>` in spans at 48 px, each plain and with `font-feature-settings: \\\"calt\\\" 0`, give the same pictures.\""
+   },
+   {
+    "id": "TESTS-5",
+    "severity": "medium",
+    "where": "§5.4 clock-and-calendar.js:635-659 (port)",
+    "problem": "The port says 'the corner clock opens with Inter delayed 0.7 s, then measures again on arrival (`--clock-room` equals reach)'. On the base there is no Inter face and no font arrives, so the clock is measured once and room equals reach. The port passes on the base and proves nothing about re-measuring.",
+    "fix": "Change the row to: \"port: with every `.woff2` held 0.7 s, the board's `Inter` face is still `loading` when the corner clock first draws (record `[...document.fonts].find(f => f.family === 'Inter')?.status` from an init script at the clock's first draw), and `loaded` when `--clock-room` is read; then `--clock-room` equals how far it reaches. On the base there is no Inter face, so it fails.\""
+   },
+   {
+    "id": "TESTS-6",
+    "severity": "medium",
+    "where": "§5.4 name-picker.js:2948-2964 (Spinning wheel port)",
+    "problem": "'Inter reaches the slices, the banner, and SPIN, redrawn once loaded.' The current check wraps fillText and listens for loadingdone after the wheel is shown, then sets a text style so a font loads later (:2951-2958). After this release Inter loads when the frame starts and addWin waits for it, so loadingdone has already fired and `__fontsIn > 0` stays false. The 'redrawn once loaded' half then always fails. Late-font redraws are already F1 item 7's rule.",
+    "fix": "Change the row to: \"port: the names on the slices, the banner, and SPIN are drawn in Inter (fillText's font and the computed fonts start with `\\\"Inter\\\"`). The redraw once a late font arrives is F1 item 7's.\" If the wheel's own redraw needs a check, add the Spinning wheel to F1 item 7's list instead."
+   },
+   {
+    "id": "TESTS-7",
+    "severity": "medium",
+    "where": "§3.5 Standalone (startStandalone); §5.2, §5.3 (no check)",
+    "problem": "§3.5 changes the standalone palette. It uses Inter when fontBase is on the page's own origin, or both are file:, and the system stack otherwise, so an AI tool's preview fetches nothing. No check covers either branch. F2 tests the dev window (board21-dev.js), not `#b21-bare` or `data-dev=\"off\"`. The harness can test both: sdk.js:81 already opens `widgets/timer/index.html#b21-bare` on BASE, and the 'other site' trick is `BASE.replace('127.0.0.1', 'localhost')`, as settings.js:1683 does. lib.js:111's `/__dev/widget.html` loads the SDK from BASE.",
+    "fix": "Add a §5.3 row: \"SDK, developer mode, standalone (sdk.js:78-82) | the Timer opened at `widgets/timer/index.html#b21-bare` has a loaded `Inter` face and `--b21-font` starting with Inter; `BASE.replace('127.0.0.1', 'localhost') + '__dev/widget.html#b21-bare'` (SDK from the other origin) has no Inter face, requests nothing under `/fonts/`, and logs no CORS or font error | the first fails (no Inter face)\". In §5.7 step 8, add `\"SDK, developer mode\"`."
+   },
+   {
+    "id": "TESTS-8",
+    "severity": "medium",
+    "where": "§2 'one comment line only'; §3.3 'The merge region keeps every line. Add one comment line above STYLE_PARTS (:9346)'",
+    "problem": "Another session is changing the Board Sync merge region (board.js:9328-10830) and tests/merge.js. This release must touch neither. The spec still adds a line inside the region, right above STYLE_PARTS. That is the line the other session is most likely to edit, so it invites a merge conflict for a comment. tests/merge.js compiles the region text (merge.js:42-55), so no test needs the line.",
+    "fix": "In §2 replace \"one comment line only (§3.3)\" with \"not one line, comments included\". In §3.3 delete \"Add one comment line above `STYLE_PARTS` (:9346): …\" and put that comment on `lookParts` instead. Also put `lookParts` beside the Import code (`parseBoardFile`, about :5916) rather than right after `// #endregion` (:10830): an edit next to the region's end marker can conflict with the other session too."
+   },
+   {
+    "id": "TESTS-9",
+    "severity": "medium",
+    "where": "§5.1 tests/woff2.js",
+    "problem": "(1) The source it names, r-inter/det/woff2-cmap.js, doesn't exist in this session's files. plans/inter has no det/ folder, and nothing named woff2-cmap.js exists under the scratchpad or /home/user. The builder writes it from scratch. (2) As described it can't read hmtx. Advances need hhea.numberOfHMetrics and maxp.numGlyphs, so those two tables must be parsed too. (3) In WOFF2, glyf and loca are transformed when their transform version is 0, and every other table is transformed when its version is nonzero. A helper that gets this backwards reads every later table at the wrong offset. fontTools 4.68 transforms only glyf and loca by default (woff2TransformedTableTags = ('glyf','loca')), so hmtx is untransformed in our build. A later build could transform it.",
+    "fix": "Replace the helper's description with: \"New helper `tests/woff2.js` (about 70 lines, written from the WOFF2 spec): reads the table directory (flags byte, tag index or 4-byte tag, UIntBase128 origLength, and transformLength only when the table is transformed: glyf or loca with transform version 0, any other table with version 1-3), runs `zlib.brotliDecompressSync` on the one stream, and slices tables in directory order. It returns `cmap` (formats 4 and 12), `fvar` axes, `avar` segment maps, and advances from `hmtx`, read with `hhea.numberOfHMetrics` and `maxp.numGlyphs`. It throws if `hmtx` is transformed. The build keeps fontTools' default, which transforms only glyf and loca.\""
+   },
+   {
+    "id": "TESTS-10",
+    "severity": "low",
+    "where": "§5.4 settings.js:988, :1009-1010; tests/suites/settings.js:976 and :668",
+    "problem": "The suite at :976 is titled '…(1366 × 768, light, the usual size and 200%: Stay awake, Photo Fit, Clock in the corner, Size, Text style)'. §5.4 swaps its Text style steps for the Default widget language cards but leaves 'Text style' in the title. About's MARKS list (:668) also expects 'Atkinson Hyperlegible' and 'Andika' in order, separately from CREDITS (:671). §5.3 names both only as :668-673.",
+    "fix": "In §5.4's settings.js:988 row add: \"title ends `…Size, Default widget language)`\". In §5.3's About row write: \"MARKS (:668) and CREDITS (:671-673): Inter first, …\"."
+   },
+   {
+    "id": "TESTS-11",
+    "severity": "low",
+    "where": "§5.1 11b",
+    "problem": "Two parts of 11b don't earn their place. (a) The cv11 grep: step 7 subsets with the default layout features plus tnum and pnum, and fontTools' default list has no cvNN feature (checked: 'cv11' not in Options().layout_features). The shipped font has no cv11 lookup, so CSS turning it on changes nothing, and the grep passes on the base. (b) 'I at least 1.4 × l' repeats F1 item 2, the same rule (ss04 frozen). F1 item 2 is the one that proves the bundled face is what draws, since stock Inter gives 1.11 on CI. For the record, the build's I.1 and l.ss02 advances are 903 and 564, a ratio of 1.60, so 1.4 holds. Also, §5.1 says `plain` is at :433. It is at tests/words.js:501, inside test 11.",
+    "fix": "Make 11b: \"`fvar` has only `wght`, 100 to 900; its default is under 400; `avar` maps CSS 400 above the default (normalized > 0), keeping 400 < 500 < 600 < 700.\" Rename it `fonts: one weight axis and a heavier regular`. In decision 6 and §5.1, drop \"§5.1 check 11b\" and the cv11 clause. Fix \"`plain` (:433)\" to \"(:501)\"."
+   },
+   {
+    "id": "TESTS-12",
+    "severity": "low",
+    "where": "§5.1 11a",
+    "problem": "11a's class `\\p{L}\\p{M}\\p{N}\\p{P}\\p{Zs}` leaves out symbols (\\p{S}). Of `fallback`, only ［ ］ (Ps/Pe) can ever be met. ↶ ↷ ⇄ ∛ are symbols and are never looked at, and neither are ✓ ↺ ▶ − √ ≈ ≤ ≥ € ™ °, which the roman list holds so they can be checked. Today's tables, the Common words, and the pseudo forms hold nothing outside roman. I scanned them; the only miss was ɏ in a regex, not shown. So adding \\p{S} costs nothing now and catches the next ✓ or → in a words table.",
+    "fix": "In 11a write: \"every letter, mark, number, punctuation, symbol, and space (`\\p{L}\\p{M}\\p{N}\\p{P}\\p{S}\\p{Zs}`, leaving out `\\p{Extended_Pictographic}`)\"."
+   },
+   {
+    "id": "TESTS-13",
+    "severity": "low",
+    "where": "§5.2 F1 items 1 and 6",
+    "problem": "Two parts check code rather than what teachers see. 'board.js and the SDK name the same `Inter-21Board.woff2`' (item 6) greps the source. Items 1 and 4 already show the board's face and each frame's face loaded from that file, and a wrong name in either fails them. '`#board-font` is there' (item 1) checks an element id. The face's status is the proof.",
+    "fix": "In item 6 delete \"and board.js and the SDK name the same `Inter-21Board.woff2`\". In item 1 delete \"`#board-font` is there;\". F2 keeps \"no `#board-font`\" only if it replaces it with \"no `Inter` face in `document.fonts`\"."
+   },
+   {
+    "id": "TESTS-14",
+    "severity": "low",
+    "where": "§5.4 tests/lib.js boardUp/addWin (decision 18)",
+    "problem": "How the 2 s wait is built matters. (a) `document.fonts.ready` resolves at once when no load has started yet. In a new frame at addWin's 900 ms that is fine, but 'wait for ready' alone isn't proof. (b) A 2 s cap built from an in-page setTimeout stops under `page.clock.pauseAt` (clock-and-calendar.js:340) and under fake timers (page.clock.install in 4 suites). (c) F1 item 4 and the §5.3 rows read face status straight after the helper. On a slow CI runner the frame's face can still be loading.",
+    "fix": "In §5.4's lib.js row write: \"wait in Node with `page.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 2000, polling: 100 }).catch(() => {})` (and the same for the frame's document), never an in-page timer.\" In §5.2 and §5.3, wherever a check reads a face's status, write \"(read with `eventually`)\"."
+   },
+   {
+    "id": "TESTS-15",
+    "severity": "low",
+    "where": "§5.7",
+    "problem": "Missing runs. §5.5 says 'the Copy suites' must pass unchanged, but step 5 runs only 'Copy: words no other' and not 'Copy: Oxford commas' (27 s). Nothing runs the leftover check that would have caught TESTS-2's :2454.",
+    "fix": "In step 5 replace `\"Copy: words no other\"` with `\"Copy: \"` (two suites, 37 s). Add a step 0: \"`grep -nE 'data-act=\\\"letters\\\"|Text style|text style|Atkinson|Early readers|Easier to read|letter-opt|21Board Early' tests/` lists only the Board Sync check of an older release's text style and the merge region's tests.\""
+   },
+   {
+    "id": "TESTS-16",
+    "severity": "low",
+    "where": "§7 and §8 (check.js of the Teacher Guide and the manual)",
+    "problem": "Neither check.js shows that its Inter face loads. Here and on CI, system-ui is Inter 4.0. A guide whose `__INTER__` data URL is broken or left over still looks like Inter in check.js's pictures. Chrome logs a bad font as a warning, and check.js fails only on console errors (teacher-guide/check.js:63, :87). The manual's 'Inter Letters' would fall back to slanted Inter without a sign.",
+    "fix": "Add to §7: \"check.js also fails unless, after `document.fonts.ready`, `document.fonts` has a face `Inter` with status `loaded`.\" Add to §8: \"check.js also fails unless faces `Inter` and `Inter Letters` are `loaded`, in the page and in the demo's frame.\""
+   },
+   {
+    "id": "TESTS-17",
+    "severity": "low",
+    "where": "§5.3 Offline row (offline-and-updates.js:10-26)",
+    "problem": "'Follow CSS url(…) in a widget's <style>' meets values that aren't files. Clock has `url(#rb${id})` and `url(#rf${id})` (widgets/clock/index.html:290-291), and Weather has data: URIs with `url(%23d)` inside them (weather/index.html:47-58). A rule that scans the whole page, as the existing `<script|img|link>` regex does, would count these as missing files.",
+    "fix": "In the row write: \"follows `url(…)` inside each `<style>` block only, skipping `data:`, `#…`, another site, and anything holding `${`\"."
+   },
+   {
+    "id": "TESTS-18",
+    "severity": "low",
+    "where": "§5.3 Developer mode: upload row; decision 6",
+    "problem": "Decision 6's fallback has no check: a failed read of the font goes without Inter. A bug there, such as throwing or showing the 'can't start' note, would leave uploaded widgets blank offline.",
+    "fix": "Add to the row: \"and in a fresh tab with `fonts/Inter-21Board.woff2` answered 404, an uploaded widget still starts (no note), with no `Inter` face in its frame\"."
+   },
+   {
+    "id": "TESTS-19",
+    "severity": "low",
+    "where": "§5.3 Calculator row",
+    "problem": "'Inter Letters' loads only once text uses it. `.key.adv` is `display: none` until Advanced keys is on (calculator/index.html:223-224). `.rules` is hidden below 400 px (:123). A `.ce-word` 'of' appears only in a percent answer. The row doesn't say how the check gets those on screen, so a check of face status could see 'unloaded' even when the build is right.",
+    "fix": "Write the row's check as: \"with Advanced keys on and an answer showing 'of' (percent set to 'of', then 50 % 8 =), `.key i`, `.rules i`, and the `.ce-word` compute to `\\\"Inter Letters\\\"` first, italic, and the frame's `Inter Letters` face is `loaded` (with `eventually`)\"."
+   },
+   {
+    "id": "TESTS-20",
+    "severity": "low",
+    "where": "§3.6 Task Timer; decision 11; §5.2 F1 item 4",
+    "problem": "Decision 11 gives the countdown and 'Total left' tabular digits so they don't jitter. No check covers that. F1 item 4 checks only that the countdown is in Inter.",
+    "fix": "Add to F1 item 4: \"Task Timer's countdown and Total left keep their width as the digits change: the countdown's width with 11:11 equals its width with 00:00, at the window's size.\""
+   },
+   {
+    "id": "TESTS-21",
+    "severity": "low",
+    "where": "board.js Widget Picker loadingdone (:3220); §5.2 F1 item 7",
+    "problem": "The Widget Picker's re-measure when a font arrives late is kept (§3.3) and now runs on every cold start, not only after a text style is chosen. No check covers it. Item 7 lists the Clock, Timer, Calendar, a note, Name Picker, and Task Timer. The corner clock is covered in clock-and-calendar.js.",
+    "fix": "Add to F1 item 7: \"and the Widget Picker, opened before the gate opens, shows each name the way a fresh Widget Picker does after it (same names cut with …, nothing past its tile).\""
+   },
+   {
+    "id": "TESTS-22",
+    "severity": "low",
+    "where": "§5.4 closing paragraph (fit checks tuned to stock Inter)",
+    "problem": "Two more fit checks will now measure the wider, heavier Inter and aren't in the list. One is sdk.js:96-98, the standalone Timer at 240 × 214, whose English chips must not spill (it now gets Inter, §3.5). The other is the Languages pseudo-language audit, 'nothing cut off'.",
+    "fix": "Add `sdk.js:96-98` and `languages.js` (the pseudo language's \"nothing cut off\") to the paragraph's list."
+   }
+  ],
+  "checked_ok": [
+   "§5.7 filters, checked against all 156 suite titles loaded from tests/suites: 'Settings: sections', 'Settings: About', 'Settings keeps a control', 'Board Sync: setting up (scenarios', 'Widget Picker: icons', 'Widget Picker: Paste', 'Calculator: the √', 'Calculator: the Widget Picker', 'Standards picks', 'Zones Check-In: the registry', 'Video Player: light', 'Clock in the corner (Auto', 'SDK Playground', 'Developer mode: upload', 'Task Timer: schedule', 'Name Picker: Versus from', 'Weather: every size', 'Weather: Location', and 'Opened from disk' each match exactly one suite. 'Board Sync: theme' matches 3 (74 s), 'Pages (multiple boards)' 2 (132 s), 'Offline' 10 (300 s, as the spec says; F1's 'late and offline' title will make it 11), 'Languages' 3, 'Board history' 12 (390 s), bare 'Name Picker' 11 (1348 s), 'Kiosk' 16 (614 s), 'Text style' 10 (483 s). The retitled suites still match their filters.",
+   "Every §5.4 line reference lands in the suite it names (mapped file:line to suite). board-sync.js:1875-1900 is in 'Board Sync: theme and accent color on every device' (:1877), which 'Board Sync: theme' runs.",
+   "Grep of tests/ for letters, letter-opt, Text style, Atkinson, Andika, Early, legible, LETTERS, fontFor, Georgia, monospace, woff2, document.fonts, loadingdone, fonts/, SHELL_FILES, PRECACHE, version strings, ABOUT credits, and export keys: every hit is in §5.3, §5.4, or §5.5, except name-picker.js:2451-2454 (TESTS-2) and the two titles in TESTS-10. picture.js:49, sdk.js:327 (monospace in the Playground's own boxes), sdk.js:717, widgets.js:121-136 and :207, and timers.js:758 are unaffected.",
+   "tests/merge.js loads only the region text plus named helpers (clone, sameJSON, hash53, TITLE_H, r2, scaleRect, BG_RENAMED, bgColor, normalizePhotoSettings, BASE_W, canvasFor, UID_RE, PHOTO_FILE_RE, luminance, PALETTES, ACCENTS, contrast, customShades, lastCustom, accentKey, accentOf, accentOk, accentKeyOk, accentWith, accentSet, accentShown). The spec changes none of them. PALETTES stays; only paletteFor changes. MergeUI (:10839) is outside the region (:9328-10830).",
+   "The §5.3 Board Sync row works. A device file's style versions come from settings[k+'At'] in the record (board.js:9593-9599), so writing letters and lettersAt with __board21.store (exposed at board.js:12069) and reloading makes the laptop's file carry them. With letters gone from DEFAULT_SETTINGS, the file still writes 'standard' through STYLE_DEF and styleOk (:9347-9349).",
+   "Fail-first: F1 items 1-4, §5.3's Calculator, Developer upload, Pages export keys, Settings sections and About, SDK Playground, both Board Sync rows, and 11a-c all fail on the base for this release's reason (no Inter face, Georgia, letters present, Text style shown, or no font file). F1 item 2 fails with system-ui = stock Inter: I/l is 1.11 in the source TTF, and calt lookup 47 makes -> into arrowright. F2's preview and lab parts pass on the base, but its 'on 21Board's site' and 'no font row' parts fail, so the suite fails.",
+   "The face-status checks are the right proof. In this Chromium, with no @font-face, document.fonts.check('16px Inter') is true, and canvas text in \"Inter\" measures stock Inter, because Inter is installed. A computed family or pixels alone would pass without the bundled face. F1 item 1, item 4, and the §5.3 Calculator and upload rows all read FontFace status.",
+   "Opened from disk: a file:// page loads an @font-face from a relative file:// URL in Chromium with no console error (tried with a scratch page and Playwright), so FONT_HERE for file: is sound and 'Opened from disk' should pass.",
+   "The sealed upload's CSP already allows `font-src data: blob:` (board.js:459-460). The inlined SDK has no script src, so fontBase is '' and the SDK adds no url() face that the policy would refuse (sdk.js:1237 stays clean).",
+   "Coverage: every code point in tools/inter-chars.json `roman` is in Inter 4.001's cmap except U+00AD and U+0149 (already DATA-1). `italic` (abfnox) is all in Inter-Italic. No `fallback` entry is in Inter. The calculator's <i> letters are a, b, n, and x, and `.word('of')` is at calc-engine.js:858 and :1005, so 11c's sources are right.",
+   "WOFF2 tables: fontTools 4.68's woff2TransformedTableTags is ('glyf','loca'), so hmtx is untransformed in our build and an hmtx-based check is feasible (with TESTS-9's parsing).",
+   "§5.4's Calculator `files` row (calculator.js:101-102) and the About MARKS and CREDITS (settings.js:668-673) are the only exact lists of files and credits in the suites. No suite counts the offline copy's files or checks its size.",
+   "'Updating: never part old and part new' (offline-and-updates.js:568) asserts site.asked holds only sw.js and registry.js after `tried()` clears it. Fonts are fetched at boot, before that, and later come from the SW cache (fonts/Inter-21Board.woff2 is in SHELL_FILES), so it stays green."
+  ]
+ }
+}
