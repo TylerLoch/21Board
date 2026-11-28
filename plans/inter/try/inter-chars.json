@@ -1,0 +1,23 @@
+{
+  "note": "The characters tools/build-inter.py keeps, as code points in hex. tests/words.js checks the shipped fonts against this list and every words table. 'fallback' lists characters 21Board shows that Inter doesn't have: the device's font draws them.",
+  "roman": {
+    "Basic Latin": ["0020-007E"],
+    "Latin-1 Supplement": ["00A0-00FF"],
+    "Latin Extended-A, for names": ["0100-017F"],
+    "Romanian": ["0218-021B"],
+    "The pseudo language": ["0180-0181", "0191-0192", "01EA", "0271", "02A0", "1E40", "1E7C-1E7D", "1E8A-1E8B"],
+    "Ukrainian apostrophe": ["02BC"],
+    "Greek": ["037E", "0384-038A", "038C", "038E-03A1", "03A3-03CE"],
+    "Cyrillic": ["0400-045F", "0490-0491"],
+    "Calculator": ["1D47"],
+    "Spaces": ["2009", "200B", "202F"],
+    "Punctuation": ["2013-2014", "2018-201A", "201C-201E", "2022", "2026", "2032-2033", "2039-203A", "2044"],
+    "Superscripts": ["2070", "2074-2079", "207B", "207F"],
+    "Signs": ["20AC", "2116", "2122", "2154"],
+    "Arrows": ["2190-2193", "21BA"],
+    "Math": ["2212", "221A", "2248", "2260", "2264-2265"],
+    "Symbols": ["2304", "25B6", "2713"]
+  },
+  "italic": "abfnox",
+  "fallback": ["21B6", "21B7", "21C4", "221B", "FF3B", "FF3D"]
+}

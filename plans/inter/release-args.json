@@ -1,0 +1,59 @@
+{
+ "title": "Release 2026.11.27-3, Inter for everything: one bundled font, Inter built for 21Board (opsz pinned at 14, the weight axis kept with its regular drawing at about 490, I with bars and l with a tail, -> kept, the two-story a), for the board, every widget, the dev window on 21Board's site, uploaded widgets, the Teacher Guide, and the Calculator manual, in English, Spanish, Russian, Ukrainian, and Greek; Settings › Appearance › Text style and its two fonts removed, with saved and synced text styles kept untouched for older releases; the Calculator's letters in Inter Italic; SDK 1.7.0.",
+ "name": "Inter for everything",
+ "summary": "One font, Inter, for the board, every widget, and all four languages.",
+ "spec": "plans/inter/spec.md",
+ "wt": "plans/inter/wt",
+ "branch": "inter",
+ "version": "2026.11.27-3",
+ "base": "<main's tip after the lang-1b merge (2026.11.27-2): fill in the hash at launch>",
+ "shots": [
+  {
+   "file": "board-light.png",
+   "what": "The board at 1366 × 768 in the light theme: a Clock, a running Timer, a note, a Name Picker, and the Widget Picker open. Every word in Inter at the heavier regular, I with bars and l with a tail in the Widget Picker's names (compare plans/inter/r-fonts/page/img/near-inter.jpg)"
+  },
+  {
+   "file": "board-dark.png",
+   "what": "The same board at 1366 × 768 in the dark theme"
+  },
+  {
+   "file": "settings-appearance.png",
+   "what": "Settings › Appearance: Theme, Background, Accent color, and Board shape, with no Text style row and no gap where it was"
+  },
+  {
+   "file": "languages.png",
+   "what": "A Timer in Русский, running, and a Traffic Light in Español, side by side, with a note below reading Ґ ґ Є є І і Ї ї · π Σ Δ θ μ · Dvořák: chips, buttons, labels, and the note all in Inter"
+  },
+  {
+   "file": "calculator-letters.png",
+   "what": "The Calculator's Advanced keys a², aᵇ, ⁿ√, and a/b, the rule strip's xⁿ, and an answer line with \"of\", in Inter Italic with its one-story a, light and dark (compare plans/inter/calculator-letters-corrected.png, middle column)"
+  },
+  {
+   "file": "name-picker-long.png",
+   "what": "Name Picker's Versus with two long names, Maximiliano Dvořák and Іванна Ґонтаренко, at 640 × 400: fitted, nothing cut, slanted as spec decision 10 says"
+  },
+  {
+   "file": "clock.png",
+   "what": "Clock digits: a Clock showing 10:08 in Inter with tabular digits, and the Old face beside it with its serif Roman numerals"
+  },
+  {
+   "file": "menu-80.png",
+   "what": "A Timer's window menu at Size 80% on 1366 × 768: labels and the Language row's value in Inter, nothing cut or wrapped"
+  },
+  {
+   "file": "weight.png",
+   "what": "From the build's browser proof (spec §3.1 step 9): one line in stock Inter 400 above and the shipped Inter at CSS 400 below, at 24 and 48 px"
+  },
+  {
+   "file": "guide.png",
+   "what": "The built Teacher Guide: its top and the Make it yours section, in Inter, with no Letters made for young readers card"
+  },
+  {
+   "file": "manual.png",
+   "what": "The built Calculator manual: the keypad picture and rule strip in Inter Italic, and its live Calculator in Inter"
+  }
+ ],
+ "lensBehaviour": "Try to break the board's font the way a curious student or teacher would, and the way a slow network or an older device would, on a 1366 × 768 board (also 1024 × 768 and 1920 × 1080), light and dark, Size 50% and 200%, both board shapes, kiosk, and Lock.\n\nLoading: delay fonts/Inter-21Board.woff2 by 5 s, block it, answer 404, or send half the file. The board and every widget must draw in the device's font with no error shown to the teacher, then switch to Inter when it arrives, and every fitted text must fit again: the Widget Picker's names, the clock in the corner, the Clock's digits and date (its longest day measured in Inter), Timer chips, the Calendar's title, a note, Name Picker's names and wheel, Task Timer's pie, Weather, and Zones. Offline from a stamped copy; the first start offline after an update; Update in two tabs (Atkinson and Early Readers gone from the copy, nothing broken).\n\nPlaces: a widget standalone (#b21-bare) on 21Board's site, from disk (file://), and in an AI tool's preview (nothing fetched, no console error); the dev window on 21Board's site, in a preview, and in the lab (Settings › Appearance has no font row); a Developer-mode upload (sealed: Inter from a data: face, nothing else loaded, its CSP intact); a widget from another site loading the SDK from the board.\n\nText: Russian, Ukrainian (Ґ ґ Є є І і Ї ї and the apostrophe ʼ), Greek (π Σ Δ θ μ and a Greek name), Spanish, and names Inter lacks, such as Vietnamese or Chinese (they fall back, no empty boxes); emoji; very long names in every Name Picker style, Versus's slant included; Notes in Chalkboard and Whiteboard with Cyrillic and Greek; -> typed in a note; I l 1 0 O side by side; numbers that tick (Timer, Stopwatch, Task Timer's countdown and Total left, the clock in the corner) never jiggle.\n\nThe Calculator: a², aᵇ, ⁿ√, a/b and the rule strip in Inter Italic at its smallest and largest sizes, 25% of 80 with of in Inter Italic, History and Steps, dark, and the manual's keypad, strip, and live Calculator.\n\nOlder data and devices: a backup, a template, and a Board history version holding letters: 'early' or 'legible' (Import › Replace, Add, Open as a new page, and each Undo; going back): nothing changes, nothing names the text style, and lettersAt is never stamped. Board Sync with a device still on 2026.11.27-2 (a checkout of the lang-1b merge) choosing Easier to read: this device shows and says nothing, and passes it on, so a third device on 2026.11.27-2 gets it; the older device keeps its own text style after this one writes its file. A settings record with letters and lettersAt from before the update; a tab still on 2026.11.27-2 open during the update.\n\nWeight: CSS 400 draws as stock Inter at 490, 500 as 560, 600 as 630, and 300 and 700 unchanged, in page and canvas text alike; bold still reads clearly bolder; no element's computed font-weight changed. Report only what you reproduced.",
+ "lensLook": "Compare with the approved look: the font page plans/inter/r-fonts/page/index.html (section Inter, built for 21Board, and its picture img/near-inter.jpg) and the Calculator letters mockup plans/inter/calculator-letters-corrected.png (middle column). Check the shapes: I with bars, l with a tail, 1 with its flag, two-story a and g in the roman, -> as two characters, Cyrillic and Greek in the same weight as Latin, the Calculator's a, b, n, x, and the word of in Inter Italic with its one-story a, and nothing left in Georgia. The heavier regular must read as one even weight, with bold still clearly bolder. Look at Settings, window menus at Size 80% and 200%, title bars, the Widget Picker, toasts, and dialogs, in light and dark: nothing clipped or newly wrapped by the wider letters. Settings › Appearance shows Theme, Background, Accent color, and Board shape, with no gap or stray hint where Text style was; About's credits list Inter first.\n\nCheck every string in spec §4 against CLAUDE.md's Voice, and that Board Sync and Import messages never name the text style. Check the docs against spec §6 and the code: README, DATA-FORMAT (letters carried for releases up to 2026.11.27-2, never shown or changed), WIDGET-SDK (Theming, the theme and resize events, the dev window), AI-PROMPT, ROADMAP, NOTICE, and the new tool's header, short and true. LICENSE and LICENSE-DOCS are untouched; fonts/Inter-OFL.txt and widgets/calculator/fonts/Inter-OFL.txt match the upstream OFL.txt.\n\nCheck the Teacher Guide: its own text in Inter, the Letters made for young readers card gone, the new lede and FAQ, every retaken shot in the new font, textstyle.jpg gone, and build.js and check.js passing. Check the Calculator manual: Inter and Inter Italic inlined, its live Calculator in Inter, build.js and check.js passing.\n\nCheck the tests against RELEASING's Writing tests: each rule once; the Node coverage check reads tools/inter-chars.json and every words table with no new dependency; no check tied to this release (no file counts, sizes, or version); old tests changed only where the setting or the font changed, each in tests_changed with its reason, and any moved lower bound with its before and after; tests/merge.js untouched; the time saved reported. No model name may appear in repo text except the commit trailers.",
+ "buildNote": "Base is main's tip, claude/focused-curie-9oovoy, after the lang-1b merge (2026.11.27-2); its hash is filled in at launch. The worktree plans/inter/wt on branch inter is created at launch with git worktree add -b inter plans/inter/wt claude/focused-curie-9oovoy. Pass version '2026.11.27-3', or the next free number at launch (then change the title's number too). Plan against the code as it is, and find every line by what it says: the spec's line numbers are from the lang-1b merge.\n\nRead spec §1 first. Decision 2 makes the regular heavier inside the font, so no CSS weight changes anywhere. Decision 3 keeps the text style as an inert style part: the Board Sync merge region and tests/merge.js don't change, and the import Undo must never stamp lettersAt (spec §3.3, lookParts). The surveys behind the spec are plans/inter/map-board.md, map-sdk-widgets.md, and map-tests-docs.md.\n\nThe font sources (never copy them into the repo): plans/inter/r-fonts/dl/inter/Inter[opsz,wght].ttf, plans/inter/r-fonts/dl/inter-italic/Inter-Italic[opsz,wght].ttf, and plans/inter/r-fonts/dl/inter/OFL.txt, with the SHA-256s in the spec's header. The page's recipe is plans/inter/r-fonts/page-work/build_fonts.py; r-inter/det/woff2-cmap.js and r-inter/wtest/ hold the WOFF2 reader and the weight remap proof. This machine has fontTools 4.68.0, brotli 1.2.1, and Python 3.13. Run Python with -I and nice, one process at a time. Write tools/build-inter.py and tools/inter-chars.json, build both fonts, run its --check, and save the browser proof (spec §3.1 step 9) in the spec folder.\n\nWrite the tests first (spec §5) and keep the fail-first log next to the spec. Run node tools/build-sdk.js after every index.html change. Run the spec's §5.7 filters exactly as listed, one test process at a time: a bare \"Settings\", \"Name Picker\", or \"Text style\" pulls in long suites. Retake the Teacher Guide's shots by script (spec §7), then build and check it and the Calculator manual (spec §8). Don't publish anything: not the guide, not the manual, no artifact. Don't edit tests/timings.json, CLAUDE.md, docs/RELEASING.md, tools/release-workflow.js, LICENSE, or LICENSE-DOCS. Every commit ends with the two trailers in spec §11 exactly, and no model name appears anywhere else in the repo."
+}

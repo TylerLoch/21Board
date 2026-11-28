@@ -1,0 +1,150 @@
+{
+ "look": {
+  "findings": [
+   {
+    "id": "LOOK-1",
+    "severity": "medium",
+    "where": "release-args.json lensLook, sentence starting \"Check the shapes\"",
+    "problem": "lensLook asks the reviewer to check for a \"two-story a and g in the roman\". Inter's g is one-story. That holds for stock Inter and for this build: ss04 changes I, l, Cyrillic І and Ї, Greek Ι, and ß, never g, and nothing else in the spec touches g. I rendered the source Inter[opsz,wght].ttf and its g is one-story. The look reviewer will report a defect that is really Inter's design, and the fixer may try a feature or glyph swap to \"fix\" it. That would change the approved look and break Tyler's decision 1.",
+    "fix": "Replace \"two-story a and g in the roman\" with \"the two-story a (never cv11) and Inter's own one-story g in the roman\". Spec §0 and decision 6 already say only the a, so nothing else changes."
+   },
+   {
+    "id": "LOOK-2",
+    "severity": "medium",
+    "where": "release-args.json lensLook (whole first paragraph); spec §10 board-light.png",
+    "problem": "lensLook doesn't say what a reviewer must know to judge the font from pictures. (1) On this machine and on CI, system-ui and sans-serif are stock Inter 4.0 (.github/fonts/56-prefer-inter.conf; `fc-match system-ui` gives Inter-Regular.otf). A frame whose bundled face never loaded still looks like Inter, and a stack naming \"Inter\" with no @font-face in that document picks up the installed Inter. On a Chromebook the same miss shows Roboto, so it is a real bug that looks right here. (2) The mockup it names, near-inter.jpg, is captioned on the font page as \"Our build at 400\". That is before the 490 remap, so correct output should look heavier than the mockup. A reviewer told only to compare will either miss a missing remap or report the right weight as a deviation. (3) There are no weight pairs to compare, though the remap narrows each step from 100 to 70 units between 400 and 700. (4) There is nothing on 1b's lang-opt cards, which this release restyles by deleting selectors, and nothing on the new mixed Chalkboard lettering from decision 8.",
+    "fix": "Add to lensLook: \"system-ui here and on CI is stock Inter 4.0, so judge by the barred I and Cyrillic І, the tailed l, -> as two glyphs, and stems heavier than stock. In every frame, confirm document.fonts.check('16px Inter') and a loaded face rather than trusting pixels. near-inter.jpg is the build at 400 before the remap: shipped text should look heavier, as weight.png shows. Compare each retaken Teacher Guide shot with the base's copy (git show <base>:docs/teacher-guide/shots/<file>). Only weight and I/l may differ, and nothing may be newly wrapped, cut, shrunk, or moved. Each pair must still read as two weights: Settings label vs its hint, Calculator digit keys (500) vs operator keys (400), Clock weekday 800 vs month and day 700 vs year 600, window menu choices (650) vs title bars (700), Weather temperature (300) vs its labels, and <b> inside a hint. Settings › Classroom › Default widget language cards match r-l10n/p1b/final-shots/settings.png: size, padding, tick, bold name, and small English name. In a Chalkboard note, Latin stays in Crayon Libre and Cyrillic and Greek draw in Inter at the same size and baseline. Whiteboard stays in Excalifont.\""
+   },
+   {
+    "id": "LOOK-3",
+    "severity": "medium",
+    "where": "release-args.json shots; spec §10",
+    "problem": "Three things in this review's scope have no final shot. (a) 1b's Default widget language cards (.lang-opt) lose the half of every CSS rule they shared with Text style (spec §3.4), but no shot shows them, so Tyler and the reviewers can't see whether they kept their look. (b) Decision 8 changes what the approved font page told Tyler. The page said \"Chalkboard notes in Russian or Ukrainian use the device's font.\" Now one Chalkboard note mixes chalk Latin with Inter Cyrillic and Greek. That look is new and Tyler hasn't seen it. (c) No shot shows the weight steps that the remap narrows (bold, 500, 600, 800). Also, release-args has no `note`, and the fixer is the agent that takes the final shots. Nothing tells it to wait for fonts in each frame, so a shot can catch the fallback, which looks like Inter here.",
+    "fix": "Add three shots. (1) `settings-language.png`: Settings › Classroom › Default widget language open with Русский chosen, the four cards unchanged (compare /tmp/claude-0/-home-user/3abf7383-5faa-519e-81df-c65df20cfbd1/scratchpad/r-l10n/p1b/final-shots/settings.png). (2) `notes-scripts.png`: a Chalkboard note and a Whiteboard note, each reading `Ready! Готово! Ґ Ї · Γεια · Dvořák`. Latin is in chalk or marker lettering, the Chalkboard note's Cyrillic and Greek are in Inter at matching size, and Whiteboard stays in Excalifont. (3) Extend clock.png with the stacked date (weekday 800, month and day 700, year 600), each step still visible. In board-light.png's text, add \"heavier than near-inter.jpg, which is the build at 400\". Add `note`: \"Before every final shot, await document.fonts.ready in the board and in each window's frame. system-ui here is stock Inter, so check that each frame's Inter face is loaded.\""
+   },
+   {
+    "id": "VOICE-1",
+    "severity": "medium",
+    "where": "spec §7, the new FAQ (docs/teacher-guide/page-src.html after \"Everything looks small on the big panel.\")",
+    "problem": "\"Can I change the font?\" gets \"Every board uses one font, Inter. It’s a little bolder for the back row, and I, l, and 1 all look different. Notes keeps its chalk and marker letters.\" The answer never says no, though CLAUDE.md asks to lead with what the teacher cares about. The second sentence carries two ideas joined by \"and\" (one idea per sentence). \"chalk and marker letters\" aren't the words teachers see: Notes' themes are Chalkboard and Whiteboard, and the font page said \"Notes keeps its Chalkboard and Whiteboard lettering\".",
+    "fix": "Use `<details><summary>Can I change the font?</summary><p>No. Every board uses one font, Inter. It’s a little bolder, so the back row can read it. I, l, and 1 each look different. Notes’ Chalkboard and Whiteboard keep their own letters.</p></details>`."
+   },
+   {
+    "id": "DOC-1",
+    "severity": "medium",
+    "where": "spec §6.1 (README table); README.md:99 (Import row); docs/teacher-guide/work/scenes.js:461",
+    "problem": "§6.1 lists every README line that names the text style except :99, the Import row. It says text style four times: Replace \"takes the file's theme, accent color, text style, and default widget language\", Board Sync carries it, \"Its Undo puts back the page, theme, accent color, text style…\", and \"The other choices leave the theme, accent color, text style…\". After this release, imports ignore `letters`, and Replace and its Undo never write it, so the README would tell teachers something false. §7 also leaves the scenes.js:461 comment \"(Theme, Background, Accent color, Text style, Board shape)\". Only board.js has a catch-all sweep (§3.3), so leftovers elsewhere aren't caught.",
+    "fix": "Add a §6.1 row for :99 that drops \"text style, \" from all four lists: \"…takes the file's theme, accent color, and default widget language… the new windows, content, theme, accent color, and default widget language reach your other devices too. Its Undo puts back the page, theme, accent color, and default widget language it replaced. The other choices leave the theme, accent color, and default widget language alone.\" In §7, reword the scenes.js:461 comment. Add a final step to §6: `grep -rniE \"text style|Atkinson|Andika|Early readers|Easier to read|letter-opt|LETTERS_HERE|build-letter-fonts\"` over README.md, NOTICE, docs/, sdk/, widgets/, index.html, sw.js, and board.js. It must find only the merge region, `delete exp.letters`, lookParts' comment, and DATA-FORMAT's Board Sync and device-file lines."
+   },
+   {
+    "id": "DOC-2",
+    "severity": "medium",
+    "where": "spec §6.1, row :416-432 (README Board Sync bullet, today README.md:426-428)",
+    "problem": "The spec says to \"replace the two sentences about 2026.11.16-4 and the text style\". There are three. The third, \"Then each device keeps its text style until one is chosen on any of your devices, or takes one already chosen on another updated device.\", would stay, and it says a text style can still be chosen. The replacement, \"A device that hasn't updated yet keeps its text style…\", also names no release. The paragraph around it names releases (\"still on 2026.11.16-4\", \"before 2026.11.18-2\"), and a later reader can't tell which update is meant.",
+    "fix": "Replace everything from \"A device still on 2026.11.16-4 doesn't know the text style.\" through \"…another updated device.\" with: \"A device on 2026.11.27-2 or earlier keeps its own text style. It shares it only with your other devices on those releases.\""
+   },
+   {
+    "id": "DOC-3",
+    "severity": "medium",
+    "where": "spec §6.2 :101 and :114-120 (docs/DATA-FORMAT.md); release-args lensLook \"DATA-FORMAT (letters carried … never shown or changed)\"",
+    "problem": "The new :101 comment says \"Later releases keep it and never change it.\" §3.7 and the §6.2 :281-314 addition say this release writes a later version from an older device into settings.letters. So DATA-FORMAT would contradict itself and the code, and lensLook's \"never shown or changed\" would lead the reviewer to report the correct sync behaviour as a bug. The :114-120 text \"the text style: 21Board now ignores it\" is a colon reveal, one of CLAUDE.md's AI tells, and \"now\" goes stale.",
+    "fix": "Change :101 to `// the text style, shown and chosen only by releases up to 2026.11.27-2: \"standard\" | \"legible\" | \"early\". Later releases never choose one. They keep it, and take a later one from an older device through Board Sync.` Change :114-120 to \"Files from 2026.11.17-2 to 2026.11.27-2 also hold `letters`, the text style. Later releases ignore it.\" In lensLook, say \"letters carried for releases up to 2026.11.27-2, never shown or chosen here, taken silently from an older device\"."
+   },
+   {
+    "id": "GUIDE-1",
+    "severity": "low",
+    "where": "spec §8, build.js (docs/calculator-manual/build.js:159-165)",
+    "problem": "§8 names the manual's placeholders `__INTER__` and `__INTER_LETTERS__` and says the build \"fails on a placeholder left over\". The manual's leftover check only matches its own forms, `<!--@…-->` and `/*@…*/` (build.js:164). A `__X__` placeholder handled outside its `fill` table is never caught. A leftover would ship a broken face in the manual, the letters would quietly fall back to slanted roman, and check.js counts only console errors (check.js:83), not font decode warnings.",
+    "fix": "Use the manual's own form, `/*@INTER*/` and `/*@INTER_LETTERS*/`, inside the two `url(data:font/woff2;base64,…)` faces, and fill them through build.js's `fill` table. Then the \"page-src.html has no …\" check and the leftover regex both cover them."
+   },
+   {
+    "id": "LOOK-4",
+    "severity": "low",
+    "where": "release-args.json lensBehaviour, \"Loading\" paragraph",
+    "problem": "lensBehaviour delays, blocks, and truncates only fonts/Inter-21Board.woff2. The Calculator's own file, widgets/calculator/fonts/InterItalic-21Board.woff2, is a second font that can go missing on its own: a slow fetch, a 404, or a gap in the registry `files` when offline. Nobody is asked to check that a², aᵇ, ⁿ√, a/b, xⁿ, and \"of\" then fall back to slanted Inter rather than Georgia or the device's italic, and that they refit once the file arrives.",
+    "fix": "Add: \"Do the same to widgets/calculator/fonts/InterItalic-21Board.woff2 alone. The letters and 'of' draw in slanted Inter, never Georgia or the device's italic, with no error shown. They switch to Inter Italic and refit when it arrives, in the widget and in the manual.\""
+   },
+   {
+    "id": "LOOK-5",
+    "severity": "low",
+    "where": "spec decision 15 and §2; sw.js:192-194 (offlinePage)",
+    "problem": "Decision 15 keeps sw.js's offline page on system-ui because it runs \"when 21Board's files can't be reached\". But \"This widget needs a connection\" and \"Not available offline yet\" are teacher-facing words shown inside a board window. When the offline copy exists, 21Board's own service worker serves the page, and the same cache holds fonts/Inter-21Board.woff2. Today that page is the one window text on the board not in Inter.",
+    "fix": "Give offlinePage `font:16px \"Inter\",system-ui` and `<style>@font-face{font-family:\"Inter\";src:url(\"${new URL('fonts/Inter-21Board.woff2', self.registration.scope)}\") format(\"woff2\");font-weight:100 900}</style>`. The cache serves it, and with no copy it falls back silently. Drop sw.js from decision 15's list."
+   },
+   {
+    "id": "LOOK-6",
+    "severity": "low",
+    "where": "spec decision 9, §5.1 test 11c, §9",
+    "problem": "The italic cut holds only English \"of\" (o, f). Test 11c reads only literal `.word('…')` strings in calc-engine.js. When the Calculator gets its words table in phases 2-4, `B.word` will draw \"de\", \"от\", or \"від\". Those letters aren't in \"Inter Letters\", so they fall to synthetic slanted roman Inter beside real italic letters, which breaks decision 3. 11c will still pass.",
+    "fix": "Add to §9: \"The Calculator's 'of' is in the italic cut in English only. When the Calculator gets its words, add each language's word to `italic` in tools/inter-chars.json, and have 11c read that words table's entry for the key passed to `.word`.\""
+   },
+   {
+    "id": "DOC-4",
+    "severity": "low",
+    "where": "spec §6.3 :379-389 (WIDGET-SDK Theming) and the \"Just the widget\" bullet (WIDGET-SDK.md ~:629)",
+    "problem": "The new Theming text says \"A widget on another site gets it only if the board's site allows it (CORS).\" Under §3.5, standalone mode (#b21-bare or data-dev=\"off\") on another site never asks for Inter, even when CORS allows it. A developer previewing on their own site will see the device font and believe the doc is wrong.",
+    "fix": "Add to the \"Just the widget\" bullet: \"On its own, a widget shows Inter only on 21Board's site or opened from disk. Elsewhere it uses the device's font.\""
+   },
+   {
+    "id": "VOICE-2",
+    "severity": "low",
+    "where": "spec §6.4, the new AI-PROMPT \"The board's font\" line",
+    "problem": "The new line stacks two parentheticals, \"(as the skeleton's do)\" and \"(the skeleton's `fitAll()`)\", in two long sentences. CLAUDE.md's Voice applies to docs: \"If a sentence needs '(…)', rewrite it or drop it.\"",
+    "fix": "Use: \"- **The board's font**: `--b21-font` starts with Inter, which comes with 21Board and has every letter in all four languages. Give `button`, `input`, `textarea`, and `select` `font: inherit`, as the skeleton does. A resize event comes once the font has loaded, so the skeleton's `fitAll()` fits text again by itself. Give numbers that tick `font-variant-numeric: tabular-nums`.\""
+   }
+  ]
+ },
+ "data": {
+  "findings": [
+   {
+    "id": "DATA-1",
+    "severity": "medium",
+    "where": "spec §3.1 tools/inter-chars.json (\"Latin-1 Supplement\": [\"00A0-00FF\"], \"Latin Extended-A, for names\": [\"0100-017F\"]) and §5.1 test 11a",
+    "problem": "The list asks for two code points Inter 4.001 doesn't have: U+00AD (soft hyphen) and U+0149 (ŉ). I checked with fontTools getBestCmap on dl/inter/Inter[opsz,wght].ttf. The subsetter drops missing code points without a word, so the shipped font won't have them. Test 11a requires every code point in `roman` to be in the shipped cmap, so it fails on the first build. The builder then has to leave the list's \"exactly\" or weaken the test. All other listed code points are in Inter, and none of the six `fallback` ones are.",
+    "fix": "Write the two ranges as \"Latin-1 Supplement\": [\"00A0-00AC\", \"00AE-00FF\"] and \"Latin Extended-A, for names\": [\"0100-0148\", \"014A-017F\"]. Also add to §3.1 step 7 that build-inter.py stops with an error naming any listed code point the source cmap lacks. Then an upstream change is caught when the font is built, not in CI."
+   },
+   {
+    "id": "TEST-1",
+    "severity": "medium",
+    "where": "spec §5.2 Suite F1, item 4 vs item 5",
+    "problem": "Item 4 opens a Chalkboard note and expects `Crayon Libre` first. Showing it loads widgets/notes/fonts/CrayonLibre-21Board.woff2: Notes calls fonts.load on its theme font (widgets/notes/index.html:213), and the text draws in it. Item 5 then asserts that fonts come only from `fonts/` and `widgets/calculator/fonts/`. Read the way today's check does (settings.js:1509-1510 filters every URL containing `/fonts/`), that request fails the suite, so the spec contradicts itself.",
+    "fix": "Change item 5 to: every font file requested is under BASE and is in sw.js's PRECACHE (fonts/, widgets/calculator/fonts/, and widgets/notes/fonts/ today). Or list widgets/notes/fonts/ as allowed too."
+   },
+   {
+    "id": "BROWSER-1",
+    "severity": "low",
+    "where": "spec §3.1 step 7 (subset options) and §5.1 test 11b",
+    "problem": "The 490 regular on iPad depends on the cut keeping its STAT table. WebKit (FontCacheCoreText FontType) treats a font with fvar but no STAT as TrueType GX and turns CSS weights into GX weights. With STAT it uses OpenType 1.8 and sets wght to the CSS value, which the new avar remaps. The recipe keeps STAT by default, but nothing in the spec says to keep it. A builder trimming bytes could drop it, and Chromium's step-9 proof wouldn't notice, since Chrome doesn't need STAT.",
+    "fix": "Add to §3.1 step 7: keep STAT (and HVAR and MVAR), drop only DSIG. Add to 11b, via tests/woff2.js's table directory: the shipped roman and italic both have STAT, fvar, avar, gvar, and HVAR tables."
+   },
+   {
+    "id": "BUILD-1",
+    "severity": "low",
+    "where": "spec §8 (docs/calculator-manual/build.js: `__INTER__`, `__INTER_LETTERS__`, \"Both url( checks (:58, :177) allow url(data:\")",
+    "problem": "The manual's build only catches leftover placeholders of the form `<!--@X-->` and `/*@X*/` (build.js:154: /<!--\\s*@[^>]*>|\\/\\*\\s*@\\S*/). A leftover `__INTER__` or `__INTER_LETTERS__` would pass silently, despite the spec's \"It fails on a placeholder left over\". Separately, build.js:57-58 builds `markup` from the widget as read. It fails on any `url(`, including the Calculator's new `url(\"fonts/InterItalic-21Board.woff2\")`, unless the swap happens first. \"Allow url(data:\" alone doesn't fix that ordering.",
+    "fix": "Use the manual's own form, `/*@INTER*/` and `/*@INTER_LETTERS*/`, as `fill` entries, so the existing check covers them. Swap the face URL in `widget` before `markup` is computed, with `once(widget, 'url(\"fonts/InterItalic-21Board.woff2\")', …)`. Keep both `url(` checks strict on anything that isn't `url(data:font/woff2;base64,`."
+   },
+   {
+    "id": "SEAL-1",
+    "severity": "low",
+    "where": "spec §3.3 Sealed uploads (\"The sealed page gets <style>@font-face … </style> before the inlined SDK\"), board.js DevFiles.page :473-486",
+    "problem": "DevFiles.page puts the SDK in place of every SDK tag in the file, and its comment says the first one may be inside an HTML comment. A face placed before the first replaced tag can end up inside that comment and never apply. Placing it with every tag instead repeats about 88 KB of base64 per tag.",
+    "fix": "Insert the face once, right after the CSP `<meta>`: `top + meta + fontStyle + (found ? '' : tag) + src…`. That is outside the file's own markup, so a comment can't swallow it."
+   },
+   {
+    "id": "COV-1",
+    "severity": "low",
+    "where": "spec §3.1 \"Notes on the list\" and §9 (\"Symbols Inter doesn't have … In the guides' prose, ▲ ▼ ↵ ⌘ ⌫ too\")",
+    "problem": "Inter 4.001 does have U+25B2 ▲, U+25BC ▼, U+21B5 ↵, U+2318 ⌘, and U+232B ⌫ (checked against the source cmap). The subset leaves them out, so in text now set in Inter they draw in another font mid-sentence: the Teacher Guide (page-src.html:250 ▲▼) and the Calculator manual (page-src.html:519 ↵, :613 ⌘). The spec records this as a gap in Inter, which is wrong.",
+    "fix": "Add \"21B5\", \"2318\", \"232B\", \"25B2\", and \"25BC\" to `roman` under Symbols, a few hundred bytes. Or keep them out and correct §9: they're left out on purpose, not missing from Inter."
+   },
+   {
+    "id": "DOC-1",
+    "severity": "low",
+    "where": "spec §6.2 DATA-FORMAT :101 (\"Later releases keep it and never change it.\") and §3.7 Device file row (\"never stamps a new version\")",
+    "problem": "Both lines are wrong for the code as planned. This release does write settings.letters: Merge.plan patches in a later version from an older device (board.js:10506-10508, sp.set[k]). It can also stamp once. A lettersAt set before the update and not yet synced reads as chosen (board.js:9597-9599), and stamp then versions it at its old time; map-board §3f item 1 notes this. A format doc that says the value never changes misleads anyone implementing against it.",
+    "fix": "DATA-FORMAT :101 should say that later releases never show or choose it, take a later one from another device, and pass it on. In §3.7, say it never stamps a new choice, but a choice made here before the update and never synced goes out once, at its old time."
+   }
+  ]
+ }
+}
