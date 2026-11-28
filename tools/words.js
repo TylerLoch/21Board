@@ -29,6 +29,9 @@ const SECTIONS = ['window', 'board', 'dynamic'];
 const FORM_ORDER = ['zero', 'one', 'two', 'few', 'many', 'other'];
 const LIST = /,\s+[^,]*?[^,\s]\s+(and|or|nor)\s/i;   // (tests/suites/board.js, the Oxford comma)
 const HTML_ATTRS = ['aria-label', 'title', 'placeholder', 'alt'];
+// Words we never use, by stem, in their own language. es tonto means dumb. The rest carry a sexual sense in
+// children's text (docs/GLOSSARY.md).
+const NEVER = { es: ['tont', 'atont', 'excitad'], ru: ['возбужд'], uk: ['збудж'] };
 const DATA_T = /\bdata-t(-aria-label|-title|-placeholder|-alt|-aria-description)?\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 
 // ---- Files, with changes held in memory (opts.files: { 'path': text, or null for none }).
@@ -461,6 +464,8 @@ function check(opts = {}) {
           if (l === 'es' && /[Ѐ-ӿ]/.test(s)) problems.push(`${ln(l)}: ${k} in Spanish has Cyrillic letters.`);
           if (l === 'uk' && /ʼ/.test(s)) problems.push(`${ln(l)}: ${k} in Ukrainian has ʼ. Type ’ instead.`);
           if (l === 'uk' && /'/.test(s)) problems.push(`${ln(l)}: ${k} in Ukrainian has '. Type ’ instead.`);
+          const never = NEVER[l] && new RegExp(`(?<!\\p{L})(?:${NEVER[l].join('|')})\\p{L}*`, 'iu').exec(s);
+          if (never) problems.push(`${ln(l)}: ${k} in ${NAME[l]} has “${never[0]}”. Never use it.`);
         }
         // English voice: the Oxford comma.
         let c;

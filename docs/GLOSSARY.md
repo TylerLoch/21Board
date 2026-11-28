@@ -281,7 +281,7 @@ uk "збудження / збуджений". Use "emocionado", "восторг"
 | calm | Tranquilo | Спокойствие | Спокій | BMC-ES p1 | Mexico "tranquilo"; "calmado" is fine too. |
 | happy | Feliz | Радость | Радість | — | BMC-ES p1 also lists "Contento". |
 | elevated | Acelerado | Много энергии | Багато енергії | — | Avoid es "excitado", ru "возбуждение", uk "збудження": all carry a sexual sense. |
-| silly | Juguetón | Дурачусь | Пустую | — | BMC-ES p1 says "Tonto", which means dumb; use "juguetón". Nouns if wanted: "Озорство", "Пустощі". |
+| silly | Juguetón | Балуюсь | Пустую | — | Boston Medical Center's BMC-ES p1 says "Tonto", which means dumb; use "juguetón". Nouns if wanted: "Озорство", "Пустощі". |
 | frustrated | Frustrado | Досада | Досада | BMC-ES p1 | ru/uk "фрустрация/фрустрація" is clinical. |
 | angry | Enojado | Злость | Злість | BMC-ES p1 | Mexico "enojado" (Spain "enfadado"). |
 | intense | Alterado | Напряжение | Напруга | — | es "intenso" describes a personality, not a feeling. |

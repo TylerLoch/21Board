@@ -60,6 +60,7 @@ where your language needs it.
 - Sentence case, never Title Case.
 - Open questions with ¿ and exclamations with ¡.
 - Never "excitado". Use "emocionado".
+- Never "tonto", in any form. It means dumb. Use "juguetón" for silly.
 
 ## Russian
 
