@@ -1,0 +1,203 @@
+Fail-first: the new and changed tests on the base code (origin/lang-1b at 53a2c4f), with only the new font files added. Sat Nov 28 10:33:54 UTC 2026
+=== node tests/words.js
+
+71 passed, 0 failed
+
+=== node tests/words.js, without the new font files (the base)
+FAIL fonts: the board’s font has every letter in every words table, and the list
+      ENOENT: no such file or directory, open '/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/wt/fonts/Inter-21Board.woff2'
+FAIL fonts: one weight axis and a heavier regular
+      ENOENT: no such file or directory, open '/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/wt/fonts/Inter-21Board.woff2'
+FAIL fonts: the Calculator’s letters
+      ENOENT: no such file or directory, open '/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/wt/widgets/calculator/fonts/InterItalic-21Board.woff2'
+
+68 passed, 3 failed
+=== node tests/run.js Board font: (10:34:06, others running: 0)
+
+Board font: Inter in 21Board and every widget, its shapes, late and offline, and nothing from another site
+  ✗ FAIL the board has a face Inter, 100 900, normal, loaded ()
+  ✗ FAIL the board’s text starts with Inter (system-ui, -apple-system, "Segoe UI", Roboto, sans-serif)
+  ✗ FAIL I has bars: at 100 px it is 1.11 × as wide as l
+  ✗ FAIL ->, <-, and => stay two characters, as with calt off (-> <- =>)
+  ✗ FAIL 21Board’s own text is in Inter (page, title bars, Widget Picker, Settings, page label, menus, messages, shape tip, dialogs): page: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | title bar: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | Widget Picker: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | Settings: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | page label: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | window menu: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | toasts: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | shape tip: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | dialogs: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif
+  ✗ FAIL every word in Clock, Timer, Notes, Task Timer, and First/Then is in Inter, buttons, boxes, and the countdown included: clock:1: text “12” system-ui, -apple-system, "Seg, text “1” system-ui, -apple-system, "Seg, text “2” system-ui, -apple-system, "Seg | timer:1: div “05:00” system-ui, -apple-system, "Seg, button “1m” system-ui, -apple-system, "Seg, button “2m” system-ui, -apple-system, "Seg | notes:1: span “Type a note…” system-ui, -apple-system, "Seg, div “Type a note…​” system-ui, -apple-system, "Seg, textarea “Type a note…” system-ui, -apple-system, "Seg | task-timer:1: div “No activities” system-ui, -apple-system, "Seg, div “00:00” monospace, span “Total left: 00:00” system-ui, -apple-system, "Seg | first-then-board:1: span “⭐ FIRST ➔ THEN” system-ui, -apple-system, "Seg, div “FIRST” system-ui, -apple-system, "Seg, div “Academic” system-ui, -apple-system, "Seg
+  ✗ FAIL and Inter is loaded in each of their frames but clock:1, timer:1, notes:1, task-timer:1, first-then-board:1
+  ✗ FAIL a Timer in Русский: its chips and buttons are in Inter: div “05:00” system-ui, -apple-system, "Seg, button “1 мин” system-ui, -apple-system, "Seg, button “2 мин” system-ui, -apple-system, "Seg, button “3 мин” system-ui, -apple-system, "Seg, button “5 мин” system-ui, -apple-system, "Seg, button “10 мин” system-ui, -apple-system, "Seg, button “15 мин” system-ui, -apple-system, "Seg, button “−1:00” system-ui, -apple-system, "Seg, button “+1:00” system-ui, -apple-system, "Seg
+  ✗ FAIL a Chalkboard note keeps Crayon Libre first, with Inter before system-ui ("Crayon Libre", "Chalkboard SE", Chalkboard, "Comic Sans MS", "Comic Neue", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif)
+  ✗ FAIL Task Timer’s countdown and Total left keep their width as the digits change (60.0 → 60.0, 78.6 → 69.2)
+  ✗ FAIL every font file asked for is in the offline copy’s list (widgets/notes/fonts/CrayonLibre-21Board.woff2)
+  ✗ FAIL the font files and their licenses are in the offline copy, but not fonts/Inter-21Board.woff2, fonts/Inter-OFL.txt, widgets/calculator/fonts/Inter-OFL.txt, widgets/calculator/fonts/InterItalic-21Board.woff2
+  ✗ FAIL a device saves the fonts with the rest of its offline copy
+  ✗ FAIL offline, Inter loads in 21Board () and in a widget ()
+  ✗ FAIL once let through, Inter loads in the board
+  ✗ FAIL once Inter arrives, the Clock, Timer, Calendar, a note, Name Picker, and the Spinning wheel fit their windows: the Spinning wheel didn’t draw its names again in Inter
+  ✗ FAIL the Task Timer draws its pie again in Inter once it has loaded
+  ✗ FAIL a widget’s Board21.on('resize') fires once Inter has arrived (font at Infinity, resizes 39, 915, 6446, 7333)
+  4 passed, 18 failed
+
+Board font: the widget dev window (on 21Board’s site, in an AI tool’s preview, in the widget lab)
+  ✗ FAIL on 21Board’s own site the dev window’s test board and its widget load Inter
+  ✗ FAIL and Settings › Appearance has no font row (Theme, Background, Accent color, Text style, Board shape, Advanced, Widget Picker, About)
+  ✗ FAIL in an AI tool’s preview the test board uses the device’s font, with no Inter face and no font row (Theme, Background, Accent color, Text style, Board shape, Advanced, Widget Picker, About)
+  ✗ FAIL the same in the widget lab (its test board is sealed off: Theme, Background, Accent color, Text style, Board shape, Advanced, Widget Picker, About)
+  1 passed, 4 failed
+
+5 passed, 22 failed
+=== exit 1
+=== node tests/run.js Board Sync: theme and accent color, and the default (10:36:57, others running: 0)
+
+Board Sync: theme and accent color, and the default widget language (Español from the laptop, all three at once, Settings open, locked, another tab, kiosk, Import, and a text style from an older release)
+  ✗ FAIL the smartboard takes an older release’s text style into its settings, and stays in Inter ({"letters":"standard","font":"system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"})
+  ✗ FAIL its own file carries it, with the laptop’s version (standard ["f229ef8c044a",{"f229ef8c044a":1},0])
+  ✗ FAIL a file in another theme and accent color: Replace this page names both (Replace this page This page’s windows and content are replaced. So are the theme and accent color. You can undo this.)
+  ✗ FAIL a file with a text style: Replace this page doesn’t name it (Replace this page This page’s windows and content are replaced. So is the text style. You can undo this.)
+  ✗ FAIL the text style and when it was chosen stay as they were, after Replace and after its Undo ({"before":{"letters":"legible","lettersAt":1795862231162},"afterReplace":{"letters":"early","lettersAt":1795862231638},"afterUndo":{"letters":"legible","lettersAt":1795862231954}})
+  12 passed, 5 failed
+
+12 passed, 5 failed
+=== exit 1
+=== node tests/run.js Calculator: the Widget Picker (10:37:12, others running: 0)
+
+Calculator: the Widget Picker and a new window (canvas on the left, History hidden), the keys, = = =, History on and off and its lines, percent, faint digit groups, Advanced keys, Steps, Hide the answer, In words, Answers, the keyboard, Swap sides, saved and kept apart, Reset, light and dark, the menu, the smallest size, the docs
+  ✗ FAIL it is in the registry as Calculator (id calculator): its page, engine, and font, clash 'later', 900 × 600, at least 280 × 400, no shape lock ({"width":900,"height":600,"minWidth":280,"minHeight":400,"maxWidth":null,"maxHeight":null,"aspectRatio":null,"resizable":true,"dragFromContent":true}, later)
+  ✗ FAIL the keys’ letters, the rule strip’s, and the answer’s “of” are in Inter Letters, italic (50% of 8 = 4; key Georgia italic, rules Georgia italic, of system-ui italic)
+  ✗ FAIL and the frame has Inter Letters loaded
+  ✗ FAIL the keys and the canvas are in Inter, and fit (system-ui)
+  107 passed, 4 failed
+
+107 passed, 4 failed
+=== exit 1
+=== node tests/run.js Developer mode: upload (10:38:39, others running: 0)
+
+Developer mode: upload a widget file
+  ✗ FAIL an uploaded widget’s text is in Inter, and its sealed frame has Inter loaded (monospace; )
+  ✗ FAIL no page errors: 404 tab: Failed to read the 'serviceWorker' property from 'Navigator': Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag.
+  52 passed, 2 failed
+
+52 passed, 2 failed
+=== exit 1
+=== node tests/run.js SDK, developer mode (10:39:22, others running: 0)
+
+SDK, developer mode, standalone
+  ✗ FAIL on 21Board’s site a widget on its own loads Inter, first in --b21-font ()
+  40 passed, 1 failed
+
+40 passed, 1 failed
+=== exit 1
+=== node tests/run.js Settings: sections (10:39:50, others running: 0)
+
+Settings: sections and groups, Auto theme, This page › Windows, windows stopping at edges, the dot on Advanced
+  ✗ FAIL Appearance: Theme, Background, Accent color, Text style, Board shape
+  ✗ FAIL every group starts closed, and is in the page, hidden (widget-language hidden, saved hidden, bg hidden, letters hidden, advanced hidden, about hidden, code-license hidden, docs-license hidden); no page name field
+  ✗ FAIL open groups stay open while Settings is drawn again (widget-language hidden, saved open, bg hidden, letters hidden, advanced open, about hidden, code-license hidden, docs-license hidden)
+  ✗ FAIL and every group is closed again the next time Settings opens
+  28 passed, 4 failed
+
+28 passed, 4 failed
+=== exit 1
+=== node tests/run.js Settings: About (10:40:18, others running: 0)
+
+Settings: About (its own group below Advanced: the 21 gear, the sentence, version and storage, license, credits, the goat; offline, kiosk, Board Sync, the widget dev window, Size 50%–200%, both corners)
+  ✗ FAIL Credits: the four fonts with their makers and licenses, the weather’s two sources, and the three video sites’ owners (Atkinson Hyperlegible by the Braille Institute / SIL Open Font License 1.1 | Andika by SIL International / SIL Open Font License 1.1 | Excalifont by Excalidraw / SIL Open Font License 1.1 | Crayon Libre by GGBotNet / CC0 1.0 | Weather data by Open-Meteo / CC BY 4.0 | Weather data by the National Weather Service / Public domain | YouTube and Google Drive are trademarks of Google LLC. Vimeo is a trademark of Vimeo.com, Inc.)
+  23 passed, 1 failed
+
+23 passed, 1 failed
+=== exit 1
+=== node tests/run.js SDK Playground (10:40:45, others running: 0)
+
+SDK Playground: every call and event the SDK has, run with your own values (save and load, a menu from JSON with a heading and a checkmark, title, minimum size), bad JSON, copy as code, live state, the palette (theme, Custom… accent), the log (timestamps, pretty JSON, filter, pause, clear, copy), the smallest window, the keyboard
+  ✗ FAIL the context: widget id, instance, kiosk, standalone, host, and theme ({"data":"{\n  \"step\": 4\n}","config":"{\n  \"big\": true,\n  \"color\": \"#fef08a\"\n}","widgetId":"\"sdk-playground\"","widgetName":"\"SDK Playground\"","widgetVersion":"\"2.0.0\"","instance":"1","theme":"\"light\"","text-style":"Standard","palette":"14 tokens","locale":"\"en-US\"","language":"\"en\"","uiLanguage":"\"en\"","uiLocale":"\"en-US\"","devMode":"true","boardVersion":"\"2026.11.27-2\"","sdkProtocol":"1","host":"\"board\"","kiosk":"false","timers":"—","standalone":"false"})
+  ✗ FAIL --b21-font starts with Inter (system-ui, -apple-system, "Segoe UI", Roboto, sans-serif)
+  ✗ FAIL at 320 × 260 all four tabs and their content fit, in the board’s font: [{"style":"Inter","t":"calls","m":{"w":320,"h":260,"sw":320,"tabs":4,"clipped":[],"over":[],"font":"system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif","room":211}},{"style":"Inter","t":"state","m":{"w":320,"h":260,"sw":320,"tabs":4,"clipped":[],"over":[],"font":"system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif","room":211}},{"style":"Inter","t":"palette","m":{"w":320,"h":260,"sw":320,"tabs":4,"clipped":[],"over":[],"font":"system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif","room":211}},{"style":"Inter","t":"log","m":{"w":320,"h":260,"sw":320,"tabs":4,"clipped":[],"over":[],"font":"system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif","room":211}}]
+  57 passed, 3 failed
+
+57 passed, 3 failed
+=== exit 1
+=== node tests/run.js Pages (multiple boards) (10:41:30, others running: 0)
+
+Pages (multiple boards)
+  ✗ FAIL “This page” is a .21board file exactly as before pages (format,formatVersion,kind,exportedAt,generator,viewport,theme,accent,letters,widgetLanguage,board,instances)
+  48 passed, 1 failed
+
+Pages (multiple boards): nothing lost when things go wrong
+  18 passed
+
+66 passed, 1 failed
+=== exit 1
+=== node tests/run.js Clock in the corner (Auto (10:43:44, others running: 0)
+
+Clock in the corner (Auto by default: only in full screen, ⛶ and the window’s own, kiosk; On, Off, the minute, time and date, dark, corners, never in the way, older values, LAB)
+  ✗ FAIL the clock first draws while Inter is still loading (no Inter face), and once it has loaded, --clock-room is how far the clock really reaches (390/390)
+  62 passed, 1 failed
+
+62 passed, 1 failed
+=== exit 1
+=== node tests/run.js Offline (10:44:49, others running: 0)
+
+Board Sync: Google Drive misbehaving (scenarios 32–38: offline for days, clocks, half files, old revisions, conflict copies, this device’s own file, a copied profile)
+  19 passed
+
+Offline
+  ✗ FAIL every file a widget’s page loads from 21Board’s site is in the offline copy’s list (weather: widgets/weather/%23d, weather: widgets/weather/%23d, weather: widgets/weather/%23f, weather: widgets/weather/%23f)
+cached files: 58 / /index.html /board.js /sdk/board21.js /sdk/board21-dev.js /sdk/dev/board-shell.js /sdk/lab.html /widgets/registry.js /manifest.webmanifest /icons/icon-192.png /icons/icon-512.png /icons/gear-21.png /icons/goat.png /LICENSE /LICENSE-DOCS /fonts/AtkinsonHyperlegible-Regular.woff2 /fonts/AtkinsonHyperlegible-Bold.woff2 /fonts/AtkinsonHyperlegible-OFL.txt /fonts/EarlyReaders-Regular.woff2 /fonts/EarlyReaders-Bold.woff2 /fonts/EarlyReaders-OFL.txt /widgets/timer/index.html /widgets/timer/words.js /widgets/stopwatch/index.html /widgets/task-timer/index.html /widgets/calendar/index.html /widgets/clock/index.html /widgets/notes/index.html /widgets/notes/fonts/CrayonLibre-21Board.woff2 /widgets/notes/fonts/CrayonLibre-LICENSE.txt /widgets/notes/fonts/Excalifont-Regular.woff2 /widgets/notes/fonts/Excalifont-OFL.txt /widgets/name-picker/index.html /widgets/name-picker/style-bigname.js /widgets/name-picker/style-wheel.js /widgets/name-picker/style-spotlight.js /widgets/name-picker/style-lotto.js /widgets/name-picker/style-versus.js /widgets/name-picker/vs-lightning.js /widgets/name-picker/vs-forged.js /widgets/name-picker/vs-crest.js /widgets/name-picker/vs-comic.js /widgets/name-picker/vs-flame.js /widgets/name-picker/style-groups.js /widgets/name-picker/style-bracket.js /widgets/first-then-board/index.html /widgets/zones-check-in/index.html /widgets/dice/index.html /widgets/traffic-light/index.html /widgets/traffic-light/words.js /widgets/youtube-player/index.html /widgets/youtube-player/video-links.js /widgets/image/index.html /widgets/calculator/index.html /widgets/calculator/calc-engine.js /widgets/weather/index.html /widgets/weather/calendar.js /widgets/sdk-playground/index.html
+  4 passed, 1 failed
+
+Image: pasting and dropping pictures onto the board (Ctrl+V, after tapping a widget, Notes keeps its paste, an empty Picture window, text, the Paste button, locked windows, drops on the board and on windows, kiosk, offline)
+  40 passed
+
+Settings: About (its own group below Advanced: the 21 gear, the sentence, version and storage, license, credits, the goat; offline, kiosk, Board Sync, the widget dev window, Size 50%–200%, both corners)
+  ✗ FAIL Credits: the three fonts with their makers and licenses, the weather’s two sources, and the three video sites’ owners (Atkinson Hyperlegible by the Braille Institute / SIL Open Font License 1.1 | Andika by SIL International / SIL Open Font License 1.1 | Excalifont by Excalidraw / SIL Open Font License 1.1 | Crayon Libre by GGBotNet / CC0 1.0 | Weather data by Open-Meteo / CC BY 4.0 | Weather data by the National Weather Service / Public domain | YouTube and Google Drive are trademarks of Google LLC. Vimeo is a trademark of Vimeo.com, Inc.)
+  23 passed, 1 failed
+
+Board font: Inter in 21Board and every widget, its shapes, late and offline, and nothing from another site
+  ✗ FAIL the board has a face Inter, 100 900, normal, loaded ()
+  ✗ FAIL the board’s text starts with Inter (system-ui, -apple-system, "Segoe UI", Roboto, sans-serif)
+  ✗ FAIL I has bars: at 100 px it is 1.11 × as wide as l
+  ✗ FAIL ->, <-, and => stay two characters, as with calt off (-> <- =>)
+  ✗ FAIL 21Board’s own text is in Inter (page, title bars, Widget Picker, Settings, page label, menus, messages, shape tip, dialogs): page: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | title bar: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | Widget Picker: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | Settings: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | page label: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | window menu: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | toasts: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | shape tip: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | dialogs: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif
+  ✗ FAIL every word in Clock, Timer, Notes, Task Timer, and First/Then is in Inter, buttons, boxes, and the countdown included: clock:1: text “12” system-ui, -apple-system, "Seg, text “1” system-ui, -apple-system, "Seg, text “2” system-ui, -apple-system, "Seg | timer:1: div “05:00” system-ui, -apple-system, "Seg, button “1m” system-ui, -apple-system, "Seg, button “2m” system-ui, -apple-system, "Seg | notes:1: span “Type a note…” system-ui, -apple-system, "Seg, div “Type a note…​” system-ui, -apple-system, "Seg, textarea “Type a note…” system-ui, -apple-system, "Seg | task-timer:1: div “No activities” system-ui, -apple-system, "Seg, div “00:00” monospace, span “Total left: 00:00” system-ui, -apple-system, "Seg | first-then-board:1: span “⭐ FIRST ➔ THEN” system-ui, -apple-system, "Seg, div “FIRST” system-ui, -apple-system, "Seg, div “Academic” system-ui, -apple-system, "Seg
+  ✗ FAIL and Inter is loaded in each of their frames but clock:1, timer:1, notes:1, task-timer:1, first-then-board:1
+  ✗ FAIL a Timer in Русский: its chips and buttons are in Inter: div “05:00” system-ui, -apple-system, "Seg, button “1 мин” system-ui, -apple-system, "Seg, button “2 мин” system-ui, -apple-system, "Seg, button “3 мин” system-ui, -apple-system, "Seg, button “5 мин” system-ui, -apple-system, "Seg, button “10 мин” system-ui, -apple-system, "Seg, button “15 мин” system-ui, -apple-system, "Seg, button “−1:00” system-ui, -apple-system, "Seg, button “+1:00” system-ui, -apple-system, "Seg
+  ✗ FAIL a Chalkboard note keeps Crayon Libre first, with Inter before system-ui ("Crayon Libre", "Chalkboard SE", Chalkboard, "Comic Sans MS", "Comic Neue", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif)
+  ✗ FAIL Task Timer’s countdown and Total left keep their width as the digits change (60.0 → 60.0, 78.6 → 69.2)
+  ✗ FAIL every font file asked for is in the offline copy’s list (widgets/notes/fonts/CrayonLibre-21Board.woff2)
+  ✗ FAIL the font files and their licenses are in the offline copy, but not fonts/Inter-21Board.woff2, fonts/Inter-OFL.txt, widgets/calculator/fonts/Inter-OFL.txt, widgets/calculator/fonts/InterItalic-21Board.woff2
+  ✗ FAIL a device saves the fonts with the rest of its offline copy
+  ✗ FAIL offline, Inter loads in 21Board () and in a widget ()
+  ✗ FAIL once let through, Inter loads in the board
+  ✗ FAIL once Inter arrives, the Clock, Timer, Calendar, a note, Name Picker, and the Spinning wheel fit their windows: the Spinning wheel didn’t draw its names again in Inter
+  ✗ FAIL the Task Timer draws its pie again in Inter once it has loaded
+  ✗ FAIL a widget’s Board21.on('resize') fires once Inter has arrived (font at Infinity, resizes 915, 6437, 7294)
+  4 passed, 18 failed
+
+Video Player: nothing plays behind the link box (Change video here and in another tab, Cancel, Reset, another page), reload, saved data checked, offline
+  28 passed
+
+Video Player: History titles YouTube doesn’t give (a private video, blocked, no answer, offline, then online), a hostile, invisible, long or wide title, a series, at most five requests at once, the menu at Size 200%
+  26 passed
+
+Video Player: a History of YouTube, Google Drive and Vimeo videos (titles from YouTube and Vimeo, Drive’s labels told apart, tapping one, older content, damaged content from each site, offline, export and import)
+  26 passed
+
+Weather: saving, Board Sync and Board history, refresh clocks, offline, and No motion
+  41 passed
+
+Zones Check-In: a Blank template, Board history, offline
+  14 passed
+
+225 passed, 20 failed
+=== exit 1
+=== node tests/run.js Board Sync: theme and accent color, and the default (10:52:31, others running: 0)
+
+Board Sync: theme and accent color, and the default widget language (Español from the laptop, all three at once, Settings open, locked, another tab, kiosk, Import, and a text style from an older release)
+  ✗ FAIL the smartboard takes an older release’s text style into its settings, and stays in Inter ({"letters":"legible","font":"\"Atkinson Hyperlegible\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"})
+  ✗ FAIL and says nothing of it (The laptop changed the theme to Dark. | Unlocked. | The laptop changed the text style to “Easier to read”.)
+  ✗ FAIL a file with a text style: Replace this page doesn’t name it (Replace this page This page’s windows and content are replaced, here and on your other devices. So is the text style. You can undo this.)
+  ✗ FAIL the text style and when it was chosen stay as they were, after Replace and after its Undo ({"before":{"letters":"legible","lettersAt":1795863164777},"afterReplace":{"letters":"early","lettersAt":1795863165417},"afterUndo":{"letters":"legible","lettersAt":1795863165737}})
+  14 passed, 4 failed
+
+14 passed, 4 failed
+=== exit 1
+=== The Offline file list's new url() rule bites: the Calculator's @font-face added, its registry line not yet (only the first check shown; the run was stopped after it)
+Offline
+  ✗ FAIL every file a widget’s page loads from 21Board’s site is in the offline copy’s list (calculator: widgets/calculator/fonts/InterItalic-21Board.woff2)

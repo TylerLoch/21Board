@@ -1,0 +1,506 @@
+{
+ "built": {
+  "summary": "Release 2026.11.28-2, \"Inter for everything\", is built and committed as f9f336c on branch `inter`, in the worktree /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/wt. Nothing was pushed or published, and main and lang-1b were not touched.\n\nEvery suite the spec lists in §5.7 passes. Two failed on the first run, were fixed, and passed when run again on their own. tests/merge.js (300 passed) and tests/calc-engine.js (814 passed) pass unchanged.\n\n**The fonts.** tools/build-inter.py builds both fonts from the checked sources, and its `--check` rebuilds them and matches the shipped bytes. The roman is fonts/Inter-21Board.woff2, 64.4 KB, with 3 calt arrow lookups dropped and 46 ss04 glyphs frozen. The italic is widgets/calculator/fonts/InterItalic-21Board.woff2, 3.2 KB. The default weight moves to 352.63. CSS 400, 500, 600, and 700 draw exactly like the source at 490, 560, 630, and 700 (0.000% difference in Chromium).\n- Proof log: /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/weight-proof/weight-proof.log\n- Proof picture: /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/weight-proof/weight.png\n\n**The code.**\n- **Board:** board.js adds Inter at boot from the folder it came from, only on 21Board's own site or disk (`FONT_HERE`). Text style is gone.\n- **Inert text style:** `lookParts()` keeps Import and its Undo from writing `letters` or stamping `lettersAt`. The Board Sync merge region and tests/merge.js are byte-identical to the base.\n- **Uploaded widget files:** they get Inter as a data: URL.\n- **SDK 1.7.0:** `applyFace`, a refit on every font that loads, the standalone Inter rule, and `fontFor` removed.\n- **Widgets:** Calculator letters in \"Inter Letters\", Task Timer tabular digits, Clock re-measures when a font loads, and Notes puts Inter before system-ui.\n- **Packaging:** sw.js, the registry, and NOTICE are updated. Docs, README, the Teacher Guide (all its shots retaken, built, check passes), and the Calculator manual (built, check passes) are updated.\n\n**Tests.** The fail-first log, /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/fail-first.log, shows every new check failing on the base, plus the new url() rule catching the Calculator font before its registry line was added. All suite runs are in /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/runs.log. No other test process ran during any of my runs.",
+  "commit": "f9f336c",
+  "decisions": [
+   "tools/build-inter.py step 4 counts a calt lookup only when it turns a non-arrow glyph into an arrow. A plain 'makes an arrow glyph' test also caught lookup 52, which only swaps arrows for their .case forms beside capitals. With the narrower test it drops exactly 47, 48, and 51, as the spec says.",
+   "tools/build-inter.py re-runs itself with PYTHONHASHSEED=0 using `-s -P` and with other PYTHON* variables removed, because `-I` ignores PYTHONHASHSEED.",
+   "Weight proof: the canvas measures at 14 px, where the source's automatic optical size is 14, and spans at 100 px with font-variation-settings opsz 14. Stock Inter at 100 px would draw at display optical size. The picture also pins the stock line at opsz 14.",
+   "tests/woff2.js reads only tables, cmap, fvar, and avar. 11a finds every words table through tools/words.js (`check().tables` plus `parse`, the inline template script included), the Common words, and Words.pseudo of each window row.",
+   "Shapes check (F1 item 2): each arrow sample sits on its own line at the same left edge with a 60 px line height. Spans further along a line landed on different fractions of a pixel and differed in screenshots even with no ligature. Stock Inter still fails both shape checks with this layout (verified).",
+   "Board Sync's older-release check writes `letters` and `lettersAt` straight into the settings record with `store.tx`, then shows it in the tab with `applyMerged`. Reloading the page dropped the folder link.",
+   "The uploaded-widget Inter check uses its own small file whose body uses var(--b21-font). The existing probe's text is a `<pre>`, so it never uses Inter. The 404 tab ignores the 'Service worker is disabled' page error that a blocked-worker context raises.",
+   "The offline page's inline style uses `font:16px 'Inter',system-ui`, with single quotes, because double quotes would end the style attribute.",
+   "The Offline url() rule also skips `%23…`. Weather's SVG data URLs hold url(%23d) references.",
+   "Video Player: a real overflow, not a loose test bound. At 200 × 200 the longest error wrapped to 3 lines in the heavier regular and the link box scrolled. Fixed in the widget: `#err { letter-spacing: -.01em }` inside its small-window media query, so the message stays on 2 lines with no font under 14 px.",
+   "README sizes: 'About 64 KB' and 'About 3 KB' (the measured 64.4 KB and 3.2 KB) in place of the spec's 66 and 4.",
+   "DevFiles fetches `fonts/Inter-21Board.woff2` relative to the page, as `sdk()` does, and caches the data URL. `applyFont()` is the first line of `initUI()`.",
+   "Pre-existing breakages fixed so the required builds could run: the manual's build.js rejected `Words.confirm(` from the SDK, now it allows a method call; the guide's dice scene used a menu label that no longer exists, now it taps `count:N`. The guide's `shot()` waits at most 3 s per frame for fonts, because 21Timer's frame never settled.",
+   "Screenshots are in final-shots/ as spec §10 says, and copied to shots/ as the task asked.",
+   "picture.js:49 keeps its check unchanged. Only its message changed, from 'the text style’s font' to 'the board’s font'."
+  ],
+  "strings": [
+   "Settings › Appearance (teachers): the Text style row is removed. Old label 'Text style' with values 'Standard', 'Easier to read', and 'Early readers'. Old hints 'This device’s own font.', 'Atkinson Hyperlegible, made for people with low vision. I, l, and 1 look different, and 0 has a line through it.', and 'Based on Andika by SIL, for children learning to read. Its a and g look the way children write them.' Old sample 'Il1 0 ag'. Old sub 'On all your devices.' New: removed. English only, as are all board Settings words.",
+   "Settings in the dev window and lab: 'Text style' / 'Easier-to-read fonts can’t load in this test board. Try them in 21Board itself.' is removed.",
+   "Board Sync message: the 'the text style to “…”' clause is removed. Old: 'The laptop changed the theme to Dark and the text style to “Easier to read”.' New: the text style is never named; a text style from an older device says nothing.",
+   "Import › Replace this page, its sub: the 'text style' clause is removed. Old: '… So is the text style.' or '… So are the theme, accent color, and text style.' New: e.g. 'So is the theme.' or 'So are the theme and accent color.'",
+   "Settings › About › Credits: old 'Atkinson Hyperlegible by the Braille Institute / SIL Open Font License 1.1' and 'Andika by SIL International / SIL Open Font License 1.1'. New, first in the list: 'Inter by Rasmus Andersson and the Inter Project Authors / SIL Open Font License 1.1'.",
+   "SDK Playground › Context: the 'Text style' row is removed (developer-facing, English only).",
+   "Board21.version: '1.6.0' becomes '1.7.0'.",
+   "Teacher Guide, Make it yours lede: old 'Arrange windows the way your room works, give each subject its own page, and pick the look your students read best.' New 'Arrange windows the way your room works, give each subject its own page, and pick your colors.'",
+   "Teacher Guide: the card 'Letters made for young readers' is removed.",
+   "Teacher Guide FAQ, new: 'Can I change the font?' / 'No. Every board uses one font, Inter. It’s a little bolder, so the back row can read it. I, l, and 1 each look different. Notes’ Chalkboard and Whiteboard keep their own letters.'",
+   "No words-table entries changed in any language, so nothing new in Spanish, Russian, or Ukrainian. `node tools/words.js`: 'Words: 4 tables, 29 rows. No problems.'"
+  ],
+  "tests_changed": [
+   "tests/lib.js: `boardUp(page, { fonts })` and `addWin(p, id, { fonts })` now also wait for document.fonts in the board and in a same-origin window frame (new `fontsIn`, at most 2 s, polled from Node). The openSettings comment drops 'letters'. Why: decision 18 and F1 item 7.",
+   "tests/words.js: test 11 (fontFor cases) is replaced by 11a, 11b, and 11c; the header comment is updated. New helper tests/woff2.js. Why: fontFor is gone.",
+   "tests/suites/settings.js: the three 'Text style (Letters)' suites become F1 'Board font: Inter in 21Board and every widget…' and F2 'Board font: the widget dev window…'. Also: Appearance rows are now 'Theme,Background,Accent color,Board shape'; the groups lists drop 'letters hidden'; About's MARKS and CREDITS put Inter first with no Atkinson or Andika (message 'three fonts'); About's tidy pass runs once instead of per style; 'Settings keeps a control still' taps Default widget language cards instead of Text style. Why: the setting is gone.",
+   "tests/suites/board-sync.js: the 'On all your devices.' count goes from 4 to 3; `hints()` drops the text hint; the theme/accent suite's comment drops the text style. The 2223 suite is rewritten and retitled 'Board Sync: theme and accent color, and the default widget language (Español from the laptop, all three at once, Settings open, locked, another tab, kiosk, Import, and a text style from an older release)': theme and accent two- and three-at-once (with the default widget language), the Español steps kept, lock/tab/kiosk now using Dark, plus the two §5.3 checks (an older release's text style taken silently and passed on; Import never names or stamps it).",
+   "tests/suites/board-history.js: the wreck no longer picks Early readers; the theme half stays.",
+   "tests/suites/board.js: the Pages export keys drop 'letters'; the README sentence check about Early readers is deleted (no checks of docs' words).",
+   "tests/suites/calculator.js: the registry files list gains the two font files; the per-text-style loop becomes the Inter Letters check (keys, rule strip, and 'of' in \"Inter Letters\" italic, the face loaded, keys and canvas in Inter); the √ suite runs once and is retitled 'Calculator: the √ sign meets its bar'.",
+   "tests/suites/sdk.js: standalone gains the Inter and cross-origin checks; the SDK Playground title, context row, palette, and P7 are now one pass in Inter; Developer mode upload gains the sealed-frame Inter check and the font-404 tab.",
+   "tests/suites/offline-and-updates.js: the file list also follows url(…) in <style> blocks; the offline page check adds a loaded Inter face.",
+   "tests/suites/widget-picker.js: the icons and Paste suites drop the Text style loops (one pass in Inter); titles retitled.",
+   "tests/suites/name-picker.js: `fitTools.letters` deleted; the Groups and Bracket text-style refits removed (long-name fits kept); Versus from a file is one style ('Name Picker: Versus from a file, and long names fitting'); the Early readers dark pass removed; the Spinning wheel checks names, banner, and SPIN in Inter; Spotlight and Lotto drop the Easier to read steps and keep names measured in Inter.",
+   "tests/suites/clock-and-calendar.js: the text-style clock-room port becomes the late-Inter check (Inter loading at the clock's first draw, loaded when --clock-room matches its reach).",
+   "tests/suites/widgets.js: Standards picks rule cells checked once at the narrowest canvas.",
+   "tests/suites/weather.js: part 7 is one walk ('every word in Inter'); the Early readers Small pass is removed.",
+   "tests/suites/video-player.js: one style; `fitted.length === texts.length`.",
+   "tests/suites/zones-check-in.js: the tile wrap 'Zones / Check-In' is checked once, in Inter.",
+   "tests/suites/picture.js: the message only, 'the text style’s font' to 'the board’s font'.",
+   "No lower bound was moved. The only fit failure found (Video Player) was fixed in the widget."
+  ],
+  "tests": [
+   {
+    "suite": "Fail-first on the base: tests/words.js without the new fonts",
+    "passed": 68,
+    "failed": 3,
+    "note": "11a, 11b, and 11c fail as expected"
+   },
+   {
+    "suite": "Fail-first on the base: Board font: (F1 + F2)",
+    "passed": 5,
+    "failed": 22
+   },
+   {
+    "suite": "Fail-first on the base: Board Sync: theme and accent color, and the default (revised test, run again alone)",
+    "passed": 14,
+    "failed": 4,
+    "note": "first base run with the reload version: 12 passed, 5 failed"
+   },
+   {
+    "suite": "Fail-first on the base: Calculator: the Widget Picker",
+    "passed": 107,
+    "failed": 4
+   },
+   {
+    "suite": "Fail-first on the base: Developer mode: upload",
+    "passed": 52,
+    "failed": 2
+   },
+   {
+    "suite": "Fail-first on the base: SDK, developer mode",
+    "passed": 40,
+    "failed": 1
+   },
+   {
+    "suite": "Fail-first on the base: Settings: sections",
+    "passed": 28,
+    "failed": 4
+   },
+   {
+    "suite": "Fail-first on the base: Settings: About",
+    "passed": 23,
+    "failed": 1
+   },
+   {
+    "suite": "Fail-first on the base: SDK Playground",
+    "passed": 57,
+    "failed": 3
+   },
+   {
+    "suite": "Fail-first on the base: Pages (multiple boards)",
+    "passed": 66,
+    "failed": 1
+   },
+   {
+    "suite": "Fail-first on the base: Clock in the corner (Auto",
+    "passed": 62,
+    "failed": 1
+   },
+   {
+    "suite": "Fail-first on the base: Offline (10 suites)",
+    "passed": 225,
+    "failed": 20,
+    "note": "the url() rule bite was shown separately: it fails on the Calculator font before the registry line"
+   },
+   {
+    "suite": "node tests/words.js",
+    "passed": 71,
+    "failed": 0
+   },
+   {
+    "suite": "Board font: (F1 + F2)",
+    "passed": 27,
+    "failed": 0,
+    "note": "run again after the board.js tidy: 27/0"
+   },
+   {
+    "suite": "Settings: sections",
+    "passed": 32,
+    "failed": 0
+   },
+   {
+    "suite": "Settings: About",
+    "passed": 24,
+    "failed": 0,
+    "note": "run again after the tidy: 24/0"
+   },
+   {
+    "suite": "Settings keeps a control",
+    "passed": 22,
+    "failed": 0
+   },
+   {
+    "suite": "Board Sync: theme (2 suites)",
+    "passed": 58,
+    "failed": 0
+   },
+   {
+    "suite": "Board Sync: setting up (scenarios",
+    "passed": 31,
+    "failed": 0
+   },
+   {
+    "suite": "Copy:  (2 suites)",
+    "passed": 36,
+    "failed": 0
+   },
+   {
+    "suite": "Pages (multiple boards) (2 suites)",
+    "passed": 67,
+    "failed": 0
+   },
+   {
+    "suite": "Widget Picker: icons",
+    "passed": 49,
+    "failed": 0
+   },
+   {
+    "suite": "Widget Picker: Paste",
+    "passed": 31,
+    "failed": 0
+   },
+   {
+    "suite": "Calculator: the √",
+    "passed": 2,
+    "failed": 0
+   },
+   {
+    "suite": "Calculator: the Widget Picker",
+    "passed": 111,
+    "failed": 0
+   },
+   {
+    "suite": "Standards picks",
+    "passed": 52,
+    "failed": 0
+   },
+   {
+    "suite": "Zones Check-In: the registry",
+    "passed": 18,
+    "failed": 0
+   },
+   {
+    "suite": "Video Player: light (run 1)",
+    "passed": 17,
+    "failed": 1,
+    "note": "real overflow at 200 × 200, no other test process running; fixed in the widget"
+   },
+   {
+    "suite": "Video Player: light (run 2, after the fix)",
+    "passed": 18,
+    "failed": 0
+   },
+   {
+    "suite": "Clock in the corner (Auto",
+    "passed": 63,
+    "failed": 0
+   },
+   {
+    "suite": "SDK Playground",
+    "passed": 60,
+    "failed": 0
+   },
+   {
+    "suite": "Developer mode: upload (run 1)",
+    "passed": 52,
+    "failed": 1,
+    "note": "the test probed a <pre>, which never uses Inter; check reworked"
+   },
+   {
+    "suite": "Developer mode: upload (run 2)",
+    "passed": 53,
+    "failed": 0
+   },
+   {
+    "suite": "SDK, developer mode",
+    "passed": 41,
+    "failed": 0
+   },
+   {
+    "suite": "Task Timer: schedule",
+    "passed": 27,
+    "failed": 0
+   },
+   {
+    "suite": "Name Picker: Versus from",
+    "passed": 8,
+    "failed": 0
+   },
+   {
+    "suite": "Name Picker: Versus names",
+    "passed": 11,
+    "failed": 0
+   },
+   {
+    "suite": "Weather: every size",
+    "passed": 21,
+    "failed": 0
+   },
+   {
+    "suite": "Weather: Location",
+    "passed": 25,
+    "failed": 0
+   },
+   {
+    "suite": "Offline (10 suites)",
+    "passed": 245,
+    "failed": 0
+   },
+   {
+    "suite": "Opened from disk",
+    "passed": 7,
+    "failed": 0
+   },
+   {
+    "suite": "Languages (3 suites)",
+    "passed": 37,
+    "failed": 0
+   },
+   {
+    "suite": "tests/merge.js (unchanged)",
+    "passed": 300,
+    "failed": 0
+   },
+   {
+    "suite": "tests/calc-engine.js",
+    "passed": 814,
+    "failed": 0
+   },
+   {
+    "suite": "docs/teacher-guide/check.js",
+    "passed": 42,
+    "failed": 0,
+    "note": "every size passes and loads Inter"
+   },
+   {
+    "suite": "docs/calculator-manual/check.js",
+    "passed": 149,
+    "failed": 0,
+    "note": "Inter and Inter Letters loaded in the page and the demo"
+   },
+   {
+    "suite": "tools/build-inter.py --check",
+    "passed": 1,
+    "failed": 0,
+    "note": "the shipped fonts match the build"
+   }
+  ],
+  "screenshots": [
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/board-light.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/board-dark.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/settings-appearance.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/languages.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/calculator-letters.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/name-picker-long.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/clock.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/settings-language.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/notes-scripts.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/menu-80.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/weight.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/guide.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/manual.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/weight-proof/weight.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/shots/ (copies of final-shots/)"
+  ],
+  "open_issues": [
+   "Not run, left to CI as the spec says: bare 'Name Picker' (about 1350 s), all of 'Board history' (12 suites; this release changed one test step there), 'Kiosk', and the rest of the file. tests/timings.json still lists the old suite titles; new and retitled suites count as the average until timings are saved.",
+   "Publishing is left to the session after the merge: the Teacher Guide (dist/page.html plus dist/files.json) to https://claude.ai/artifact/2vXnMT4JJAkm5y6dnjC8YG and the Calculator manual to https://claude.ai/artifact/8p3dg4r8xSduSD2DmNVjXB.",
+   "Final shots are rough in places and may need retaking: board-light.png and board-dark.png have the open Widget Picker covering most of the note and the clock; calculator-letters.png shows the keys and 'of' but not the rule strip's xⁿ, and is scaled to 1000 px wide; languages.png shows the Traffic Light's lamps with no Spanish words visible.",
+   "Session check on real devices (spec §9): one district Chromebook and one iPad should draw CSS 400 heavier, and show Russian, Ukrainian, and Greek in Inter.",
+   "Two pre-existing breakages from the base were fixed to finish the required builds and shots: the Calculator manual's build.js rejected `Words.confirm(` from the SDK, and the guide's dice scene used a menu label that no longer exists. The guide's shot() now waits at most 3 s per frame, because 21Timer's frame never settled its fonts.",
+   "The empty scene writes shots/history-empty.jpg, which the guide doesn't use. It was not committed.",
+   "Known and left for later (spec §9): `letters` stays a merge style part; Notes' Chalkboard Cyrillic and Greek draw in Inter; ⇄ ↶ ↷ and other symbols stay on the device's font."
+  ]
+ },
+ "reviews": [
+  {
+   "findings": [
+    {
+     "id": "B1",
+     "severity": "medium",
+     "claim": "An uploaded widget file (Developer mode) can't start until fonts/Inter-21Board.woff2 has been fetched. If the font is slow, the widget waits that long. If the request never answers, the widget never starts and its window spins forever. This breaks the rule that a widget draws at once in the device's font and that a failed font read means the page simply goes without it (spec decision 6).",
+     "evidence": "board.js DevFiles.page() awaits the font before it builds the sealed page: `const font = await this.font().catch(() => '');`. The .catch() only covers a rejected fetch, not a slow or stalled one. I reproduced it with /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/review-behaviour-work/upload.js (log: upload.log next to it). The script loads the board normally, then makes the board's own fetch of the font slow (6 s) or stall, and uploads a small widget file through #widget-input. Time until the sealed frame was put in: 101 ms with no fault, 6069 ms with the 6 s delay, and 'not started in 15 s' when the request stalls (window `dev-hello:1`, no iframe, `.win-loading` never done). This happens wherever the offline copy doesn't hold the font yet, such as a first visit on slow school Wi-Fi while the offline copy is still saving. Built-in widgets don't wait: spinner.js / spinner.log show a Timer window's spinner gone and the widget drawn at 2.6 s whether Inter is held or not.",
+     "fix": "Don't let the font hold up the start. In DevFiles.page(), race the font against a short wait: `const font = await Promise.race([this.font(), new Promise(r => setTimeout(r, 1500, ''))]).catch(() => '');`. Keep fontP cached, so the next start gets the face once the file arrives. In tests/suites/sdk.js 'Developer mode: upload a widget file', add one check next to the existing font-404 tab: a tab where the font request never answers (route held, never continued). The uploaded widget still starts within about 2 s, with no Inter face in its frame."
+    }
+   ],
+   "checked_ok": [
+    "Late Inter (every request held behind a gate, then let through) with the device's font set to DejaVu Sans (fontconfig rejects the installed Inter; noInter.conf): Clock, Timer, Calendar, Notes, Name Picker, Task Timer, Zones, and Stopwatch end up with exactly the same fitted inline styles as on a fresh board, with no page errors. late.js, late-delay-dejavu.log.",
+    "Inter answered 404 or sent as half a file: the board and every widget draw in the device's font. There are no page errors, only console lines (404, OTS decode warning), and nothing is shown to the teacher. late-404.log, late-half.log.",
+    "Widget Picker names and the clock in the corner, Inter held until after they first draw (DejaVu fallback): names the same as a fresh board, nothing past its tile. The corner clock re-measures from 1024..1302 to 1052..1302, the same as fresh. picker.js, picker.log.",
+    "The board boots and a Timer window draws at once while Inter is held. Its spinner is gone at 2.6 s, the same as with no fault. spinner.js, spinner.log, spinner-held.png.",
+    "The Calculator's letters with InterItalic-21Board.woff2 normal, 404, or held: the rule strip's letters and the 'of' are always drawn by a web Inter face, never a local font (CDP getPlatformFontsForNode, DejaVu fallback). Inter Letters loads once let through, with no page errors. calc.js, calc.log.",
+    "Weight: in canvas widths the shipped roman at CSS 100, 200, 300, 350, 400, 450, 500, 600, 650, 700, 800, and 900 equals source Inter at opsz 14 at 100, 200, 300, 395, 490, 525, 560, 630, 665, 700, 800, and 900, with 0.000% difference. The italic gives the same result. Text with I or l differs by about 1%, as the frozen ss04 should. weight.js, weight.log.",
+    "Opened from disk (file://): the board, the Timer #b21-bare, and the Calculator #b21-bare load Inter (and Inter Letters) with no console errors. disk.js, disk.log.",
+    "Dev window and lab: the lab over http shows no Inter face and no errors. The dev window over http and from disk loads Inter in the test board and its widget. lab.js, lab.log.",
+    "Import, Undo, Add, Open as a new page, templates, and history: lookParts() covers the dialog's look0, the Undo's back loop, and applyImport's look. parseBoardFile drops letters, buildExport drops it, and all three Board history paths keep `delete exp.letters`. MergeUI.style returns '' for an entry holding only letters, and shown() says nothing for it.",
+    "Merge region: a fresh device with no settings.letters falls back to STYLE_DEF 'standard', with the same hash as 1b's default, so device files are unchanged.",
+    "node tests/words.js: 71 passed. node tools/words.js: 'Words: 4 tables, 29 rows. No problems.'",
+    "Sweep of README, NOTICE, docs, sdk, widgets, index.html, sw.js, tools, and .github for text style, Atkinson, Andika, Early readers, Easier to read, letter-opt, and LETTERS_HERE: only the expected DATA-FORMAT, Board Sync, and README Board Sync lines are left. No Georgia remains in the Calculator.",
+    "Teacher Guide: the lede and FAQ match the spec, the Letters card is gone, and the retaken appearance.jpg shows Theme, Background, Accent color, and Board shape with no Text style row. Its alt text doesn't name a text style.",
+    "Tabular digits are on every ticking number: Timer, Stopwatch, Task Timer's countdown and Total left, the corner clock, Calendar, Weather, and Zones. Traffic Light shows no countdown.",
+    "Tests: no new check reads the docs' words, a version, a size, or a file count. The F1 and F2 checks and the Board Sync and Import checks follow spec §5.2-5.4."
+   ],
+   "summary": "I found one problem. An uploaded widget file in Developer mode won't start until the board has fetched Inter. With the font held 6 s, the widget started 6 s late. With a request that never answers, it never started and its window kept spinning. The board waits on the font in DevFiles.page() with only a .catch(), so a slow or stalled read holds the widget up. The fix is to race the font against about 1.5 s and add one check to the upload suite for a font that never answers.\n\nEverything else I tried held up:\n- **Slow, missing, or broken font:** with Inter held, answered 404, or sent as half a file, the board and every widget drew in the device's font. Nothing was shown to the teacher, and the only console lines were the 404 and the decode warning. To make this a real test I hid the machine's own Inter, so the fallback was DejaVu Sans. Once Inter arrived, every widget refitted exactly as on a fresh board, including the Widget Picker's names and the clock in the corner.\n- **Calculator letters:** with the italic file normal, missing, or held, the letters and \"of\" were always drawn in Inter, never Georgia or a local font. I checked this on the rule strip and the \"of\"; with my script the Advanced keys never showed, so the key letters went unchecked.\n- **Weight:** CSS 400, 500, and 600 measure exactly like the original at 490, 560, and 630, and every other weight matches unchanged (0.000% in canvas widths).\n- **Places:** the board and standalone widgets load Inter from disk with no errors. The lab and the dev window behave as the spec says.\n- **Older data:** Import, its Undo, exports, Board history, and Board Sync messages never name, apply, or stamp the text style. The Board Sync merge code was not changed.\n- **Words, docs, and tests:** `node tests/words.js` passes (71), and `node tools/words.js` finds no problems. The docs, the Teacher Guide's words and appearance shot, and the tests follow CLAUDE.md, the spec, and \"Writing tests\".\n\n**Not tested:** Board Sync against a real device on 2026.11.28-1, an update with a second tab open, the first start offline after an update, and the manual's live Calculator. For those I relied on reading the code and on the builder's suites.\n\nI didn't run tests/run.js. Only my own scripts ran, one Chromium at a time, with no other test process running. My worktree review-behaviour/ is removed. The scripts, logs, and screenshots are in /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/review-behaviour-work/; the upload one is upload.js and upload.log."
+  },
+  {
+   "findings": [
+    {
+     "id": "guide-dice-alt",
+     "severity": "medium",
+     "claim": "The retaken Teacher Guide shot w-dice.jpg no longer matches its alt text. The page says 'Three dice showing 5, 6, and 1, with a total of 12.' The new shot shows 6, 2, and 3, with a total of 11. Screen readers and the guide's text now describe a picture that isn't there.",
+     "evidence": "git show 53a2c4f:docs/teacher-guide/shots/w-dice.jpg shows 5, 6, 1 = 12. f9f336c's docs/teacher-guide/shots/w-dice.jpg shows 6, 2, 3 = 11. Side by side: /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/review-lwt-out/pair-w-dice.jpg (old above, new below). The alt text is in docs/teacher-guide/page-src.html (grep 'w-dice.jpg'). scenes.js rollDice (SCENES.dice, rollDice(p, ik, 3)) rolls at random, so each retake gives a new total. check.js only checks that alt text exists, so it passes (guide.log in review-lwt-out).",
+     "fix": "Pick one. Change the alt text to match the new shot ('Three dice showing 6, 2, and 3, with a total of 11.'). Or retake w-dice until it shows 5, 6, and 1. The lasting fix is to make rollDice repeatable, for example by seeding Math.random in the dice frame, so later retakes keep matching the alt text."
+    },
+    {
+     "id": "time-not-reported",
+     "severity": "low",
+     "claim": "The builder's report gives no suite time saved, which the review brief asks for under RELEASING's Writing tests. Spec §5.6 estimates about −195 suite seconds, but the report and tests_changed give no measured before and after.",
+     "evidence": "The builder's summary and the tests_changed list mention no seconds. runs.log has pass counts per suite but no total time compared with the base.",
+     "fix": "Add the measured suite seconds for the changed suites to the report, before (53a2c4f) and after (f9f336c), using the per-suite times tests/run.js prints. Or say plainly that the CI timings run will measure it."
+    }
+   ],
+   "checked_ok": [
+    "Board Sync merge region in board.js (#region Board Sync merge to #endregion) is byte-identical to 53a2c4f (same sha1). tests/merge.js, LICENSE, LICENSE-DOCS, CLAUDE.md, docs/RELEASING.md, tools/release-workflow.js, tests/timings.json, and tools/words.js are unchanged.",
+    "fonts/Inter-OFL.txt and widgets/calculator/fonts/Inter-OFL.txt match the upstream r-fonts/dl/inter/OFL.txt byte for byte (cmp).",
+    "No model name appears in repo text (grep for opus, sonnet, haiku, and claude- outside claude.ai links).",
+    "node tests/words.js: 71 passed, 0 failed (11a, 11b, and 11c included; reads tools/inter-chars.json and every words table through tools/words.js; only Node's zlib, no new dependency). node tools/words.js: 'Words: 4 tables, 29 rows. No problems.' No words table changed.",
+    "Sweep of README, NOTICE, docs, sdk, widgets, index.html, sw.js, board.js, tools, and .github for text style, Atkinson, Andika, Early readers, letter-opt, LETTERS_HERE, build-letter-fonts, and fontFor. The only hits are the merge region, lookParts' comment, DATA-FORMAT's letters, lettersAt, and Board Sync lines, README's one Board Sync sentence, and Task Timer's unrelated local fontFor.",
+    "board.js: MergeUI.style no longer names the text style. The Import sub's list and look0 use lookParts(), and Replace and its Undo loop over lookParts(), so letters and lettersAt are never written. ABOUT_FONTS puts Inter first. Appearance renders Theme, Background, Accent color, and Board shape. applyFont() is the first line of initUI. index.html keeps only the .lang-opt halves, with the same values.",
+    "Strings checked against Voice: the FAQ 'Can I change the font?', the new lede, NOTICE, README, WIDGET-SDK, and AI-PROMPT lines are short and plain, with Oxford commas and no em-dash asides.",
+    "Teacher Guide: built and checked in my own worktree, all checks passed, with 'Inter is loaded' in every frame. The Letters card is gone, textstyle.jpg is deleted and not referenced, and the lede and FAQ match spec §7.",
+    "Calculator manual: build.js and check.js pass, with Inter and Inter Letters loaded in the page and in the demo.",
+    "Retaken guide shots compared with 53a2c4f's copies (pairs in review-lwt-out/pair-*.jpg). Only weight and I/l changed. Nothing newly wrapped or cut in appearance, lock, menu, calculator, stopwatch, notes, zones, name picker, versus, weather, or hero. Text Style is gone from appearance.jpg. Title bars and digits stay in place. The tailed l shows in Notes (zoom-lab.png). w-21sketch, w-21doccam, and w-image are unchanged, as expected. Other alt texts (Ben, Eli, 26 seconds, Blue 2 Green 9 Yellow 4 Red 1) still match.",
+    "Final shots: the Calculator's a, b, n, and of are in Inter Italic with the one-story a, in light and dark. In a Chalkboard note, Cyrillic and Greek draw in Inter at matching size, with the barred І and Ї. Whiteboard stays in Excalifont.",
+    "tools/build-inter.py header: short, and true to spec §3.1 (sources, hashes, tool versions, steps, options)."
+   ],
+   "summary": "I reviewed f9f336c in a separate worktree, which I have since removed. Nothing is broken in the code or the tests. Two problems came up, and both are in the docs and the report.\n\n1. **Dice picture (medium).** The retaken Teacher Guide picture w-dice.jpg shows 6, 2, and 3, total 11. Its alt text still says 5, 6, and 1, total 12. The scene rolls at random, so every retake changes the total. Side-by-side: review-lwt-out/pair-w-dice.jpg.\n2. **Time saved (low).** The builder's report gives no suite time saved. The review brief asks for it.\n\nWhat I checked and found fine:\n- **Untouched files:** the Board Sync merge region and tests/merge.js are byte-identical to the base. The files that must not change didn't, and both OFL copies match upstream.\n- **Words:** tests/words.js passes (71 passed), and tools/words.js reports no problems. The text style is gone from the code and docs, outside the places the spec keeps it. Board Sync and Import never name it. Every new string fits Voice.\n- **Guides:** the Teacher Guide and Calculator manual both build, and both checks pass, with Inter loaded.\n- **Pictures:** the retaken shots differ from the base only in weight and I/l. Nothing is newly wrapped, cut, or moved.\n- **Final shots:** the Calculator's letters are in Inter Italic, and Chalkboard Cyrillic and Greek draw in Inter.\n\nI did not run tests/run.js myself. I relied on the builder's runs.log for the browser suites. My scripts, logs, and comparison pictures are in /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/review-lwt-out."
+  }
+ ],
+ "fixed": {
+  "summary": "All three review findings are dealt with in a new commit, 4d0445d, on branch inter. It sits on top of f9f336c and was not amended or pushed. The worktree is clean.\n\nB1 was real and is fixed. The reviewer's stalled-font case reproduced: in a tab where fonts/Inter-21Board.woff2 never answers, an uploaded widget never started. I first added a check to tests/suites/sdk.js \"Developer mode: upload a widget file\". The 404 tab became a loop over two tabs: font answered 404, and font never answered (the route is held and never continued). Before the fix the suite failed, 53 passed and 1 failed (\"with the font file never answered … (it didn't start)\"). The fix is in board.js DevFiles.page(): the widget now waits at most 1.5 s for the font (`Promise.race([this.font(), new Promise(res => setTimeout(res, 1500, ''))]).catch(() => '')`). After that it starts in the device's font, and the font is tried again on the next start. After the fix the suite passed, 54 of 54.\n\nguide-dice-alt was real and is fixed. docs/teacher-guide/work/scenes.js rollDice now takes a `want` list. The dice scene passes [5, 6, 1] and sets the dice frame's Math.random so the roll lands on those values, so every retake matches the alt text. I retook w-dice.jpg (it now shows \"Rolled 5, 6, 1. Total 12\") and ran build.js and check.js; all checks passed.\n\ntime-not-reported: measured locally, one test process at a time, with nothing else running. The suite times come from tests/run.js with GITHUB_ACTIONS=1. Base 53a2c4f against the branch now: the three Text style suites (8+17+13=38 s) became F1 and F2 (21+13=34). Name Picker Versus from a file went 219 to 125, Weather every size 262 to 241, Widget Picker Paste 64 to 33, Widget Picker icons 41 to 23, Video Player light and dark 47 to 33, SDK Playground 52 to 44, Calculator √ 6 to 3, Settings About 31 to 25, Zones Check-In registry 33 to 28, and Standards picks 64 to 57. Developer mode upload went 41 to 46; the never-answered tab adds about 5 s. Across those suites the total went from 898 s to 692 s, about −206 s. The spec estimated about −195 s.\n\nStamp: node tools/build-sdk.js and node tools/release.js both ran again, then both passed with --check. VERSION is still 2026.11.28-2.\n\nReruns after the fix, all alone, all passing: words.js (71) and the spec §5.7 list, which was 27 tests.js filters with 1248 checks. Logs: /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/fix-runs/after.log (after) and base.log (base timings).\n\nFinal shots in /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/. Ten board shots were retaken from 4d0445d at deviceScaleFactor 2. Each one waited for document.fonts.ready and a loaded Inter face in every frame. calculator-letters.png now shows the whole window in light and dark: the steps bar with its rule strip xⁿ√, Advanced keys, and \"50% of 8 = 4\". guide.png and manual.png were retaken from the built guide and manual; their Inter and Inter Letters faces were loaded in the page and in the demo frame. weight.png is the build's proof and is unchanged.",
+  "commit": "4d0445d",
+  "decisions": [
+   "B1: the uploaded widget waits at most 1.5 s for the board's font (Promise.race), then starts in the device's font. fontP stays cached, so a later start gets Inter once the file arrives. That is spec decision 6: a failed font read means the page goes without it.",
+   "B1 test: the font-404 tab in 'Developer mode: upload a widget file' became a loop over 404 and never answered. Its title says 'within 4 s', which leaves room on slow runners; before the fix the widget never started at all. The never-answered tab opens the board with waitUntil 'domcontentloaded', because a font that never answers holds up the page's load event.",
+   "Dice alt text: I made the shot repeatable instead of rewording the alt text. rollDice(p, ik, n, want) sets the dice frame's Math.random so the roll lands on want. The dice scene uses [5, 6, 1]. The hero scene still rolls at random.",
+   "Timing finding: measured the changed suites on the base and on the branch in this container, using the times tests/run.js prints with GITHUB_ACTIONS=1. No change to tests/timings.json; the session saves CI timings after the first run.",
+   "Final shot calculator-letters.png: the window is cropped whole so the steps bar and its rule strip show. The old script toggled Steps off and cropped the bar away."
+  ],
+  "strings": [
+   "Settings › Appearance row 'Text style' (value 'Standard', 'Easier to read', or 'Early readers'; 'On all your devices.' under it when linked): removed. Appearance is now Theme, Background, Accent color, Board shape. English only (board UI).",
+   "Text style card 'Standard' / hint 'This device’s own font.': removed",
+   "Text style card 'Easier to read' / hint 'Atkinson Hyperlegible, made for people with low vision. I, l, and 1 look different, and 0 has a line through it.': removed",
+   "Text style card 'Early readers' / hint 'Based on Andika by SIL, for children learning to read. Its a and g look the way children write them.': removed",
+   "Text style card sample 'Il1 0 ag': removed",
+   "Text style radiogroup aria-label 'Text style': removed",
+   "Dev window and lab: 'Text style' / 'Easier-to-read fonts can’t load in this test board. Try them in 21Board itself.': removed",
+   "Board Sync message: 'The laptop changed … the text style to “Easier to read”.' (the clause `the text style to “${name}”`): removed. The message now names only the theme, accent color, and default widget language. A text style from an older device says nothing.",
+   "Import › Replace this page, its sub: the list no longer names 'text style'. Old examples: '… So is the text style.', '… So are the theme, accent color, and text style.' New examples: 'So is the theme.', 'So are the theme, accent color, and default widget language.'",
+   "Settings › About › Credits: old 'Atkinson Hyperlegible' 'by the Braille Institute' 'SIL Open Font License 1.1' and 'Andika' 'by SIL International' 'SIL Open Font License 1.1'. New, first: 'Inter' 'by Rasmus Andersson and the Inter Project Authors' 'SIL Open Font License 1.1'",
+   "SDK Playground › Context row 'Text style' (values 'Standard', 'Easier to read', 'Early readers'): removed",
+   "Board21.version: '1.6.0' to '1.7.0'",
+   "NOTICE: '- Atkinson Hyperlegible, by the Braille Institute. SIL Open Font License 1.1.' and '- Andika, by SIL International, as \"21Board Early Readers\". SIL Open Font License 1.1.' became '- Inter, by Rasmus Andersson and the Inter Project Authors. SIL Open Font License 1.1.'",
+   "Teacher Guide 'Make it yours' lede: 'Arrange windows the way your room works, give each subject its own page, and pick the look your students read best.' became 'Arrange windows the way your room works, give each subject its own page, and pick your colors.'",
+   "Teacher Guide card removed: 'Letters made for young readers' / 'Settings › Appearance › Text style changes the letters on the board and in most widgets.' / 'Early readers has an a and a g shaped the way children write them.' / 'Easier to read uses Atkinson Hyperlegible, made for people with low vision. I, l, and 1 look different.'",
+   "Teacher Guide FAQ added: 'Can I change the font?' / 'No. Every board uses one font, Inter. It’s a little bolder, so the back row can read it. I, l, and 1 each look different. Notes’ Chalkboard and Whiteboard keep their own letters.'",
+   "Teacher Guide alt text unchanged, 'Three dice showing 5, 6, and 1, with a total of 12.' The shot now matches it again.",
+   "README: the Settings › Appearance 'Text style ▸' bullet deleted. Layout line 'fonts/ Text style fonts (Settings → Appearance), saved offline, loaded only once chosen' became 'fonts/ Inter, the board's font, and its license, saved offline'. 'text style' dropped from the Import, linking, Board Sync, Going back, and apps lists. The Board Sync lines from 'A device still on 2026.11.16-4 doesn't know the text style.' through '…another updated device.' became 'A device on 2026.11.28-1 or earlier keeps its own text style. It shares it only with your other devices on those releases.' ':833' now reads '`.github/fonts/` makes Inter the system font too, for text the board's own font doesn't draw.' The Third-party entries for Atkinson and Early Readers became the `fonts/Inter-21Board.woff2` entry (… 'About 64 KB.') and the `widgets/calculator/fonts/InterItalic-21Board.woff2` entry ('*Inter* Italic, the same, cut down to the Calculator's letters a, b, n, and x, and the word \"of\". About 3 KB.'). Added: '**For IT:** The tool checks each original's SHA-256 before it builds. `tools/build-inter.py --check` rebuilds and compares the bytes.'",
+   "docs/WIDGET-SDK.md: theme event 'The theme, accent color, or text style changed. …' became 'The theme or accent color changed. The CSS variables are already updated.' resize event: 'Also fires when the teacher's text style changes, and again once its font loads, …' became 'Also fires again once the board's font has loaded, so text can be fitted again.' Theming paragraphs rewritten to '`--b21-font` starts with Inter, 21Board's font, which has every letter in English, Spanish, Russian, Ukrainian, and Greek. The SDK loads it from the board's `fonts/` folder. A widget on another site gets it only if the board's site allows it (CORS). A widget uploaded as a file in Developer mode gets it from the board. Anything Inter doesn't have, such as emoji, comes from the device's own font.' / 'If you fit text to the window, fit it on `resize`, the window's or `Board21.on('resize')`. One fires again once the font has loaded. Form controls don't take the page's font by themselves. Give `button`, `input`, `textarea`, and `select` `font-family: inherit` (or `font: inherit`).' / 'Its regular is a little heavier, for the back of the room. Keep writing `font-weight: 400`. Its digits are proportional, so give numbers that tick `font-variant-numeric: tabular-nums`.' The Russian and Ukrainian line deleted. Added 'On its own, a widget shows Inter only on 21Board's site or opened from disk. Elsewhere it uses the device's font.' Dev window: '… so there your widget shows the device's own font.'",
+   "docs/AI-PROMPT.md: 'The teacher's text style' bullet became '- **The board's font**: `--b21-font` starts with Inter, which comes with 21Board and has every letter in all four languages. Give `button`, `input`, `textarea`, and `select` `font: inherit`, as the skeleton does. A resize event comes once the font has loaded, so the skeleton's `fitAll()` fits text again by itself. Give numbers that tick `font-variant-numeric: tabular-nums`.' In the short prompt, 'so they use the text style the teacher picked too' became 'so they use the board's font too'.",
+   "docs/ROADMAP.md Done: '- One font, Inter, draws all four languages.'",
+   "docs/DATA-FORMAT.md: letters comment 'the text style, shown and chosen only by releases up to 2026.11.28-1: \"standard\" | \"legible\" | \"early\". Later releases never choose one. They keep it, and take a later one from an older device through Board Sync.' lettersAt: 'the text style's, kept for releases up to 2026.11.28-1'. Exports: 'Only `theme`, the accent, and `widgetLanguage`, the default widget language, go into exported files. Files from 2026.11.17-2 to 2026.11.28-1 also hold `letters`, the text style. Later releases ignore it. Device files still carry it (Board Sync, below).' Style parts: '21Board no longer shows the text style. It stays a style part, so devices that haven't updated keep syncing it. An updated device never chooses one, so it never stamps a version. It takes a later one from another device into settings.letters without a word, and writes it on in its own file.' History: 'Versions saved by earlier releases may also hold `letters`, the text style. Going back drops it.' 'text style' dropped from the import-mode, going-back, and history lists, and the example's \"letters\" line deleted.",
+   "No words table changed. Students' words are the same in English, Spanish, Russian, and Ukrainian, now drawn in Inter. The 4d0445d fix adds no user-visible words."
+  ],
+  "tests_changed": [
+   "tests/lib.js: boardUp(page, { fonts }) and addWin(p, id, { fonts }) also wait for document.fonts in the board and in a same-origin window frame (new fontsIn, at most 2 s, polled from Node). The openSettings comment drops 'letters'. Why: decision 18 and F1 item 7.",
+   "tests/words.js: test 11 (fontFor cases) is replaced by 11a (the board's font has every listed code point and every letter of every words table), 11b (one wght axis, heavier regular, STAT/fvar/avar/gvar/HVAR), and 11c (the Calculator's letters). Header comment updated. New helper tests/woff2.js. Why: fontFor is gone.",
+   "tests/suites/settings.js: the three 'Text style (Letters)' suites become F1 'Board font: Inter in 21Board and every widget…' and F2 'Board font: the widget dev window…'. Appearance rows are now 'Theme,Background,Accent color,Board shape'. The groups lists drop 'letters hidden'. About's MARKS and CREDITS put Inter first with no Atkinson or Andika. About's tidy pass runs once. 'Settings keeps a control still' taps Default widget language cards instead of Text style. Why: the setting is gone.",
+   "tests/suites/board-sync.js: the 'On all your devices.' count goes from 4 to 3, and hints() drops the text hint. The 2223 suite is rewritten and retitled 'Board Sync: theme and accent color, and the default widget language (Español from the laptop, all three at once, Settings open, locked, another tab, kiosk, Import, and a text style from an older release)'. It gains the §5.3 checks: an older release's text style is taken silently and passed on, and Import never names or stamps it. Why: the setting is gone.",
+   "tests/suites/board-history.js: the wreck no longer picks Early readers; the theme half stays. Why: the setting is gone.",
+   "tests/suites/board.js: the Pages export keys drop 'letters', and the README sentence check about Early readers is deleted (no checks of the docs' words). Why: exports drop letters.",
+   "tests/suites/calculator.js: the registry files list gains the two font files. The per-text-style loop becomes the Inter Letters check. The √ suite runs once, retitled 'Calculator: the √ sign meets its bar'. Why: decisions 7 and 9.",
+   "tests/suites/sdk.js: standalone gains the Inter and cross-origin checks. SDK Playground is one pass in Inter with no Text style row. Developer mode upload gains the sealed-frame Inter check and the font-404 tab. In 4d0445d that 404 tab became a loop over 'answered 404' and 'never answered' (route held). The uploaded widget must start within 4 s with no Inter face. Why: decision 6, and review finding B1.",
+   "tests/suites/offline-and-updates.js: the file list also follows url(…) in <style> blocks, and the offline page check adds a loaded Inter face. Why: §3.2.",
+   "tests/suites/widget-picker.js: the icons and Paste suites drop the Text style loops and are retitled. Why: the setting is gone.",
+   "tests/suites/name-picker.js: fitTools.letters deleted, and the Groups and Bracket text-style refits removed. Versus from a file is one style, retitled 'Name Picker: Versus from a file, and long names fitting'. The Early readers dark pass is removed. The Spinning wheel checks names, banner, and SPIN in Inter. Spotlight and Lotto drop the Easier to read steps. Why: the setting is gone.",
+   "tests/suites/clock-and-calendar.js: the text-style clock-room port becomes the late-Inter check. Why: §5.4.",
+   "tests/suites/widgets.js: Standards picks rule cells are checked once, at the narrowest canvas. Why: no style loop.",
+   "tests/suites/weather.js: part 7 is one walk ('every word in Inter'), and the Early readers Small pass is removed. Why: the setting is gone.",
+   "tests/suites/video-player.js: one style; fitted.length === texts.length. Why: the setting is gone.",
+   "tests/suites/zones-check-in.js: the tile wrap 'Zones / Check-In' is checked once, in Inter. Why: the setting is gone.",
+   "tests/suites/picture.js: message only, 'the text style’s font' became 'the board’s font'.",
+   "docs/teacher-guide/check.js and docs/calculator-manual/check.js: they also fail unless Inter (and Inter Letters in the manual) are loaded. Why: §7 and §8.",
+   "No lower bound was moved."
+  ],
+  "tests": [
+   {
+    "suite": "Developer mode: upload a widget file (before the fix, new never-answered check)",
+    "passed": 53,
+    "failed": 1,
+    "note": "Fail-first: 'with the font file never answered, an uploaded widget still starts within 4 s … (it didn't start)'"
+   },
+   {
+    "suite": "Developer mode: upload a widget file (after the fix)",
+    "passed": 54,
+    "failed": 0
+   },
+   {
+    "suite": "node tests/words.js",
+    "passed": 71,
+    "failed": 0
+   },
+   {
+    "suite": "Spec §5.7 suites and changed suites after the fix (27 tests.js filters, run alone): Board font, Versus from, Weather every size, Widget Picker Paste and icons, Video Player light, SDK Playground, Calculator √, Settings About, Zones registry, Standards picks, Developer mode upload, Settings sections, Settings keeps a control, Board Sync theme, Board Sync setting up, Copy, Pages, Calculator Widget Picker, Clock in the corner, SDK developer mode, Task Timer schedule, Name Picker Versus names, Weather Location, Offline, Opened from disk, Languages",
+    "passed": 1248,
+    "failed": 0,
+    "note": "Log: /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/fix-runs/after.log"
+   },
+   {
+    "suite": "Base 53a2c4f timing runs (12 filters)",
+    "passed": 438,
+    "failed": 0,
+    "note": "Base timings only. Log: /tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/fix-runs/base.log. Those suites took 898 s on the base and 692 s now."
+   },
+   {
+    "suite": "Teacher Guide check.js",
+    "passed": 1,
+    "failed": 0,
+    "note": "All checks passed after retaking w-dice."
+   }
+  ],
+  "screenshots": [
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/board-light.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/board-dark.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/settings-appearance.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/languages.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/calculator-letters.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/name-picker-long.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/clock.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/settings-language.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/notes-scripts.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/menu-80.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/weight.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/guide.png",
+   "/tmp/claude-0/-home-user-21Board/80abfb5d-dedb-5e63-a9c1-d0d55541337d/scratchpad/inter/final-shots/manual.png"
+  ],
+  "open_issues": [
+   "The Traffic Light has no visible words: its lamps carry only aria-labels, and its title bar stays English. So languages.png shows Español only through the window's Language setting. The Timer's chips (1 мин … 15 мин) show the Russian.",
+   "The suite times were measured in this container, not on CI. CI's split and wall-clock savings show only after the session saves timings from the first CI run.",
+   "The Teacher Guide and the Calculator manual are built and checked but not published. The session publishes them after the merge."
+  ]
+ }
+}

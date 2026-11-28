@@ -1,0 +1,12 @@
+Width of "nnnn oooo HHHH Жжж πππ", Chromium 158.0.8127.36. Canvas at 14 px (the source at opsz 14 by its automatic optical size), and spans at 100 px with opsz 14.
+
+canvas: built CSS 400: 186.867   source 490: 186.867   diff 0.000%   (source at 400: 185.562)
+spans:  built CSS 400: 1334.78   source 490: 1334.78   diff 0.000%
+canvas: built CSS 500: 187.947   source 560: 187.947   diff 0.000%   (source at 500: 187.056)
+spans:  built CSS 500: 1342.48   source 560: 1342.48   diff 0.000%
+canvas: built CSS 600: 188.972   source 630: 188.972   diff 0.000%   (source at 600: 188.523)
+spans:  built CSS 600: 1349.81   source 630: 1349.81   diff 0.000%
+canvas: built CSS 700: 190.010   source 700: 190.010   diff 0.000%   (source at 700: 190.010)
+spans:  built CSS 700: 1357.22   source 700: 1357.22   diff 0.000%
+
+PASS: every weight within 0.5%

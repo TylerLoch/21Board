@@ -1,0 +1,297 @@
+=== WORDS (12:35:08, others running: 0)
+
+71 passed, 0 failed
+=== Board font: (12:35:09, others running: 0)
+
+Board font: Inter in 21Board and every widget, its shapes, late and offline, and nothing from another site
+  22 passed
+
+Board font: the widget dev window (on 21Board’s site, in an AI tool’s preview, in the widget lab)
+  5 passed
+
+Suite times: {"Board font: Inter in 21Board and every widget, its shapes, late and offline, and nothing from another site":21,"Board font: the widget dev window (on 21Board’s site, in an AI tool’s preview, in the widget lab)":13}
+
+27 passed, 0 failed
+=== exit 0
+=== Versus from (12:35:43, others running: 0)
+
+Name Picker: Versus from a file, and long names fitting
+  8 passed
+
+Suite times: {"Name Picker: Versus from a file, and long names fitting":125}
+
+8 passed, 0 failed
+=== exit 0
+=== Weather: every size (12:37:48, others running: 0)
+
+Weather: every size, light and dark, filling the board locked and unlocked, the Show list, and the unit letter
+  21 passed
+
+Suite times: {"Weather: every size, light and dark, filling the board locked and unlocked, the Show list, and the unit letter":241}
+
+21 passed, 0 failed
+=== exit 0
+=== Widget Picker: Paste (12:41:50, others running: 0)
+
+Widget Picker: Paste (both corners at 1366 × 768 in every Size, with one page and 12, every widget in view, six columns from 150%; five columns on smaller screens, ‹ Page › on a row of its own where the buttons need the room; a picture opens a Picture window, a video link a Video Player; nothing to paste, a link it can’t play, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)
+  31 passed
+
+Suite times: {"Widget Picker: Paste (both corners at 1366 × 768 in every Size, with one page and 12, every widget in view, six columns from 150%; five columns on smaller screens, ‹ Page › on a row of its own where the buttons need the room; a picture opens a Picture window, a video link a Video Player; nothing to paste, a link it can’t play, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)":33}
+
+31 passed, 0 failed
+=== exit 0
+=== Widget Picker: icons (12:42:23, others running: 0)
+
+Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (5 and 3 columns, 100–150%, both corners, badges and DEV, 200%, four rows of tiles, a ring in dark mode)
+  49 passed
+
+Suite times: {"Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (5 and 3 columns, 100–150%, both corners, badges and DEV, 200%, four rows of tiles, a ring in dark mode)":23}
+
+49 passed, 0 failed
+=== exit 0
+=== Video Player: light (12:42:47, others running: 0)
+
+Video Player: light and dark, at least 200 × 200 on screen (1366 × 768 and 1920 × 1080, every size and both board shapes), export and import
+    smallest players drawn: 1366×768 16:9 50% 201×201, 1366×768 16:9 80% 201×201, 1366×768 16:9 200% 284×284, 1366×768 free 50% 203×203, 1366×768 free 80% 202×202, 1366×768 free 200% 400×400, 1920×1080 16:9 50% 203×203, 1920×1080 16:9 80% 202×202, 1920×1080 16:9 200% 400×400, 1920×1080 free 50% 203×203, 1920×1080 free 80% 202×202, 1920×1080 free 200% 400×400
+  18 passed
+
+Suite times: {"Video Player: light and dark, at least 200 × 200 on screen (1366 × 768 and 1920 × 1080, every size and both board shapes), export and import":33}
+
+18 passed, 0 failed
+=== exit 0
+=== SDK Playground (12:43:20, others running: 0)
+
+SDK Playground: every call and event the SDK has, run with your own values (save and load, a menu from JSON with a heading and a checkmark, title, minimum size), bad JSON, copy as code, live state, the palette (theme, Custom… accent), the log (timestamps, pretty JSON, filter, pause, clear, copy), the smallest window, the keyboard
+  60 passed
+
+Suite times: {"SDK Playground: every call and event the SDK has, run with your own values (save and load, a menu from JSON with a heading and a checkmark, title, minimum size), bad JSON, copy as code, live state, the palette (theme, Custom… accent), the log (timestamps, pretty JSON, filter, pause, clear, copy), the smallest window, the keyboard":44}
+
+60 passed, 0 failed
+=== exit 0
+=== Calculator: the √ (12:44:04, others running: 0)
+
+Calculator: the √ sign meets its bar
+  2 passed
+
+Suite times: {"Calculator: the √ sign meets its bar":3}
+
+2 passed, 0 failed
+=== exit 0
+=== Settings: About (12:44:08, others running: 0)
+
+Settings: About (its own group below Advanced: the 21 gear, the sentence, version and storage, license, credits, the goat; offline, kiosk, Board Sync, the widget dev window, Size 50%–200%, both corners)
+  24 passed
+
+Suite times: {"Settings: About (its own group below Advanced: the 21 gear, the sentence, version and storage, license, credits, the goat; offline, kiosk, Board Sync, the widget dev window, Size 50%–200%, both corners)":26}
+
+24 passed, 0 failed
+=== exit 0
+=== Zones Check-In: the registry (12:44:34, others running: 0)
+
+Zones Check-In: the registry, and its layout (260 × 220, the default size, very wide, very tall, filling the board unlocked and locked, light and dark)
+  18 passed
+
+Suite times: {"Zones Check-In: the registry, and its layout (260 × 220, the default size, very wide, very tall, filling the board unlocked and locked, light and dark)":28}
+
+18 passed, 0 failed
+=== exit 0
+=== Standards picks (12:45:02, others running: 0)
+
+Standards picks: rule cells, ± and 0, school Drive, and grade labels
+  52 passed
+
+Suite times: {"Standards picks: rule cells, ± and 0, school Drive, and grade labels":57}
+
+52 passed, 0 failed
+=== exit 0
+=== Developer mode: upload (12:46:00, others running: 0)
+
+Developer mode: upload a widget file
+  54 passed
+
+Suite times: {"Developer mode: upload a widget file":46}
+
+54 passed, 0 failed
+=== exit 0
+=== Settings: sections (12:46:46, others running: 0)
+
+Settings: sections and groups, Auto theme, This page › Windows, windows stopping at edges, the dot on Advanced
+  32 passed
+
+Suite times: {"Settings: sections and groups, Auto theme, This page › Windows, windows stopping at edges, the dot on Advanced":27}
+
+32 passed, 0 failed
+=== exit 0
+=== Settings keeps a control (12:47:14, others running: 0)
+
+Settings keeps a control still as it changes the rows around it: tapped in the middle of the sheet, it stays under the finger while lines come and go above it or in its row, or the sheet is drawn larger (1366 × 768, light, the usual size and 200%: Stay awake, Photo Fit, Clock in the corner, Size, Default widget language)
+  22 passed
+
+Suite times: {"Settings keeps a control still as it changes the rows around it: tapped in the middle of the sheet, it stays under the finger while lines come and go above it or in its row, or the sheet is drawn larger (1366 × 768, light, the usual size and 200%: Stay awake, Photo Fit, Clock in the corner, Size, Default widget language)":17}
+
+22 passed, 0 failed
+=== exit 0
+=== Board Sync: theme (12:47:31, others running: 0)
+
+Board Sync: theme and accent color on every device (a change and what it says, Settings open, Auto back, locked, another tab, kiosk, a fresh smartboard, the hints)
+  34 passed
+
+Board Sync: theme and accent color when two devices set up one folder at once, and a choice made while a round runs
+  6 passed
+
+Board Sync: theme and accent color, and the default widget language (Español from the laptop, all three at once, Settings open, locked, another tab, kiosk, Import, and a text style from an older release)
+  18 passed
+
+Suite times: {"Board Sync: theme and accent color on every device (a change and what it says, Settings open, Auto back, locked, another tab, kiosk, a fresh smartboard, the hints)":13,"Board Sync: theme and accent color when two devices set up one folder at once, and a choice made while a round runs":13,"Board Sync: theme and accent color, and the default widget language (Español from the laptop, all three at once, Settings open, locked, another tab, kiosk, Import, and a text style from an older release)":14}
+
+58 passed, 0 failed
+=== exit 0
+=== Board Sync: setting up (scenarios (12:48:12, others running: 0)
+
+Board Sync: setting up (scenarios 1–4: the first device, a fresh smartboard, a device with its own pages, two set up at once)
+  31 passed
+
+Suite times: {"Board Sync: setting up (scenarios 1–4: the first device, a fresh smartboard, a device with its own pages, two set up at once)":38}
+
+31 passed, 0 failed
+=== exit 0
+=== Copy:  (12:48:51, others running: 0)
+
+Copy: words no other suite checks (Widget Picker tooltips and its name, closing a window, Delete page with closed windows, Duplicate, Calendar, Timer, Task Timer, Board Sync with several devices, a photo that can’t be used, the widget dev window and lab, the docs)
+  20 passed
+
+Copy: Oxford commas
+  16 passed
+
+Suite times: {"Copy: words no other suite checks (Widget Picker tooltips and its name, closing a window, Delete page with closed windows, Duplicate, Calendar, Timer, Task Timer, Board Sync with several devices, a photo that can’t be used, the widget dev window and lab, the docs)":10,"Copy: Oxford commas":28}
+
+36 passed, 0 failed
+=== exit 0
+=== Pages (multiple boards) (12:49:29, others running: 0)
+
+Pages (multiple boards)
+  49 passed
+
+Pages (multiple boards): nothing lost when things go wrong
+  18 passed
+
+Suite times: {"Pages (multiple boards)":70,"Pages (multiple boards): nothing lost when things go wrong":64}
+
+67 passed, 0 failed
+=== exit 0
+=== Calculator: the Widget Picker (12:51:44, others running: 0)
+
+Calculator: the Widget Picker and a new window (canvas on the left, History hidden), the keys, = = =, History on and off and its lines, percent, faint digit groups, Advanced keys, Steps, Hide the answer, In words, Answers, the keyboard, Swap sides, saved and kept apart, Reset, light and dark, the menu, the smallest size, the docs
+  111 passed
+
+Suite times: {"Calculator: the Widget Picker and a new window (canvas on the left, History hidden), the keys, = = =, History on and off and its lines, percent, faint digit groups, Advanced keys, Steps, Hide the answer, In words, Answers, the keyboard, Swap sides, saved and kept apart, Reset, light and dark, the menu, the smallest size, the docs":80}
+
+111 passed, 0 failed
+=== exit 0
+=== Clock in the corner (Auto (12:53:04, others running: 0)
+
+Clock in the corner (Auto by default: only in full screen, ⛶ and the window’s own, kiosk; On, Off, the minute, time and date, dark, corners, never in the way, older values, LAB)
+  63 passed
+
+Suite times: {"Clock in the corner (Auto by default: only in full screen, ⛶ and the window’s own, kiosk; On, Off, the minute, time and date, dark, corners, never in the way, older values, LAB)":59}
+
+63 passed, 0 failed
+=== exit 0
+=== SDK, developer mode (12:54:04, others running: 0)
+
+SDK, developer mode, standalone
+  41 passed
+
+Suite times: {"SDK, developer mode, standalone":20}
+
+41 passed, 0 failed
+=== exit 0
+=== Task Timer: schedule (12:54:24, others running: 0)
+
+Task Timer: schedule, reload, two tabs, the alarm, a crafted file
+  27 passed
+
+Suite times: {"Task Timer: schedule, reload, two tabs, the alarm, a crafted file":19}
+
+27 passed, 0 failed
+=== exit 0
+=== Name Picker: Versus names (12:54:43, others running: 0)
+
+Name Picker: Versus names as windows resize, in dark theme, and the docs
+  11 passed
+
+Suite times: {"Name Picker: Versus names as windows resize, in dark theme, and the docs":141}
+
+11 passed, 0 failed
+=== exit 0
+=== Weather: Location (12:57:05, others running: 0)
+
+Weather: Location, On a date, and Simple words
+  25 passed
+
+Suite times: {"Weather: Location, On a date, and Simple words":34}
+
+25 passed, 0 failed
+=== exit 0
+=== Offline (12:57:40, others running: 0)
+
+Board Sync: Google Drive misbehaving (scenarios 32–38: offline for days, clocks, half files, old revisions, conflict copies, this device’s own file, a copied profile)
+  19 passed
+
+Offline
+cached files: 56 / /index.html /board.js /sdk/board21.js /sdk/board21-dev.js /sdk/dev/board-shell.js /sdk/lab.html /widgets/registry.js /manifest.webmanifest /icons/icon-192.png /icons/icon-512.png /icons/gear-21.png /icons/goat.png /LICENSE /LICENSE-DOCS /fonts/Inter-21Board.woff2 /fonts/Inter-OFL.txt /widgets/timer/index.html /widgets/timer/words.js /widgets/stopwatch/index.html /widgets/task-timer/index.html /widgets/calendar/index.html /widgets/clock/index.html /widgets/notes/index.html /widgets/notes/fonts/CrayonLibre-21Board.woff2 /widgets/notes/fonts/CrayonLibre-LICENSE.txt /widgets/notes/fonts/Excalifont-Regular.woff2 /widgets/notes/fonts/Excalifont-OFL.txt /widgets/name-picker/index.html /widgets/name-picker/style-bigname.js /widgets/name-picker/style-wheel.js /widgets/name-picker/style-spotlight.js /widgets/name-picker/style-lotto.js /widgets/name-picker/style-versus.js /widgets/name-picker/vs-lightning.js /widgets/name-picker/vs-forged.js /widgets/name-picker/vs-crest.js /widgets/name-picker/vs-comic.js /widgets/name-picker/vs-flame.js /widgets/name-picker/style-groups.js /widgets/name-picker/style-bracket.js /widgets/first-then-board/index.html /widgets/zones-check-in/index.html /widgets/dice/index.html /widgets/traffic-light/index.html /widgets/traffic-light/words.js /widgets/youtube-player/index.html /widgets/youtube-player/video-links.js /widgets/image/index.html /widgets/calculator/index.html /widgets/calculator/calc-engine.js /widgets/calculator/fonts/InterItalic-21Board.woff2 /widgets/calculator/fonts/Inter-OFL.txt /widgets/weather/index.html /widgets/weather/calendar.js /widgets/sdk-playground/index.html
+  5 passed
+
+Image: pasting and dropping pictures onto the board (Ctrl+V, after tapping a widget, Notes keeps its paste, an empty Picture window, text, the Paste button, locked windows, drops on the board and on windows, kiosk, offline)
+  40 passed
+
+Settings: About (its own group below Advanced: the 21 gear, the sentence, version and storage, license, credits, the goat; offline, kiosk, Board Sync, the widget dev window, Size 50%–200%, both corners)
+  24 passed
+
+Board font: Inter in 21Board and every widget, its shapes, late and offline, and nothing from another site
+  22 passed
+
+Video Player: nothing plays behind the link box (Change video here and in another tab, Cancel, Reset, another page), reload, saved data checked, offline
+  28 passed
+
+Video Player: History titles YouTube doesn’t give (a private video, blocked, no answer, offline, then online), a hostile, invisible, long or wide title, a series, at most five requests at once, the menu at Size 200%
+  26 passed
+
+Video Player: a History of YouTube, Google Drive and Vimeo videos (titles from YouTube and Vimeo, Drive’s labels told apart, tapping one, older content, damaged content from each site, offline, export and import)
+  26 passed
+
+Weather: saving, Board Sync and Board history, refresh clocks, offline, and No motion
+  41 passed
+
+Zones Check-In: a Blank template, Board history, offline
+  14 passed
+
+Suite times: {"Board Sync: Google Drive misbehaving (scenarios 32–38: offline for days, clocks, half files, old revisions, conflict copies, this device’s own file, a copied profile)":24,"Offline":5,"Image: pasting and dropping pictures onto the board (Ctrl+V, after tapping a widget, Notes keeps its paste, an empty Picture window, text, the Paste button, locked windows, drops on the board and on windows, kiosk, offline)":24,"Settings: About (its own group below Advanced: the 21 gear, the sentence, version and storage, license, credits, the goat; offline, kiosk, Board Sync, the widget dev window, Size 50%–200%, both corners)":25,"Board font: Inter in 21Board and every widget, its shapes, late and offline, and nothing from another site":21,"Video Player: nothing plays behind the link box (Change video here and in another tab, Cancel, Reset, another page), reload, saved data checked, offline":20,"Video Player: History titles YouTube doesn’t give (a private video, blocked, no answer, offline, then online), a hostile, invisible, long or wide title, a series, at most five requests at once, the menu at Size 200%":52,"Video Player: a History of YouTube, Google Drive and Vimeo videos (titles from YouTube and Vimeo, Drive’s labels told apart, tapping one, older content, damaged content from each site, offline, export and import)":38,"Weather: saving, Board Sync and Board history, refresh clocks, offline, and No motion":85,"Zones Check-In: a Blank template, Board history, offline":11}
+
+245 passed, 0 failed
+=== exit 0
+=== Opened from disk (13:02:46, others running: 0)
+
+Opened from disk (file://)
+  7 passed
+
+Suite times: {"Opened from disk (file://)":8}
+
+7 passed, 0 failed
+=== exit 0
+=== Languages (13:02:54, others running: 0)
+
+Languages: the Node check of every words table (tests/words.js)
+  1 passed
+
+Languages: the Language row and its flyout, saved with the window, the default for new windows, two tabs, export and import, Lock, and the keyboard
+  28 passed
+
+Languages: every converted widget in the pseudo language, inside the board: no English left, nothing cut off, and a language from its menu ends it
+  8 passed
+
+Suite times: {"Languages: the Node check of every words table (tests/words.js)":0,"Languages: the Language row and its flyout, saved with the window, the default for new windows, two tabs, export and import, Lock, and the keyboard":28,"Languages: every converted widget in the pseudo language, inside the board: no English left, nothing cut off, and a language from its menu ends it":6}
+
+37 passed, 0 failed
+=== exit 0
+=== DONE
