@@ -973,7 +973,7 @@
   "ru": "Солнечно",
   "uk": "Сонячно",
   "source": "none (no CCSD21 or Amplify use found; standard usage)",
-  "note": "Condition words follow widgets/weather/index.html:1141-1142. "
+  "note": "Condition words follow widgets/weather/index.html:1340-1341. "
  },
  {
   "en": "clear (night)",
@@ -1093,7 +1093,7 @@
   "ru": "Восход",
   "uk": "Схід сонця",
   "source": "none (no CCSD21 or Amplify use found; standard usage)",
-  "note": "widgets/weather/index.html:1232."
+  "note": "widgets/weather/index.html:1431."
  },
  {
   "en": "sunset",
@@ -1109,7 +1109,7 @@
   "ru": "Качество воздуха",
   "uk": "Якість повітря",
   "source": "AIRNOW-ES (https://www.airnow.gov/aqi/aqi-basics-in-spanish/)",
-  "note": "AQI levels below agree with the noun: ru neuter (качество), uk feminine (якість). widgets/weather/index.html:1178-1183."
+  "note": "AQI levels below agree with the noun: ru neuter (качество), uk feminine (якість). widgets/weather/index.html:1377-1382."
  },
  {
   "en": "air quality: Good",
@@ -1165,7 +1165,7 @@
   "ru": "Зимняя куртка",
   "uk": "Зимова куртка",
   "source": "none (no CCSD21 or Amplify use found; standard usage)",
-  "note": "What to wear: widgets/weather/index.html:602-610. ru/uk \"пальто\" is a dress coat; kids wear a winter jacket."
+  "note": "What to wear: widgets/weather/index.html:795-803. ru/uk \"пальто\" is a dress coat; kids wear a winter jacket."
  },
  {
   "en": "jacket",
@@ -1237,7 +1237,7 @@
   "ru": "очень холодно, холодно, прохладно, свежо, тепло, жарко",
   "uk": "дуже холодно, холодно, прохолодно, свіжо, тепло, спекотно",
   "source": "none (no CCSD21 or Amplify use found; standard usage)",
-  "note": "Tiers very cold, cold, chilly, cool, mild, warm (widgets/weather/index.html:603-610). The sentence is built; translate each whole sentence, e.g. \"Hace frío. Ponte el abrigo.\", \"Холодно. Надень куртку.\", \"Холодно. Одягни куртку.\""
+  "note": "Tiers very cold, cold, chilly, cool, mild, warm (widgets/weather/index.html:796-803). The sentence is built; translate each whole sentence, e.g. \"Hace frío. Ponte el abrigo.\", \"Холодно. Надень куртку.\", \"Холодно. Одягни куртку.\""
  },
  {
   "en": "die; dice",
