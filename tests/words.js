@@ -186,6 +186,11 @@ const BITES = [
   ['a Russian letter in Ukrainian', FIX, t => swap(t, "uk: '{n} хв' }", "uk: '{n} хы' }"), t => `${FIX} line ${lineOf(t, "'{n} хы'")}: chip.min in Ukrainian has ы, a Russian letter.`],
   ['a Ukrainian letter in Russian', FIX, t => swap(t, "ru: '{n} мин',", "ru: '{n} мін',"), t => `${FIX} line ${lineOf(t, "'{n} мін'")}: chip.min in Russian has і, a Ukrainian letter.`],
   ['Cyrillic in Spanish', FIX, t => swap(t, "es: '{n} min',", "es: '{n} мин',"), t => `${FIX} line ${lineOf(t, "es: '{n} мин'")}: chip.min in Spanish has Cyrillic letters.`],
+  ['a never word in Spanish', FIX, t => swap(t, "es: 'Restar un minuto',", "es: 'Restar, tontito',"), t => `${FIX} line ${lineOf(t, 'tontito')}: minus in Spanish has “tontito”. Never use it.`],
+  ['a never word in Spanish, capitalized', FIX, t => swap(t, "es: 'Restar un minuto',", "es: 'Atontada',"), t => `${FIX} line ${lineOf(t, 'Atontada')}: minus in Spanish has “Atontada”. Never use it.`],
+  ['excitado in Spanish', FIX, t => swap(t, "es: 'Restar un minuto',", "es: 'Restar, excitadas',"), t => `${FIX} line ${lineOf(t, 'excitadas')}: minus in Spanish has “excitadas”. Never use it.`],
+  ['a never word in Russian', FIX, t => swap(t, "ru: 'Убавить минуту',", "ru: 'Возбуждение',"), t => `${FIX} line ${lineOf(t, 'Возбуждение')}: minus in Russian has “Возбуждение”. Never use it.`],
+  ['a never word in Ukrainian', FIX, t => swap(t, "uk: 'Відняти хвилину'", "uk: 'Відняти, збуджений'"), t => `${FIX} line ${lineOf(t, 'збуджений')}: minus in Ukrainian has “збуджений”. Never use it.`],
   ['ʼ in Ukrainian', FIX, t => swap(t, "uk: 'Відняти хвилину'", "uk: 'Відняти пʼять хвилин'"), t => `${FIX} line ${lineOf(t, 'пʼять')}: minus in Ukrainian has ʼ. Type ’ instead.`],
   ['a straight apostrophe in Ukrainian', FIX, t => swap(t, "uk: 'Відняти хвилину'", "uk: 'Відняти п\\'ять хвилин'"), t => `${FIX} line ${lineOf(t, "п\\'ять")}: minus in Ukrainian has '. Type ’ instead.`],
   ['a missing Oxford comma in English', FIX, t => swap(t, "en: 'Subtract one minute',", "en: 'Subtract one, two and three minutes',"), t => `${FIX} line ${lineOf(t, 'two and three')}: minus in English needs a comma before “and”.`],
@@ -209,6 +214,14 @@ for (const [name, file, change, want] of BITES) {
     yes(r.problems.includes(expect), `want “${expect}” in:\n${r.problems.join('\n') || '(no problems)'}`);
   });
 }
+// Never words match a word's start, in their own language only.
+test('never words: only at a word’s start, in their own language', () => {
+  need();
+  const t = swap(swap(FIXTURE[FIX], "en: 'Subtract one minute',", "en: 'Subtract tonto excitado',"), "es: 'Restar un minuto',", "es: 'Restar un montón',");
+  const r = W.check({ files: fixture({ [FIX]: t }) });
+  const hit = r.problems.filter(p => /Never use it/.test(p));
+  yes(!hit.length, hit.join('\n'));
+});
 // The languages a widget lists (its registry entry, or the starter's manifest) and its table go together.
 const REG = FIXTURE['widgets/registry.js'] || '';
 const TEMPLATE = 'widgets/_template/index.html';
