@@ -6,7 +6,7 @@ everyone who writes or reviews 21Board's words tables. [TRANSLATING.md](TRANSLAT
 The same 186 entries are in tools/glossary.json, which `node tools/words.js --glossary <id>` reads. Both come from
 one list in tools/make-glossary.py. Change the list there, then run `python3 tools/make-glossary.py`.
 
-Code lines cite release 2026.11.26-11. calc-engine.js means widgets/calculator/calc-engine.js.
+Code lines cite release 2026.11.27-2. calc-engine.js means widgets/calculator/calc-engine.js.
 
 How to read a row: the words to use on the board, in the form a widget shows them. "a; b" means two forms, such as
 two genders, or a button and a plain word. Source codes are in the legend below. "—" means no CCSD21 or Amplify

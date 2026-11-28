@@ -14,11 +14,11 @@
 const VERSION = '2026.11.27-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '385ac411';
+const BUILD = '7d0568c4';
 const FILES = {
-  './': 'e492c632712eaec4',
-  'index.html': 'e492c632712eaec4',
-  'board.js': '467a00701d44b29d',
+  './': '77459f9dca233cd6',
+  'index.html': '77459f9dca233cd6',
+  'board.js': '3afc2cbecc4da53f',
   'sdk/board21.js': '08906190c5acd9e7',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': 'ab3f1ec62f52697e',
@@ -71,7 +71,7 @@ const FILES = {
   'widgets/image/index.html': 'af8342c7d8c343fa',
   'widgets/calculator/index.html': '3896197f020c6ab2',
   'widgets/calculator/calc-engine.js': 'bef93f908446ec8e',
-  'widgets/weather/index.html': '35319fc7f732ebb7',
+  'widgets/weather/index.html': '883e68f7c4ae95b0',
   'widgets/weather/calendar.js': '6b801ee9abb6d70d',
   'widgets/sdk-playground/index.html': '6f72b8cc9da26bdd'
 };

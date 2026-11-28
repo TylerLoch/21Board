@@ -3205,6 +3205,21 @@
   $('sheet').addEventListener('click', e => { if (e.target === $('sheet')) closeSheet(); });
 
   // ---- Taps, keys, and the date picker.
+  // By keys, a view gives its Back the focus, and Back or Escape gives it to the card that opened the view. A tap moves
+  // no focus, so no ring shows.
+  let opener = null, keyed = false;
+  addEventListener('keydown', () => { keyed = true; }, true);
+  addEventListener('pointerdown', () => { keyed = false; }, true);
+  function goTo(to, from) {
+    const v = $('view'), tabs = g => [...v.querySelectorAll(`[data-go="${g}"]`)].filter(e => e.tabIndex >= 0);
+    if (view === 'main' && to !== 'main' && from) opener = { go: to, i: Math.max(0, tabs(to).findIndex(e => e === from || from.contains(e))) };
+    const o = opener;
+    if (to === 'main') opener = null;
+    view = to; draw();
+    if (!keyed) return;
+    if (to !== 'main') { const b = v.querySelector('.bar2 [data-go="main"]'); if (b) b.focus(); }
+    else if (o) { const all = tabs(o.go), e = all[o.i] || all[0]; if (e) e.focus(); }
+  }
   $('view').addEventListener('click', e => {
     let t = e.target.closest('[data-go], [data-wear], [data-act]');
     // (A tap on What to wear's toggle, around or between its days: the nearer day, never the card under it.)
@@ -3212,7 +3227,7 @@
     if (days.length && !(t && tg.contains(t))) { const x = q => { const r = q.getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - e.clientX); }; t = days.reduce((a, b) => (x(b) < x(a) ? b : a)); }
     if (!t) return;
     if (t.dataset.wear) { wearPick = t.dataset.wear; draw(); }
-    else if (t.dataset.go) { view = t.dataset.go; draw(); }
+    else if (t.dataset.go) goTo(t.dataset.go, t);
     else if (t.dataset.act === 'today') setDate(null);
     else if (t.dataset.act === 'prev' || t.dataset.act === 'next') { const d = addDays(config.date, t.dataset.act === 'prev' ? -1 : 1); if (d >= '1940-01-01' && d <= yesterday()) setDate(d); }
   });
@@ -3228,7 +3243,7 @@
   $('view').addEventListener('click', e => { const i = e.target.closest('input[type="date"]'); if (i && i.showPicker) try { i.showPicker(); } catch (err) { /* the browser opens it itself */ } });
   addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (!$('sheet').hidden) { e.preventDefault(); closeSheet(); } else if (view !== 'main' && !config.date) { e.preventDefault(); view = 'main'; draw(); }
+    if (!$('sheet').hidden) { e.preventDefault(); closeSheet(); } else if (view !== 'main' && !config.date) { e.preventDefault(); goTo('main'); }
   });
 
   // ---- The board's own buttons and padlocks over a window that fills it: the parts keep clear of them.
