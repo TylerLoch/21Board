@@ -105,7 +105,7 @@ const pick = (a, r = rnd) => a[Math.floor(r() * a.length)];
 const token = v => (v && typeof v === 'object' ? (typeof v.text === 'string' ? v.text : Array.isArray(v.tasks) ? v.tasks[0] : null) : null);
 let LOG;
 const newLog = () => ({ typed: new Set(), gone: new Set(), dels: [], edits: [], sig: new Map(), writes: 0, fileKnow: new Map(),
-  replaced: new Set(), repl: new Map(), spur: [], udels: [], published: new Set(), resetCopies: new Set(), styles: [], folder: null, langs: new Map(),
+  replaced: new Set(), repl: new Map(), spur: [], udels: [], delN: 0, published: new Set(), resetCopies: new Set(), styles: [], folder: null, langs: new Map(),
   english: [], langFiles: new Map() });
 // A name, color, place, setting or Timer state that a device changed while it showed it (folder|unit|mark): it must
 // never come back (oracle 7). Typed text is the "lost" oracle's.
@@ -248,10 +248,11 @@ class Device {
     LOG.langs.get(k).add(lang || 'en');
     if (!v.language) { const c = { id: LOG.english.length + 1, k, by: this.dev, folder: this.folderName }; LOG.english.push(c); this.langKnow.add(c.id); }
   }
-  // The ledger and this device's own file both lost: an English chosen here that no other device has had is lost with
-  // them. With no entry, it is no version (Rule 1), and the folder's language applies, as on a first set-up. Oracle 11
-  // no longer holds the window to it, as oracle 3 no longer holds a deletion lost the same way. (A device on 2026.11.27-1
-  // that merged it doesn't count: it reads past a window's language.)
+  // The ledger and this device's own file both lost: an English chosen here that no other device has had, before them or
+  // since, until the round that follows, is lost with them. With no entry, it is no version (Rule 1), and the folder's
+  // language applies, as on a first set-up. Oracle 11 no longer holds the window to it, as oracle 3 no longer holds a
+  // deletion lost the same way. (A device on 2026.11.27-1 that merged it doesn't count: it reads past a window's
+  // language.)
   langLost() {
     for (const c of LOG.english) {
       if (c.by !== this.dev || c.folder !== this.folderName || (global.__devs || []).some(o => o !== this && o.langKnow.has(c.id))) continue;
@@ -265,32 +266,43 @@ class Device {
     if (iv.copyOf) LOG.resetCopies.add(iv.wid);   // (an empty copy is fine once it was emptied on purpose)
     this.del(`data:${b}:${ik}`); this.del(`conf:${b}:${ik}`); this.markless(b, ik); this.touchWin(b, ik);
   }
+  // Text this device showed in a window that then lost a clash here and waits for its copy (pending in its ledger): a
+  // deletion made here had seen it, and it goes with the window or page.
+  seenPending(b, wid) {
+    const M = this.link && this.link.mines.get(this.pageUnit(b)), mw = M && M.w && M.w[wid];
+    return ((mw && mw.p.data && mw.p.data.pending) || []).map(q => token(q.val)).filter(t => t && LOG.sig.has(t) && this.applied.has(LOG.sig.get(t)));
+  }
   delWin(b, ik) {
     const iv = this.winVal(b, ik), old = this.shownValue(`data:${b}:${ik}`);
     if (old) LOG.gone.add(old);
+    for (const t of this.seenPending(b, iv.wid)) LOG.gone.add(t);
     for (const k of ['inst', 'data', 'conf']) this.del(`${k}:${b}:${ik}`);
     if (this.linked) this.deleted(`${this.pageUnit(b)} ${iv.wid}`);
-    else if (this.folderName) { const unit = `${this.pageUnit(b)} ${iv.wid}`; LOG.udels.push({ unit, by: this.dev, folder: this.folderName, elsewhere: this.elsewhere(unit) }); }
+    else if (this.folderName) { const unit = `${this.pageUnit(b)} ${iv.wid}`, shown = this.showing(unit); LOG.udels.push({ unit, by: this.dev, folder: this.folderName, elsewhere: shown.length > 0, shown, n: ++LOG.delN }); }
   }
   deleted(unit) {
     // (the edits of it this device never had on screen: any of them may bring it back)
     const unseen = LOG.edits.filter(e => e.units.includes(unit) && e.folder === this.folderName && !this.applied.has(e.id)).length;
-    const d = { id: LOG.dels.length + 1, unit, by: this.dev, folder: this.folderName, justified: false, unseen, elsewhere: this.elsewhere(unit) }; LOG.dels.push(d); this.know.add(d.id); return d;
+    const shown = this.showing(unit);
+    const d = { id: LOG.dels.length + 1, unit, by: this.dev, folder: this.folderName, justified: false, unseen, elsewhere: shown.length > 0, shown, n: ++LOG.delN }; LOG.dels.push(d); this.know.add(d.id); return d;
   }
-  // Another device of this folder shows it too (its board is the folder's).
-  elsewhere(unit) { return (global.__devs || []).some(o => o !== this && o.folderName === this.folderName && o.shows(unit)); }
+  // (oracle 8: a deletion made here whose unit a merge has brought back here since no longer keeps it away)
+  reshow() { for (const x of LOG.dels.concat(LOG.udels)) if (x.by === this.dev && x.folder === this.folderName && !x.reshown && this.shows(x.unit)) x.reshown = true; }
+  // The other devices of this folder that show it too (their board is the folder's).
+  showing(unit) { return (global.__devs || []).filter(o => o !== this && o.folderName === this.folderName && o.shows(unit)).map(o => o.dev); }
   delPage(b) {
-    for (const r of this.insts(b)) { const t = this.shownValue(`data:${b}:${r.value.widgetId}:${r.value.n}`); if (t) LOG.gone.add(t); }
+    for (const r of this.insts(b)) { const t = this.shownValue(`data:${b}:${r.value.widgetId}:${r.value.n}`); if (t) LOG.gone.add(t); for (const p of this.seenPending(b, r.value.wid)) LOG.gone.add(p); }
     this.patch({ gone: [['add', b, this.now()]], set: { boards: this.ids().filter(x => x !== b) } });
     if (this.linked) this.deleted(this.pageUnit(b)).page = b;
-    else if (this.folderName) LOG.udels.push({ unit: this.pageUnit(b), by: this.dev, folder: this.folderName, elsewhere: this.elsewhere(this.pageUnit(b)) });
+    else if (this.folderName) { const shown = this.showing(this.pageUnit(b)); LOG.udels.push({ unit: this.pageUnit(b), by: this.dev, folder: this.folderName, elsewhere: shown.length > 0, shown, n: ++LOG.delN, page: b }); }
     if (this.settings.activeBoard === b) this.patch({ set: { activeBoard: this.ids()[0] } });
   }
   undoDel(b) {   // the page's Undo (within its 20 s): as if it had never gone
     const at = (this.settings.deletedAt || {})[b];
     if (!at || this.now() - at > UNDO - 1000) return false;
     this.patch({ gone: [['remove', b]], order: this.orderNow([b]) });
-    const d = LOG.dels.find(x => x.page === b && x.by === this.dev && !x.undone); if (d) { d.undone = true; d.justified = true; }
+    const d = LOG.dels.find(x => x.page === b && x.by === this.dev && !x.undone); if (d) { d.undone = true; d.justified = true; d.undid = true; }
+    const u = LOG.udels.find(x => x.page === b && x.by === this.dev && !x.undid); if (u) u.undid = true;
     return true;
   }
   orderNow(extra = []) { const o = {}; for (const b of this.ids().concat(extra)) { const v = this.boardOf(b); if (v) o[b] = [v.pos, v.uid]; } return o; }
@@ -413,6 +425,7 @@ class Device {
     if (!this.link) {   // the ledger is gone: rebuilt from this device's own file if it is here, and a first round either way
       const own = this.view.get(this.fileName()), r = own && this.decodeText(own);
       if (r && r.peer) L = Merge.rebuild(r.peer, { now });
+      else this.langLost();   // (no file to rebuild from either: an English chosen here since the loss is lost too, see langLost)
       this.first = true; this.lostLedger = false;
     }
     if (this.restamp) this.restamped(true);
@@ -471,6 +484,7 @@ class Device {
     }
     // (the transaction)
     apply(plan.writes, plan.settings);
+    this.reshow();
     if (plan.summary.leave) this.leave(plan.summary.leave);
     const L2 = Merge.ledger(Object.assign({}, plan.sync, { dropHere: (plan.summary.dropHere || []).length ? plan.summary.dropHere : null }), []);
     L2.mine = Object.assign({}, plan.next.mine);
@@ -587,10 +601,12 @@ class Device {
     }
     this.lostLedger = false;
     const had = this.folderName;
-    const others = opts.atOnce ? [] : Array.from(folder.files.keys()).filter(n => n !== this.fileName());
+    // (every device file there counts, this device's own too, as Link.decide counts every good file: a folder that holds
+    // only this device's file, from before it switched away, is taken from that file, never set up again as if empty)
+    const files = opts.atOnce ? [] : Array.from(folder.files.keys());
     this.folder = folder; this.view = opts.atOnce ? new Map() : new Map(folder.files);
     if (had === folder.name) this.mode = 'carry';
-    else if (!others.length) this.mode = 'seed';
+    else if (!files.length) this.mode = 'seed';
     else {
       const local = this.readLocal();
       const placeholderOnly = Array.from(local.pages.values()).every(P => P.placeholder || P.gone);
@@ -673,6 +689,20 @@ function as4(d, on = true) { d.old = on; asRel(d, on ? Merge4 : null, '4'); }
 // ---------------------------------------------------------------------
 // The randomized run
 // ---------------------------------------------------------------------
+// Drive catches up (run's last phase, and the cases that play it): every device gets every file in the folder and runs a
+// round. A round that keeps the page shown, because the folder deleted it, is followed at once by another, as Link shows
+// another page and runs a round then (Link.round's heldShown). Returns how many files were written.
+function exchangeAll(devs, folder, roundOf) {
+  const w = LOG.writes;
+  for (const d of devs) {
+    for (const o of devs) if (o !== d) d.deliver(o);
+    for (const n of Array.from(d.view.keys())) if (!folder.files.has(n)) d.view.delete(n);
+    let p = roundOf(d);
+    for (let i = 0; p && p.summary.leave && i < 3; i++) p = roundOf(d);
+  }
+  NOW += 3 * MIN;
+  return LOG.writes - w;
+}
 function seeded(seed) { let s = seed >>> 0 || 1; return () => { s = (Math.imul(s, 1103515245) + 12345) >>> 0; return (s >>> 1) / 0x80000000; }; }
 function run(seed, nDev, steps, variant = {}) {
   rnd = seeded(seed * 7919 + 17); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
@@ -747,7 +777,7 @@ function run(seed, nDev, steps, variant = {}) {
   for (const d of devs) if (d.rel === '27') asRel(d, null);
   NOW += UNDO + 5000; PICS_LATE.on = false;
   for (const d of devs) { d.away = false; d.busy.clear(); if (d.folder !== folder || !d.linked) { if (d.linked) d.farewell(); d.view = new Map(folder.files); d.linkTo(folder); } }
-  const exchange = () => { const w = LOG.writes; for (const d of devs) { for (const o of devs) if (o !== d) d.deliver(o); for (const n of Array.from(d.view.keys())) if (!folder.files.has(n)) d.view.delete(n); roundOf(d); } NOW += 3 * MIN; return LOG.writes - w; };
+  const exchange = () => exchangeAll(devs, folder, roundOf);
   for (let k = 0; k < 12 && (exchange() > 0 || k < 1); k++);
   const w0 = LOG.writes;
   for (let k = 0; k < 2; k++) exchange();
@@ -793,11 +823,7 @@ function run(seed, nDev, steps, variant = {}) {
       if (W2.parts.label.val && W2.parts.data.val === null && !W2.parts.data.skipped && !LOG.resetCopies.has(W2.wid)) needless.push(`${u} is an empty copy`);
     }
   }
-  // (oracle 8: a deletion made while unlinked, or that a lost ledger never stamped, deletes nothing that another device
-  // of the folder showed: the unit is still shown, unless a deletion made while linked removed it)
-  const pageOf = u => u.split(' ')[0];
-  const excused = u => LOG.dels.some(d => d.folder === folder.name && !d.undone && !d.relink && (d.unit === u || d.unit === pageOf(u)));
-  const unlinked = LOG.udels.concat(LOG.dels.filter(d => d.relink)).filter(d => d.folder === folder.name && d.elsewhere && LOG.published.has(`${folder.name}|${d.unit}`) && !devs[0].shows(d.unit) && !excused(d.unit)).map(d => d.unit);
+  const unlinked = unlinkedOf(devs[0], folder);
   // (oracle 11: the window's language. A window still shown, never deleted, whose language was only ever chosen as one
   // value shows that one: an updated device never stamps English over it, Rule 1. Its language never brings a deleted
   // window or page back: oracle 3 counts no language choice as an edit. Not once a device on 2026.11.27-1 removed the
@@ -857,6 +883,17 @@ function run(seed, nDev, steps, variant = {}) {
   // copy one of them twice, so oracle 4 holds only in runs where no ledger was lost)
   return { converged, quiet, lost, twice: LOG.lostLedger ? [] : twice, twiceLost: LOG.lostLedger ? twice : [], pending, back, wins, copies, writes: LOG.writes, lostLedger: !!LOG.lostLedger,
     needless, reverted, unlinked, style, kept, langs };
+}
+// (oracle 8: a deletion made while unlinked, or that a lost ledger never stamped, deletes nothing that another device
+// of the folder showed: the unit is still shown, unless a deletion made while linked removed it, or each device that
+// showed it deleted it itself afterwards, while unlinked too, say, and no merge has brought it back there since. A first
+// round keeps such a deletion when no other device's file has the unit any more: one removed 60 days after its device
+// left, say.)
+function unlinkedOf(d0, folder) {
+  const pageOf = u => u.split(' ')[0], hits = (x, u) => x.unit === u || x.unit === pageOf(u);
+  const excused = u => LOG.dels.some(d => d.folder === folder.name && !d.undone && !d.relink && hits(d, u));
+  const ownLater = d => d.shown.every(o => LOG.dels.concat(LOG.udels).some(x => x.by === o && x.folder === d.folder && x.n > d.n && !x.undid && !x.reshown && hits(x, d.unit)));
+  return LOG.udels.concat(LOG.dels.filter(d => d.relink)).filter(d => d.folder === folder.name && d.elsewhere && LOG.published.has(`${folder.name}|${d.unit}`) && !d0.shows(d.unit) && !excused(d.unit) && !ownLater(d)).map(d => d.unit);
 }
 // How often a step also chooses a window's language (see run): a small share, as each part costs every round time. And
 // how often a device starts on 2026.11.27-1. MERGE_LANG and MERGE_OLD raise them for a deeper run.
@@ -1136,6 +1173,24 @@ function rules() {
     else ok(cw && !on.length && one, `[${how}] a copy${how === 'page' ? '’s page' : ''} deleted on the laptop after it lost its ledger and its own file stays deleted, though a file from before still has the copy (${on.join(', ') || 'deleted everywhere'})`);
   });
   block(() => {
+    // A note typed in on two devices at once while one clears it. The laptop clears its text, then merges the
+    // smartboard's first text, which shows there (a cleared note gives way to text). The smartboard's second text loses
+    // to the laptop's and goes to a copy. Each version then includes a later change by the other's device, so by that
+    // rule neither would be left: the note is cleared on both, and the smartboard's second text stays in its copy.
+    const { A, B, b, ik, sync } = pair();
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid, bb = bOf(B, uid), bik = ikOf(B, uid, wid);
+    NOW += MIN; B.type(bb, bik); B.round();                     // the smartboard's first text, in its file
+    NOW += 5000; B.type(bb, bik); const t2 = token(dataOf(B, uid, wid));   // its second, before its next round
+    NOW += 5000; A.type(b, ik); A.round();                      // the laptop's, later, without the smartboard's file
+    A.deliver(B); B.deliver(A);
+    NOW += 5000; A.resetWin(b, ik); A.round();                  // the laptop clears the note: the smartboard's first text shows
+    NOW += 1000; B.round();                                     // the smartboard: the laptop's text wins, its second goes to a copy
+    sync(4);
+    const on = d => winsOf(d, uid).map(w => token(dataOf(d, uid, w.wid)));
+    ok(A.canon() === B.canon() && dataOf(A, uid, wid) == null && on(A).length === 2 && on(A).includes(t2) && !A.pending() && !B.pending(),
+      `a note typed in on two devices at once, then cleared on one: cleared on both, the smartboard's newest text in its copy (${JSON.stringify(on(A))} / ${JSON.stringify(on(B))})`);
+  });
+  block(() => {
     // pages: rename on one, color on the other; both renamed: the later, summary names it; order
     const { A, B, b, sync } = pair();
     const uid = A.boardOf(b).uid;
@@ -1215,6 +1270,44 @@ function rules() {
     D1.round();
     ok(D1.mode === null && bOf(D1, uid) && !D1.ids().some(x => D1.boardOf(x).name === 'Page 1') && folder.files.size === n0 + 1 && !/"Page 1"/.test(folder.files.get(D1.fileName())),
       'take: a new device with only “Page 1” shows the folder’s board, the placeholder goes, and its file doesn’t name it');
+  });
+  block(() => {
+    // A window both devices deleted while unlinked, the smartboard first, in no other file: the smartboard's was removed
+    // 60 days after it left. Linking again brings it back nowhere, since each device deleted it itself.
+    const { A, B, b, ik, sync, folder } = pair(), was = global.__devs;
+    global.__devs = [A, B];   // (which devices show it: see showing)
+    try {
+      const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid, unit = `${uid} ${wid}`;
+      B.unlink(); sync(1);
+      NOW += 61 * DAY; A.deliver(B); A.round();
+      ok(!folder.files.has(B.fileName()), '(the laptop removes the smartboard’s file, 61 days after it left)');
+      A.unlink();
+      NOW += MIN; B.delWin(bOf(B, uid), ikOf(B, uid, wid));
+      ok(LOG.udels[0].elsewhere, '(the smartboard deletes the window while unlinked, and the laptop still shows it)');
+      NOW += MIN; A.delWin(bOf(A, uid), ikOf(A, uid, wid));
+      NOW += DAY; for (const d of [A, B]) { d.view = new Map(folder.files); d.linkTo(folder); }
+      sync(3);
+      ok(!A.shows(unit) && !B.shows(unit) && !unlinkedOf(A, folder).length, `a window each device deleted while unlinked, and no other file has: it stays deleted on both, and oracle 8 lets it go (${unlinkedOf(A, folder).join(', ') || 'none'})`);
+    } finally { global.__devs = was; }
+  });
+  for (const lose of [false, true]) block(() => {
+    // A window deleted on the laptop while linked, whose deletion no other device has had yet. Then the laptop unlinks,
+    // loses its own file from the folder (lose), and deletes the page. Linking again (carry), a first round deletes
+    // nothing, so the page comes back from the smartboard's file. The window the laptop deleted while linked stays
+    // deleted: its tombstone is still in the laptop's ledger.
+    const { A, B, b, sync, folder } = pair();
+    const uid = A.boardOf(b).uid, ik2 = A.addWindow(b, W.TIMER), wid2 = A.winVal(b, ik2).wid;
+    A.addPage('Other'); NOW += 1000; sync();
+    ok(winsOf(B, uid).some(w => w.wid === wid2), '(the smartboard has the second window)');
+    NOW += MIN; A.delWin(b, ik2); NOW += 1000; A.round();
+    NOW += MIN; A.unlink();
+    if (lose) A.loseFile();
+    NOW += MIN; A.delPage(b); NOW += UNDO + 5000;
+    NOW += MIN; A.view = new Map(folder.files); A.linkTo(folder);
+    sync(4);
+    const back = [A, B].map(d => winsOf(d, uid).some(w => w.wid === wid2) ? 'back' : 'gone');
+    ok(A.linkedAs === 'carry' && bOf(A, uid) && bOf(B, uid) && back.every(x => x === 'gone') && A.canon() === B.canon(),
+      `[${lose ? 'its own file lost' : 'its own file kept'}] a window deleted while linked, then its page deleted while unlinked: linked again, the page comes back, and the window stays deleted (${A.linkedAs}; page ${bOf(A, uid) ? 'back' : 'gone'} / ${bOf(B, uid) ? 'back' : 'gone'}; window ${back.join(' / ')})`);
   });
 }
 
@@ -1448,6 +1541,26 @@ function review() {
     A.deliver(C); A.round(); sync(4);
     ok([A, B, C].every(d => !winsOf(d, uid).some(w => w.wid === wid)), `then the laptop deletes the window: it stays deleted on all three, though the home computer’s file still had the laptop’s own earlier ${ta} (${[A, B, C].map(d => winsOf(d, uid).some(w => w.wid === wid) ? 'back' : 'gone').join(', ')})`);
   });
+  for (const how of ['closed', 'race', 'window']) block(() => {
+    // A page deleted on the smartboard, which showed the laptop's text in a note and then the home computer's, typed
+    // later without having seen the laptop's. Home's text won, and the laptop's waited there for the laptop to keep it
+    // as a copy. closed: the laptop opens after the deletion and merges home's text and the deletion at once. race: the
+    // laptop gets home's text first and keeps its own as a copy before the deletion reaches it. window: as closed, with
+    // the note deleted instead of its page. The smartboard had seen both texts, so it stays deleted on all three.
+    const { A, B, C, b, ik, sync } = pair(3);
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+    A.addPage('Other'); sync();
+    A.type(b, ik); const ta = token(dataOf(A, uid, wid)); NOW += 1000; A.round();
+    B.deliver(A); B.round();                                   // the smartboard shows the laptop's text
+    NOW += 1000; C.type(bOf(C, uid), ikOf(C, uid, wid)); const tc = token(dataOf(C, uid, wid)); C.round();   // home hasn't had it: a clash, home's the later
+    NOW += 1000; B.deliver(C); B.round();                      // the smartboard: home's text, the laptop's waiting for its copy
+    if (how === 'window') B.delWin(bOf(B, uid), ikOf(B, uid, wid)); else B.delPage(bOf(B, uid));
+    if (how === 'race') { A.deliver(C); A.round(); }           // the laptop keeps its own text as a copy
+    NOW += UNDO + 5000; B.round(); C.deliver(B); C.round();
+    A.deliver(B); A.deliver(C); A.round(); B.deliver(A); B.round(); sync(4);
+    const on = [A, B, C].filter(d => how === 'window' ? winsOf(d, uid).length : bOf(d, uid)).map(d => d.label);
+    ok(!on.length, `[${how}] a ${how === 'window' ? 'note' : 'page'} deleted on the smartboard, which had shown the laptop's ${ta} and then home's ${tc}, stays deleted (${on.length ? 'back on ' + on.join(', ') : 'deleted everywhere'})`);
+  });
   block(() => {
     // Change… back to the first folder (a take) while showing a page deleted there, with a window deleted there
     // before it. An edit made here to the page brings it back, but not that window.
@@ -1546,6 +1659,126 @@ function review() {
     A.addWindow(bOf(A, uid), W.NOTES); NOW += 1000; A.round(); sync(4);
     ok([A, B].every(d => bOf(d, uid) && winsOf(d, uid).some(w => w.wid === w1) && !winsOf(d, uid).some(w => w.wid === w2)),
       `a window added to it 31 days later brings the page back on both, but not the window deleted in the folder (${[A, B].map(d => winsOf(d, uid).map(w => w.wid === w2 ? 'w2' : w.wid === w1 ? 'w1' : 'new').join('+') || 'no page').join(' / ')})`);
+  });
+  // A page rescaled on the laptop reaches the home, and a tab there that still shows the page as it was saves it at its
+  // old scale. The home's next round puts the new scale back, and no window on the page was moved there: every window
+  // stays where it was, and a move made on the smartboard meanwhile lands everywhere, though the home types in that
+  // window (or picks its language) before it merges the move. send: the home's round after the save only sends; lang:
+  // the same, the home picking Español; full: a full round; still: a full round, and nobody moves the window; older:
+  // send, with the home on 2026.11.27-1 until after that round.
+  const rescale = (d, k, f) => { const v = clone(d.recs.get(k).value); f(v); d.put(k, k.split(':')[0], v, { rescale: true }); };
+  const near = (r, w) => Math.abs(r.x - w.x) < 1 && Math.abs(r.y - w.y) < 1 && Math.abs(r.w - w.w) < 1;
+  for (const how of ['send', 'lang', 'full', 'still', 'older']) block(() => {
+    const { A, B, C, devs, b, ik, sync } = pair(3);
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid, at = d => [bOf(d, uid), ikOf(d, uid, wid)];
+    if (how === 'older') asRel(C, Merge27, '27');
+    NOW += 1000; rescale(A, `board:${b}`, v => { v.scale = 1.25; v.layout = H.canvasFor(1.25); });
+    rescale(A, `inst:${b}:${ik}`, v => { v.rect = H.scaleRect(v.rect, 0.8 / 1.25); });
+    NOW += 1000; A.round();
+    const kC = `board:${at(C)[0]}`, before = clone(C.recs.get(kC));
+    NOW += 1000; C.deliver(A); C.round();
+    NOW += 1000; C.put(kC, 'board', before.value, { base: before.rev, blind: true });   // (the stale tab: the page at 0.8)
+    NOW += 1000; C.round(how === 'full' || how === 'still' ? 'full' : 'send');
+    if (how === 'older') asRel(C, null);
+    NOW += 1000; B.deliver(A); B.round();
+    if (how !== 'still') { NOW += 1000; B.moveWin(...at(B)); }
+    const want = clone(B.winVal(...at(B)).rect); NOW += 1000; B.round();
+    NOW += 1000; if (how === 'lang') C.setLang(...at(C), 'es'); else C.type(...at(C));
+    NOW += 1000; sync(4);
+    const got = devs.map(d => d.winVal(...at(d)).rect);
+    ok(got.every(r => near(r, want)) && devs.every(d => d.canon() === A.canon()), `[${how}] a page saved at its old scale by a tab on the home that hadn't seen the new one: the window ${how === 'still' ? 'stays where it was' : 'goes where the smartboard moved it'}, on all three (${got.map(r => `${r.x},${r.y},${r.w}`).join(' / ')}; want ${want.x},${want.y},${want.w})`);
+  });
+  // The same stale tab writes more than the page. move: it also moves the window, in its old coordinates, which stays
+  // where that tab showed it, converted to the scale put back. both: it also writes the window's old place back. rename:
+  // it renames the page, the window untouched. otherwin: the page has a second window, which the tab never wrote.
+  for (const how of ['move-full', 'move-send', 'both-full', 'rename-full', 'otherwin-full']) block(() => {
+    const { A, B, C, devs, b, ik, sync } = pair(3);
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid, at = d => [bOf(d, uid), ikOf(d, uid, wid)];
+    const [kind, rk] = how.split('-');
+    let wid2 = null;
+    if (kind === 'otherwin') { const ik2 = A.addWindow(b, W.NOTES); wid2 = A.winVal(b, ik2).wid; NOW += 1000; sync(2); }
+    NOW += 1000; rescale(A, `board:${b}`, v => { v.scale = 1.25; v.layout = H.canvasFor(1.25); });
+    for (const r of A.insts(b)) rescale(A, r.key, v => { v.rect = H.scaleRect(v.rect, 0.8 / 1.25); });
+    NOW += 1000; A.round();
+    const [cb, cik] = at(C), kC = `board:${cb}`, kW = `inst:${cb}:${cik}`, before = clone(C.recs.get(kC)), beforeW = clone(C.recs.get(kW));
+    NOW += 1000; C.deliver(A); C.round();
+    let want;
+    NOW += 1000;
+    if (kind === 'rename') { const v = clone(before.value); v.name = 'Stale name'; C.put(kC, 'board', v, { base: before.rev, was: before.value }); }
+    else C.put(kC, 'board', before.value, { base: before.rev, blind: true });
+    if (kind === 'move') {
+      const v = clone(beforeW.value); v.rect = { x: 100, y: 120, w: 300, h: 250 };
+      C.put(kW, 'inst', v, { base: beforeW.rev, was: beforeW.value });
+      want = H.scaleRect(v.rect, 0.8 / 1.25);   // (the place it showed at 0.8, on the page at 1.25)
+    } else if (kind === 'both') C.put(kW, 'inst', beforeW.value, { base: beforeW.rev, blind: true });
+    NOW += 1000; C.round(rk);
+    if (!want) want = clone(A.winVal(b, ik).rect);
+    const want2 = wid2 && clone(A.winVal(b, ikOf(A, uid, wid2)).rect);
+    NOW += 1000; sync(4);
+    const got = devs.map(d => d.winVal(...at(d)).rect), got2 = wid2 ? devs.map(d => d.winVal(bOf(d, uid), ikOf(d, uid, wid2)).rect) : [];
+    const scales = devs.map(d => d.boardOf(bOf(d, uid)).scale), names = devs.map(d => d.boardOf(bOf(d, uid)).name);
+    ok(got.every(r => near(r, want)) && got2.every(r => near(r, want2)) && scales.every(s => s === 1.25) && devs.every(d => d.canon() === A.canon()) && (kind !== 'rename' || names.every(n => n === 'Stale name')),
+      `[${how}] a page saved at its old scale by a stale tab that also ${{ move: 'moved its window', both: 'wrote its window’s old place', rename: 'renamed it', otherwin: 'left its second window alone' }[kind]}: the new scale on all three, and each window where it should be (${scales.join('/')}; ${got.map(r => `${r.x},${r.y},${r.w}`).join(' / ')}; want ${want.x},${want.y},${want.w}${wid2 ? `; second ${got2.map(r => `${r.x},${r.y},${r.w}`).join(' / ')}; want ${want2.x},${want2.y},${want2.w}` : ''})`);
+  });
+  block(() => {
+    // An edit on the smartboard, then its page deleted there before a round: the round that runs while the page's Undo
+    // is offered sends no version for the edit, since none was stamped. The page stays deleted everywhere, and the
+    // folder goes quiet.
+    const { A, B, C, b, ik, devs, sync } = pair(3), was = global.__devs;
+    global.__devs = devs;
+    try {
+      const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid, at = d => [bOf(d, uid), ikOf(d, uid, wid)];
+      const instIn = (o, w) => instsOf(o).find(i => i.wid === w) || null;
+      C.type(...at(C)); NOW += 1000; sync();
+      const home = C.shownValue(`data:${at(C).join(':')}`), V = instIn(fileOf(C), wid).v.data;
+      NOW += 1000; B.type(...at(B)); const board = B.shownValue(`data:${at(B).join(':')}`);
+      NOW += 2000; B.delPage(at(B)[0]);
+      NOW += 3000; B.round();
+      const f = instIn(fileOf(B), wid);
+      ok(!(f && f.v.data && same(f.v.data, V) && f.data && f.data.text === board),
+        `the smartboard's file never puts its own unsent text under the home's version (${f ? JSON.stringify([f.data && f.data.text, f.v.data && f.v.data[0]]) : 'no window'})`);
+      A.deliver(B); A.round();
+      NOW += UNDO + 5000; sync(6);
+      const shows = devs.filter(d => d.shows(uid)).map(d => `${d.label}: ${winsOf(d, uid).map(w => `${(dataOf(d, uid, w.wid) || {}).text}${w.copyOf ? ' (copy)' : ''}`).join(' + ')}`);
+      ok(!shows.length && A.canon() === B.canon() && B.canon() === C.canon(), `the page the smartboard deleted just after an edit stays deleted on every device (${shows.join('; ') || 'gone everywhere'}; home ${home}, smartboard ${board})`);
+      const w0 = LOG.writes; sync(2);
+      ok(LOG.writes === w0, `and two more rounds each write nothing (${LOG.writes - w0} writes)`);
+    } finally { global.__devs = was; }
+  });
+  for (const what of ['type', 'rename', 'move']) block(() => {
+    // the same, then the page's Undo: the edit is stamped as new and reaches every device, with no copy
+    const { A, B, C, b, ik, devs, sync } = pair(3), was = global.__devs;
+    global.__devs = devs;
+    try {
+      const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid, at = d => [bOf(d, uid), ikOf(d, uid, wid)];
+      C.type(...at(C)); NOW += 1000; sync();
+      NOW += 1000; const bB = at(B)[0];
+      if (what === 'type') B.type(...at(B)); else if (what === 'rename') B.editPage(bB, 'name'); else B.moveWin(...at(B));
+      const want = what === 'type' ? B.shownValue(`data:${at(B).join(':')}`) : what === 'rename' ? B.boardOf(bB).name : JSON.stringify(B.winVal(...at(B)).rect);
+      NOW += 2000; B.delPage(bB);
+      NOW += 3000; B.round(); A.deliver(B); A.round();
+      NOW += 3000; const undone = B.undoDel(bB);
+      NOW += 1000; sync(4);
+      const got = d => what === 'type' ? (dataOf(d, uid, wid) || {}).text : what === 'rename' ? d.boardOf(bOf(d, uid)).name : JSON.stringify(d.winVal(...at(d)).rect);
+      const copies = devs.reduce((a, d) => a + winsOf(d, uid).filter(w => w.copyOf).length, 0);
+      const w0 = LOG.writes; sync(2);
+      ok(undone && devs.every(d => d.shows(uid) && got(d) === want) && !copies && LOG.writes === w0 && A.canon() === C.canon(), `[${what}] an edit, its page deleted before a round, then Undo: the smartboard's edit on every device, no copy, and quiet (${devs.map(got).join(' / ')}; want ${want}; ${copies} copies; ${LOG.writes - w0} writes)`);
+    } finally { global.__devs = was; }
+  });
+  block(() => {
+    // The page the laptop shows, deleted on the smartboard just before Drive catches up. The laptop shows another page
+    // and deletes it at once, as Link does, and two more exchanges write nothing. (Home shows another page, or its own
+    // round would keep the exchanges going.)
+    const { A, B, C, devs, folder, b, sync } = pair(3);
+    const uid = A.boardOf(b).uid, rid = A.boardOf(A.addPage('Reading')).uid; sync();
+    A.patch({ set: { activeBoard: bOf(A, uid) } }); C.patch({ set: { activeBoard: bOf(C, rid) } });
+    NOW += MIN; B.delPage(bOf(B, uid)); NOW += UNDO + 5000;
+    const ex = () => exchangeAll(devs, folder, d => d.round('full'));
+    for (let k = 0; k < 12 && (ex() > 0 || k < 1); k++);
+    const w0 = LOG.writes; ex(); ex();
+    const shown = devs.filter(d => d.shows(uid)).map(d => d.label);
+    ok(LOG.writes === w0 && !shown.length && A.canon() === B.canon() && B.canon() === C.canon(),
+      `the page the laptop shows, deleted on the smartboard as Drive catches up: gone everywhere, and two more exchanges write nothing (${LOG.writes - w0} writes; shown on ${shown.join(', ') || 'none'})`);
   });
 }
 
@@ -2073,6 +2306,22 @@ function styles() {
     ok(A.textNow() === B.textNow() && !toldOf(A).length && !toldOf(B).length,
       `two set up one empty folder at once (the ${first} first), neither having chosen a text style: the same on both, and nobody is told it changed (${A.textNow()} / ${B.textNow()}; ${JSON.stringify(toldOf(A).concat(toldOf(B)))})`);
   });
+  block(() => {
+    // Change… back to a folder that holds only this device's own file. Link.decide counts every good file, its own
+    // too, so the laptop takes the board there from that file. It never sends the board and theme it took from the other
+    // folder, as if the folder were empty.
+    const { A, B, sync, folder } = pair(), other = new Folder('Room 14');
+    NOW += MIN; B.farewell(); B.linkTo(other); NOW += 1000; B.setStyle({ theme: 'dark' }); NOW += 1000; B.round();   // (the smartboard picks Dark in Room 14)
+    A.deliver(B); A.round(); NOW += KEEP + DAY; A.round();   // (two months on, the laptop removes the smartboard's file)
+    const only = Array.from(folder.files.keys());
+    NOW += MIN; A.farewell(); A.linkTo(other);
+    const took = A.linkedAs === 'take' && A.styleNow() === 'dark blue';
+    NOW += MIN; A.farewell(); A.linkTo(folder);
+    const back = A.linkedAs;
+    NOW += MIN; B.farewell(); B.linkTo(folder); sync();
+    ok(only.length === 1 && only[0] === A.fileName() && took && back === 'take' && A.styleNow() === 'system blue' && B.styleNow() === 'system blue' && A.canon() === B.canon(),
+      `Change… back to a folder that holds only the laptop’s own file: the laptop takes the board there, and both keep its Auto, not the Dark picked in the other folder (${only.length} file there; ${back}; ${A.styleNow()} / ${B.styleNow()})`);
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -2408,6 +2657,25 @@ function languages() {
       const held = LOG.langs.get(`${A.folderName}|${uid} ${cw}`) || new Set();
       ok(cw && got.every(x => x === want) && A.canon() === B.canon() && (gone ? held.has('lost') : held.size === 1 && held.has('en')),
         `[${lost.join(', then ')} lost${then ? `, after a round the laptop ${then === 'read' ? 'merged' : 'never read'}` : ''}] English chosen for a copy in Українська: ${gone ? 'the folder’s Українська on both, and oracle 11 lets the copy go' : 'English on both, and oracle 11 holds the copy to it'} (${got}; ${[...held].join(', ')})`);
+    } finally { global.__devs = was; }
+  });
+  // English chosen on the smartboard for a clash copy in Українська after it lost its own file and its ledger, before
+  // the round that follows. With no entry, and no file to rebuild one from, that English is no version either (Rule 1),
+  // and the folder’s language applies, as on a first set-up. Oracle 11 lets the copy go, as for English chosen before.
+  for (const order of [['file', 'ledger'], ['ledger', 'file']]) block(() => {
+    const { A, B, b, ik, sync } = pair(), was = global.__devs;
+    global.__devs = [A, B];   // (which devices have had a choice: see langLost)
+    try {
+      const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+      A.setLang(b, ik, 'uk'); NOW += 1000; sync();
+      A.type(b, ik); B.type(bOf(B, uid), ikOf(B, uid, wid)); NOW += 1000; sync(4);
+      const cw = (winsOf(B, uid).find(w => w.copyOf) || {}).wid;
+      NOW += 1000; for (const x of order) if (x === 'ledger') B.loseLedger(); else B.loseFile();
+      NOW += 1000; B.setLang(bOf(B, uid), ikOf(B, uid, cw), 'en');
+      NOW += 5000; sync(3);
+      const got = [A, B].map(d => langOn(d, uid, cw)), held = LOG.langs.get(`${A.folderName}|${uid} ${cw}`) || new Set();
+      ok(cw && got.every(x => x === 'uk') && A.canon() === B.canon() && held.has('lost'),
+        `[${order.join(', then ')} lost, then English chosen] English chosen for a copy in Українська after the smartboard lost its ledger and its own file: the folder’s Українська on both, and oracle 11 lets the copy go (${got}; ${[...held].join(', ')})`);
     } finally { global.__devs = was; }
   });
   for (const order of ['laptop first', 'smartboard first']) block(() => {

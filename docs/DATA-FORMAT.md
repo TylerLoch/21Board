@@ -243,7 +243,8 @@ fingerprints and versions of the board's parts, never the board's values:
 
 A part's entry may also hold:
 
-- `pending`: content versions kept beside the main one, with their values, until a copy is made.
+- `pending`: content versions kept beside the main one, with their values, until a copy is made. One this device
+  showed has `here: 1`, which never goes in a file. A deletion made here covers it.
 - `applied`, `prevH`, `prevV`, and `val`: what a merge wrote to it, the fingerprint and version it had before, and
   the value written. They are kept until a change based on that write is written, and kept by a later merge that
   writes another part of the same record (see "Keeping several open copies in sync").
@@ -316,9 +317,12 @@ file, so the text style chosen on a newer device never reaches it and its rounds
 
 A device on 2026.11.27-1 doesn't know the default widget language or a window's language, in the same way. A copy it
 keeps from a clash opens in English. A copy it deletes after losing its ledger and its own file can come back. So can
-a window or page deleted on two devices, when it merges both deletions first. Each linked device writes its file once
-after it updates to 2026.11.27-2, since the new style part changes the file's fingerprint. Nothing in the board
-changes.
+a window or page deleted on two devices, when it merges both deletions first. So can a page it deletes beside text it
+showed that lost a clash, or just after an edit it hadn't sent yet. Its rounds fail while it holds a note in two
+versions that each include a later change by the other's device, until it reads an updated device's file. When it
+puts back a page's scale, it takes each window there for moved, to the same place, which can undo a move made
+elsewhere meanwhile. Once updated, it takes that place for the same one. Each linked device writes its file once after
+it updates to 2026.11.27-2, since the new style part changes the file's fingerprint. Nothing in the board changes.
 
 A vector is written with its devices in sorted order, in files and in the ledger, so that the same version joined
 from the same devices in another order (two or more devices setting up one folder at once) is the same text and
@@ -329,17 +333,25 @@ later change to that part by the device that made it (a device's changes to a pa
 what it showed then; one that lost was kept as a copy by that device at once). So a version that joined other
 devices' vectors in (made when a copy was kept, content emptied on one side, or equal values met) is replaced by
 its device's next change, which is no clash with that device's own older value; its vector joins that change's.
+Two versions can each include a later change by the other's device. A note cleared on one device shows the other
+device's older text, while that device keeps its newer text as a copy. By that rule neither would be left, so the
+note is cleared, at both vectors, and the newer text stays in its copy. Any other part takes the later.
 A deletion covers a version the same way (its device's change at that counter, or a later one, was seen). Its
 cover also holds the deleting device's own counter at the deletion, so it covers every earlier change that device
 made: its own older version of the page or window, still in another device's file after the page came back with
 another device's version, say, never brings it back (the same format, read the same way by earlier releases).
+It also covers text shown here that then lost a clash and still waits for its copy. For a page, it covers the making
+of that copy too, so a copy made meanwhile on another device doesn't bring the page back. A page brought back after
+such a deletion, by Undo on another device or by Put back once the deletion went out, has the newer text only. The
+older text gets no copy. Board history still has it.
 Deleted on two devices, a window or page stays deleted if one of them saw every edit that would bring it back,
 whichever deletion came last. A labeled copy's versions are the copy's own: made by `cp<hash of the copy's wid>` (14
 characters, so no device's, which has 12), with the copied version's counter and time, the same on every device that
 makes it. A deletion of a copy covers them at the largest counter there is. The device that deletes it had the copy,
 so it saw it made, even if a lost ledger stamped the copy again as new. In a first round (linking again, a rebuilt
 ledger), a page or window missing here is taken from the other devices' files, not from this device's own, whose
-older version of it mustn't come back as a clash.
+older version of it mustn't come back as a clash. A first round deletes nothing, so a page deleted here while unlinked
+comes back from them. A window deleted from it before, while linked, stays deleted. Its tombstone is kept.
 
 **Deletions are forgotten** (`gc`, at most once a day, when every device file in the folder could be read): a
 tombstone goes once this device has held it 30 days and every device it has seen in the folder shows it (its file
@@ -367,7 +379,8 @@ the new name at its next write, then deletes the old one.
 each instance, `v`: the version of each part; instances also carry `wid` (and `copyOf` on a labeled copy, and `language`
 for a window in another language), boards `pos`; content clash versions not yet settled go in an instance's `pending`;
 and a top-level `sync` block. Pictures of 32,768 characters or more in windows' content are named in `Photos/`, not
-held. Smaller ones stay in the file. See "The .21board file".
+held. Smaller ones stay in the file. See "The .21board file". While a deleted page's Undo is offered, a part changed on
+it since the last round goes in the file with no version.
 
 ```js
 "sync": { "v": 2, "dev": "k3j9a1b2c3d4", "folder": "f7q2m9x0c1d4", "name": "the laptop",
@@ -749,6 +762,9 @@ never dropped when another tab's settings arrive: the tab shows them with its pa
 The ledger (`link:mine-<uid>`, below) remembers what a merge wrote to a part (`applied`) until a change based on it
 is written, so a change another tab made without the merge is found to be one whenever it is written: it becomes a
 clash, both kept, never an overwrite.
+
+A tab that hadn't seen a merged page scale may save the page at its old one. The merged scale is put back, and the
+page's windows are read at it again, so none counts as moved. A window that tab moved too stays where it showed it.
 
 ### When storage fails
 

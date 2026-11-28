@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.27-2';
-  const BOARD_BUILD = '9dab3d42';
+  const BOARD_BUILD = '6dbca7cb';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -9440,6 +9440,10 @@
     // the copy, so it saw it made, though a ledger stamped again since (lost, with no file of its own) no longer names
     // that version. (Earlier releases read such a deletion the same way.)
     const madeOf = wid => (wid.includes('~') ? { [copyBy(wid)]: Number.MAX_SAFE_INTEGER } : {});
+    // Content this device showed that lost a clash here, still pending (here: its copy is owed, by its author or a
+    // fallback device): a deletion made here had seen it. Its version joins the deletion's cover, and for a page, so
+    // does the making of its copy, by the copy's key: a copy made meanwhile on another device doesn't bring it back.
+    const seenPend = mw => ((mw.p.data && mw.p.data.pending) || []).filter(q => q.here);
     // A window's identity on its page: <widget>@<createdAt>, then .2, .3... if that is taken.
     function newWid(widgetId, createdAt, taken) {
       const base = `${widgetId}@${fin(createdAt, 0)}`.slice(0, 110);
@@ -9732,6 +9736,15 @@
           if (E1.rev !== P.rev || E.applied || E1 !== E) { const e = Object.assign({}, E1, { rev: P.rev }); for (const k of ['applied', 'prevH', 'prevHs', 'prevV', 'prevSc', 'val']) delete e[k]; set(e); }
           return;
         }
+        // (a place 2026.11.27-1 noted at the page's old scale, as it put the merged scale back, and not written since by a
+        // tab that hadn't seen it: the same place, not a move)
+        if (P.part === 'rect' && !E.applied && E.s1 && M.p.size && M.p.size.applied && P.val.rect.w > 0 && (P.rev === E.rev || (typeof P.base === 'number' && P.base >= E.rev))) {
+          const Sz = M.p.size, sc = Math.round(E.s1[2] / P.val.rect.w * 100) / 100, shape = P.page.parts.size.val.shape;
+          const was = hj({ scale: sc, shape });
+          if (sc !== P.page.scale && (was === Sz.prevH || (Sz.prevHs || []).includes(was)) && partH('rect', P.val, sc, H) === E.h) {
+            set(Object.assign({}, E, { h: P.h, s1: s1Of(P.val, P.page.scale, H), rev: P.rev })); return;
+          }
+        }
         // (not the Undo of a merge, nor a record a merge deleted (rev 0) made again well after that: Board history's Put
         // back, say. Each is based on the revision before the deletion (Known after MergeUI.undo's applyRecord, or
         // Raced.gone), as a stale tab's save is, but was made after seeing it)
@@ -9742,7 +9755,7 @@
           const ph = P.part === 'rect' && E.prevSc ? partH('rect', P.val, E.prevSc, H) : P.h;
           if ([P.h, ph].some(h => h === E.prevH || (E.prevHs || []).includes(h)) && 'val' in E) { restore(P, E.val, E.h); set(Object.assign({}, E, { rev: fixRev(P.key), applied: fixRev(P.key) })); return; }
           note(P.at);
-          items.push(n => { set(withS1(clean({ h: P.h, v: nv(E.prevV ? E.prevV[1] : {}, P.at, P.u)(n), rev: P.rev, pending: (E.pending || []).concat('val' in E ? [{ v: E.v, val: E.val, h: E.h }] : []) }), P)); touched.add(M); });
+          items.push(n => { set(withS1(clean({ h: P.h, v: nv(E.prevV ? E.prevV[1] : {}, P.at, P.u)(n), rev: P.rev, pending: (E.pending || []).concat('val' in E ? [{ v: E.v, val: E.val, h: E.h, here: 1 }] : []) }), P)); touched.add(M); });
           return;
         }
         note(P.at); items.push(n => { set(withS1(clean({ h: P.h, v: nv(E.v[1], P.at, P.u)(n), rev: P.rev, pending: E.pending }), P)); touched.add(M); });
@@ -9764,6 +9777,21 @@
         else out = clone(val);
         fix.set(P.key, out);
         P.val = clone(val); P.h = h; P.rev = fixRev(P.key);
+        // (the page's scale put back: its windows' places are read at it again, or each would be taken for a move. One
+        // that tab wrote too is in its coordinates: it stays where that tab showed it, converted to the scale put back.
+        // A page's own parts are stamped before its windows.)
+        if (P === P.page.parts.size && P.page.all && val.scale !== P.page.scale) {
+          const was = P.page.scale, M0 = L.mine[P.page.uid];
+          P.page.scale = val.scale;
+          for (const W of P.page.all) {
+            const R = W.parts.rect, E = M0 && W.wid && M0.w[W.wid] && M0.w[W.wid].p.rect;
+            if (E && E.applied && typeof R.base === 'number' && R.base < E.applied && R.rev !== E.applied && !R.u) {
+              const rect = H.scaleRect(R.val.rect, was / val.scale);
+              fix.set(R.key, Object.assign(fixVal(R.key) || {}, { rect }));
+              R.val = { rect, maximized: R.val.maximized };
+            } else R.h = partH('rect', R.val, val.scale, H);
+          }
+        }
       };
       for (const P of local.pages.values()) {
         for (const k of PAGE_PARTS) P.parts[k].page = P;
@@ -9785,6 +9813,7 @@
             // (and every change this device made to it before: one its entry no longer names, after the page came back
             // with another device's version, say, was still seen here)
             for (const k of WIN_PARTS) if (mw.p[k] && mw.p[k].v) cover[k] = vjoin(mw.p[k].v[1], Object.assign({ [dev]: n }, made));
+            for (const q of seenPend(mw)) cover.data = vjoin(cover.data || {}, q.v[1]);
             M.wgone[wid] = { exists: nv(vjoin(mw.p.exists ? mw.p.exists.v[1] : {}, made), now)(n), cover, seq: null, seen: now };
             delete M.w[wid]; touched.add(M);
           });
@@ -9836,13 +9865,23 @@
         const P = local.pages.get(uid), M0 = L.mine[uid];
         if (M0.gone || (P && P.held) || o.mode === 'take') continue;
         if (P && !P.gone) continue;   // (here, but not stamped: a placeholder the ledger has, say)
-        if (first) { delete L.mine[uid]; dropped1.add(uid); continue; }
+        if (first) {   // (a first round deletes nothing: the folder's version of the page is taken. A window deleted from it here
+          // before, while linked, stays deleted: its tombstone is kept)
+          delete L.mine[uid]; dropped1.add(uid);
+          if (Object.keys(M0.wgone || {}).length) L.mine[uid] = Object.assign(newMine(uid, M0.b), { wgone: Object.assign({}, M0.wgone) });
+          continue;
+        }
         const M = mineOf(uid, M0.b);
         note(now);
         items.push(n => {
           const cover = {};
           for (const k of PAGE_PARTS) if (M.p[k] && M.p[k].v) cover[k] = vjoin(M.p[k].v[1], { [dev]: n });
           for (const [wid, mw] of Object.entries(M.w)) for (const k of WIN_PARTS.concat('exists')) if (mw.p[k] && mw.p[k].v) cover[`${wid}/${k}`] = vjoin(mw.p[k].v[1], Object.assign({ [dev]: n }, madeOf(wid)));
+          for (const [wid, mw] of Object.entries(M.w)) for (const q of seenPend(mw)) {
+            cover[`${wid}/data`] = vjoin(cover[`${wid}/data`] || {}, q.v[1]);
+            const cw = copyWid(wid, ver(q.v));
+            for (const k of WIN_PARTS.concat('exists')) cover[`${cw}/${k}`] = vjoin(cover[`${cw}/${k}`] || {}, madeOf(cw));
+          }
           M.gone = { exists: nv(M.p.exists ? M.p.exists.v[1] : {}, now)(n), cover, seq: null, seen: now };
           M.p = {}; M.w = {}; touched.add(M);
         });
@@ -9916,7 +9955,7 @@
             const E = mw.p[k];
             if (!E || !E.v) continue;
             add(w.parts, k, ver(E.v, { h: E.h, src: 'local' }));
-            for (const q of E.pending || []) add(w.parts, k, ver(q.v, { h: q.h, val: q.val, has: true, src: 'pending' }));
+            for (const q of E.pending || []) add(w.parts, k, ver(q.v, Object.assign({ h: q.h, val: q.val, has: true, src: 'pending' }, q.here ? { here: true } : {})));
           }
         }
         for (const [wid, T] of Object.entries(M.wgone || {})) wv(p, wid).exists.push(ver(T.exists, { h: '0', val: false, has: true, src: 'local', cover: T.cover || {} }));
@@ -9956,16 +9995,24 @@
         if (other.src === 'local' && top.src !== 'local') { out.src = 'local'; out.has = other.has; out.val = other.val; out.scale = other.scale; out.ref = other.ref || top.ref; }
         else if (!top.has && other.has && top.src !== 'local') { out.has = true; out.val = other.val; out.src = other.src; out.scale = other.scale; }
         if (g.cover || v.cover) out.cover = vjoin(g.cover || {}, v.cover || {});
+        if (g.here || v.here) out.here = true;
         if (!out.ref) out.ref = other.ref;
         return out;
       };
+      let loop = false;
       for (let guard = 0; guard < 50; guard++) {
         const keep = [];
+        // (versions that each include a later change by another's device, such as a cleared note's older text from another
+        // device beside a text whose device kept its newer one as a copy: none would be left. Then only a version another
+        // includes goes, and see loop below)
+        const all = vs.length > 1 && vs.every(v => vs.some(w => w !== v && superseded(v, w)));
+        if (all) loop = true;
+        const over = all ? (v, w) => leq(v.vv, w.vv) && !leq(w.vv, v.vv) : superseded;
         for (const v0 of vs) {
-          if (vs.some(w => w !== v0 && superseded(v0, w))) continue;
+          if (vs.some(w => w !== v0 && over(v0, w))) continue;
           // (what a version it replaces only by its device's later change had settled stays settled: its vector joins in)
           let v = v0;
-          for (const u of vs) if (u !== v0 && !leq(u.vv, v.vv) && superseded(u, v0)) v = Object.assign({}, v, { vv: vjoin(v.vv, u.vv) });
+          for (const u of vs) if (u !== v0 && !leq(u.vv, v.vv) && over(u, v0)) v = Object.assign({}, v, { vv: vjoin(v.vv, u.vv) });
           const i = keep.findIndex(w => w.h === v.h);
           if (i >= 0) keep[i] = merge(keep[i], v); else keep.push(v);
         }
@@ -9977,7 +10024,13 @@
       const J = { main: null, pending: [], clash: vs.length > 1, mine: vs.some(v => v.by === dev), devs: vs.map(v => v.by) };
       if (kind === 'data') {
         const content = vs.filter(v => v.h !== NULL_H), empty = vs.filter(v => v.h === NULL_H);
-        if (content.length && empty.length) {
+        if (loop) {
+          // (each was replaced on its own device by a change that isn't here: a text kept as a copy, or a cleared note.
+          // The window is cleared, at the vector they all hold, named for the device that changed it last)
+          const vv = vs.reduce((a, v) => vjoin(a, v.vv), {}), by = Object.keys(vv).sort((a, b) => vv[b] - vv[a] || (a < b ? 1 : -1))[0];
+          J.main = { by, vv, t: Math.max(...vs.map(v => v.t)), u: false, h: NULL_H, val: null, has: true, src: 'loop' };
+          J.clash = false;
+        } else if (content.length && empty.length) {
           J.main = Object.assign({}, content[0], { vv: empty.reduce((a, v) => vjoin(a, v.vv), content[0].vv) });
           J.pending = content.slice(1);
         } else { J.main = vs[0]; J.pending = vs.slice(1); }
@@ -10149,7 +10202,7 @@
       const setMine = (uid, m) => { if (!L.mine[uid] || !sameJSON(L.mine[uid], m)) L.mine[uid] = m; };
       const tomb = (J, cover, T0) => ({ exists: arr(J.main), cover: cover || {}, seq: T0 ? T0.seq : null, seen: T0 ? T0.seen : now });
       // The value a part's entry carries in the ledger, and the entry itself.
-      const pendOf = (J, lp) => J.pending.map(p => ({ v: arr(p), val: p.src === 'local' ? (lp ? lp.val : null) : p.val, h: p.h }));
+      const pendOf = (J, lp) => J.pending.map(p => Object.assign({ v: arr(p), val: p.src === 'local' ? (lp ? lp.val : null) : p.val, h: p.h }, p.here || (lp && !lp.skipped && lp.h === p.h) ? { here: 1 } : {}));
       const entry = (J, lp, oldE, wrote, val, extra) => {
         const e = { h: J.main.h, v: arr(J.main), rev: wrote === -1 ? 0 : wrote || (lp ? lp.rev : 0) };
         if (J.pending.length) e.pending = pendOf(J, lp);
@@ -10558,7 +10611,10 @@
         for (const wid of Object.keys(M.wgone || {}).sort()) goneW.push({ page: uid, wid, exists: M.wgone[wid].exists, cover: M.wgone[wid].cover || {} });
         const P = local.pages.get(uid);
         if (M.gone || !P || !M.p.exists || !M.p.exists.v) continue;
-        const v = {}, has = k => M.p[k] && M.p[k].v && !(P.parts[k] && P.parts[k].skipped);
+        // (a page held for its Undo isn't stamped, see stamp: a part changed here before it was deleted isn't the value
+        // of its version, so the file has no version of that part)
+        const kept = (E, lp) => !P.held || E.h === lp.h || (!!E.lh && E.lh === lp.h);
+        const v = {}, has = k => M.p[k] && M.p[k].v && !(P.parts[k] && P.parts[k].skipped) && kept(M.p[k], P.parts[k]);
         v.exists = M.p.exists.v;
         for (const k of PAGE_PARTS) if (has(k)) v[k] = M.p[k].v;
         const size = P.parts.size.val, board = { name: P.parts.name.val, background: P.parts.look.val, scale: size.scale, shape: size.shape, uid, pos: P.parts.pos.val };
@@ -10575,7 +10631,7 @@
             rect: W.parts.rect.val.rect, createdAt: W.createdAt };
           if (W.parts.label.val) i.copyOf = W.parts.label.val;
           if (W.parts.language.val) i.language = W.parts.language.val;
-          for (const k of WIN_PARTS) if (mw.p[k] && mw.p[k].v && !W.parts[k].skipped) iv[k] = mw.p[k].v;
+          for (const k of WIN_PARTS) if (mw.p[k] && mw.p[k].v && !W.parts[k].skipped && kept(mw.p[k], W.parts[k])) iv[k] = mw.p[k].v;
           if (mw.p.rect && mw.p.rect.lh && W.parts.rect.h === mw.p.rect.lh) i.vh = { rect: mw.p.rect.h };   // (the place converted from another scale: still that version)
           if (iv.conf) i.config = W.parts.conf.val;
           if (iv.data) {   // (its pictures named: beside them, the fingerprint of the content with them in it)
