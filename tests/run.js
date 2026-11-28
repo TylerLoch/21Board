@@ -69,7 +69,8 @@ function partOf(suites, k, n) {
   // Each file gives its suites once the board's address is known.
   const SUITES = FILES.flatMap(f => require(`./suites/${f}`)(Object.assign({}, lib, { BASE })));
   const mine = part ? partOf(SUITES, +part[1], +part[2]) : new Set(SUITES.keys());
-  const browser = await chromium.launch();
+  // Letters snap to whole pixels, as on GitHub's runner, so a cut that shows there shows here too.
+  const browser = await chromium.launch({ args: ['--font-render-hinting=full'] });
   // Headless Chromium can't answer a native Save dialog, so contexts use the download fallback by default.
   // The "Review fixes" suite stubs showSaveFilePicker itself to test that path.
   const newContext = browser.newContext.bind(browser);
