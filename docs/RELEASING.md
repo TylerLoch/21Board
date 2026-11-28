@@ -93,6 +93,15 @@ node tools/ci-wait.js
 It prints each part and every failure. Before a failure counts, rerun its suite alone with
 `node tests/run.js "<suite title>"`.
 
+A push that changes Weather also runs its layout checks. They fail only on something new, such as text cut off or a
+layout that flips. Wait for them too:
+
+```bash
+node tools/ci-wait.js --layout
+```
+
+tools/layout/README.md says what they check and how to run them here.
+
 `node tools/test-halves.js` runs everything on this machine instead, in about 40 minutes. Never run more than two test
 processes at once. The machine has 16 GB and no swap.
 

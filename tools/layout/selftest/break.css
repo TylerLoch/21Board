@@ -1,0 +1,8 @@
+/* The layout checks' self-test. Add it to a run with weather.js --css, on cases.json beside it or any matrix, and the
+   checks must fail: text over text, a picture cut by its card and out of the window, a card that overflows, a part
+   under a corner mark, and the unit letter as big as the digits. */
+.wx .hero .cond { margin-top: -2.2em !important; }
+.wx.L-xl .compass { width: 60em !important; height: 60em !important; }
+.wx.filled .in { padding-bottom: 0 !important; }
+.wx.L-xl .hero { align-content: end !important; }
+.wx .temp .unit { font-size: 1em !important; vertical-align: baseline !important; top: 0 !important; }

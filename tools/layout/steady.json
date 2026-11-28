@@ -1,0 +1,52 @@
+{
+  "about": [
+    "Weather's steadiness checks, run by weather-steady.js. See README.md beside this file.",
+    "sweeps: each line resizes the window across w = [from, to, step] at a height h, wider and then back, for each mix.",
+    "  h is a number, or [h at from, h at to] for a line that grows both ways. A mix names the parts shown.",
+    "paths: [mix, w, h, narrower, wider]. The window at w x h, reached from wider and from narrower, must draw the same.",
+    "swaps: at each size in at, for each mix, thunderstorms, -13, and 104 come and go. The window must come back the same.",
+    "set: default runs on every push: windows 480 to 540 tall and 800 to 1400 wide, the paths, and the swaps, some filling the board.",
+    "  more runs when asked for (--set more or --set all). A line's mixes can be split between the two: list it twice."
+  ],
+  "mixes": {
+    "H6": ["hourly+wear", "hourly+wear+sun", "hourly+wear+moon", "hourly+wear+wind", "hourly+wear+air", "hourly+wear+sun+air"],
+    "LT": ["days+wear+sun", "days+wear+sun+moon", "days+wear+sun+air", "all", "hourly+wear"],
+    "M5": ["all", "days+wear+moon", "days+wear+wind", "days+wear+air", "all-but-sun"]
+  },
+  "sweeps": [
+    { "id": "big", "w": [400, 1600, 7], "h": [300, 900], "mixes": ["all", "sun"], "set": "more" },
+    { "id": "f530", "w": [700, 1100, 3], "h": 530, "mixes": ["all"], "set": "more" },
+    { "id": "f540", "w": [700, 1100, 3], "h": 540, "mixes": ["all"], "set": "more" },
+    { "id": "f550", "w": [700, 1100, 3], "h": 550, "mixes": ["all"], "set": "more" },
+    { "id": "s500", "w": [1100, 1450, 3], "h": 500, "mixes": ["all", "hourly+wear", "hourly+wear+sun+wind", "days+wear+sun+moon"], "set": "more" },
+    { "id": "s480", "w": [900, 1300, 2], "h": 480, "mixes": "H6", "set": "more" },
+    { "id": "s490", "w": [900, 1300, 2], "h": 490, "mixes": "H6", "set": "more" },
+    { "id": "s530", "w": [760, 1200, 3], "h": 530, "mixes": ["hourly+sun"], "set": "more" },
+    { "id": "l480", "w": [980, 1160, 2], "h": 480, "mixes": "LT", "set": "default" },
+    { "id": "l497", "w": [960, 1100, 2], "h": 497, "mixes": "LT", "set": "default" },
+    { "id": "i497", "w": [1046, 1068, 2], "h": 497, "mixes": ["hourly+wear"], "set": "default" },
+    { "id": "x500", "w": [1150, 1300, 2], "h": 500, "mixes": ["days+wear+moon"], "set": "default" },
+    { "id": "x510", "w": [1150, 1300, 2], "h": 510, "mixes": ["days+wear+moon"], "set": "default" },
+    { "id": "x520", "w": [1150, 1300, 2], "h": 520, "mixes": ["days+wear+moon"], "set": "default" },
+    { "id": "m540", "w": [1350, 1400, 2], "h": 540, "mixes": ["days+wear+moon"], "set": "default" },
+    { "id": "n480", "w": [1196, 1232, 2], "h": 480, "mixes": ["all-but-sun"], "set": "default" },
+    { "id": "w480", "w": [960, 1600, 6], "h": 480, "mixes": "M5", "set": "more" },
+    { "id": "w510", "w": [1020, 1600, 6], "h": 510, "mixes": "M5", "set": "more" },
+    { "id": "w540", "w": [1080, 1600, 6], "h": 540, "mixes": "M5", "set": "more" }
+  ],
+  "paths": {
+    "set": "default",
+    "cases": [
+      ["days+wear+air", 1242, 480, 1200, 1300], ["days+wear+air", 1244, 480, 1200, 1300], ["days+wear+air", 1294, 500, 1250, 1350],
+      ["days+wear+air", 1326, 510, 1280, 1380], ["days+wear+air", 1080, 540, 1040, 1120], ["days+wear+air", 1398, 540, 1350, 1450],
+      ["days+wear+air", 1180, 540, 1150, 1250], ["days+wear+moon", 1264, 520, 1200, 1320], ["days+wear+moon", 1266, 520, 1200, 1320],
+      ["days+wear+moon", 1386, 540, 1340, 1420], ["all-but-sun", 1206, 480, 1180, 1260], ["all", 1063, 530, 1020, 1100],
+      ["all-but-wind", 1279, 617, 1240, 1320]
+    ]
+  },
+  "swaps": {
+    "set": "default",
+    "mixes": ["all", "all-but-hourly", "all-but-wear", "days+wear+sun", "days+wear+sun+moon", "hourly+wear+sun+wind", "hourly+days+wear+wind+air"],
+    "at": ["820x490", "1066x480", "1300x500", "1358x716", "fill1366x768", "fill1920x1080"]
+  }
+}

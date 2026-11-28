@@ -1,0 +1,296 @@
+# Runs Weather's layout checks when a push changes Weather or its checks, in 5 parts at once. Each part measures head
+# and base side by side. The last job compares them and fails only on something new in head. tools/ci-wait.js
+# --layout waits for it. tools/layout/README.md says what each check does. To change the number of parts, change the
+# list under matrix. PART reads the count from it.
+name: Layout
+
+on:
+  push:
+    paths:
+      - 'widgets/weather/**'
+      - 'tests/lib.js'
+      - 'tests/fixtures/weather/**'
+      - 'tools/layout/**'
+      - '.github/workflows/layout.yml'
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'Commit or branch to compare with. Empty: the merge base with main.'
+        required: false
+        default: ''
+      matrices:
+        description: 'Matrices: full, own, jit, quick, canon, steady, steady-more, steady-all, or a case file.'
+        required: false
+        default: 'full own jit steady'
+      css:
+        description: 'A stylesheet in the repo to add to head, such as tools/layout/selftest/break.css.'
+        required: false
+        default: ''
+
+# Artifacts need nothing more.
+permissions:
+  contents: read
+
+# A newer push to the same branch stops the older run. A run started by hand stops only an older one started by hand.
+concurrency:
+  group: layout-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  MATRICES: ${{ inputs.matrices || 'full own jit steady' }}
+  CSS: ${{ inputs.css }}
+
+jobs:
+  part:
+    name: Part ${{ matrix.part }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3, 4, 5]
+    steps:
+      # The whole history, to find the base.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # As tests.yml installs them.
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+
+      - name: Match the fonts
+        run: |
+          sudo apt-get install -y --no-install-recommends fonts-inter fonts-jetbrains-mono fonts-crosextra-carlito fonts-crosextra-caladea
+          sudo cp .github/fonts/*.conf /etc/fonts/conf.d/
+          fc-cache -f
+          fc-match system-ui
+
+      # Inside the checkout, so its tests/lib.js finds the Playwright installed here.
+      - name: Check out the base
+        env:
+          BASE: ${{ inputs.base }}
+          MAIN: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BASE" ]; then
+            base=$(git rev-parse --verify --quiet "$BASE^{commit}" || git rev-parse --verify "origin/$BASE^{commit}")
+            how="the commit asked for"
+          elif [ "$GITHUB_REF_NAME" = "$MAIN" ]; then
+            base=$(git rev-parse HEAD^1) how="the commit before it on $MAIN"
+          else
+            base=$(git merge-base HEAD "origin/$MAIN") how="the merge base with $MAIN"
+          fi
+          git worktree add --detach .layout-base "$base"
+          mkdir -p layout
+          echo "$base $how" > layout/base.txt
+          echo "Head $(git rev-parse --short HEAD). Base $(git rev-parse --short "$base"), $how."
+
+      # Head and base at once, each running every matrix in turn. A run's log and exit code go beside its results.
+      # Exit 1 means a window failed, which the last job counts as a problem. Exit 2 means the run itself stopped.
+      - name: Measure head and base
+        env:
+          PART: ${{ matrix.part }}/${{ strategy.job-total }}
+        run: |
+          set +e -uo pipefail
+          MATRICES=${MATRICES//,/ }
+          case "$MATRICES" in *[!A-Za-z0-9_./\ -]*) echo "Name matrices with letters, digits, and paths only."; exit 2 ;; esac
+          if [ -n "$CSS" ] && [ ! -f "$CSS" ]; then echo "No stylesheet at $CSS."; exit 2; fi
+          one() {
+            local side=$1 root=$2 m=$3 css=() t0=$SECONDS n
+            local name=$(basename "$m" .json)
+            local out=layout/$side/$name
+            mkdir -p "$out"
+            [ "$side" = head ] && [ -n "$CSS" ] && css=(--css "$CSS")
+            case $m in
+              steady) node tools/layout/weather-steady.js --root "$root" --set default --part "$PART" --out "$out" "${css[@]}" ;;
+              steady-more|steady-all) node tools/layout/weather-steady.js --root "$root" --set "${m#steady-}" --part "$PART" --out "$out" "${css[@]}" ;;
+              *) node tools/layout/weather.js --root "$root" --matrix "$m" --part "$PART" --out "$out" "${css[@]}" ;;
+            esac > "$out/log.txt" 2>&1
+            n=$?
+            echo $n > "$out/exit.txt"
+            local took="$((SECONDS - t0)) s$([ $n = 0 ] || echo ", exit $n")"
+            echo "$name $took" >> "layout/times-$side.txt"
+            echo "$side $name: $took"
+          }
+          side() { for m in $MATRICES; do one "$1" "$2" "$m"; done; }
+          side head . & side base .layout-base & wait
+          for s in head base; do echo "$s: $(paste -sd, "layout/times-$s.txt" | sed 's/,/, /g')."; done
+          stopped=0
+          for f in layout/*/*/exit.txt; do
+            [ "$(cat "$f")" -ge 2 ] || continue
+            stopped=1
+            echo "$(dirname "$f") stopped:"
+            tail -n 20 "$(dirname "$f")/log.txt" | sed 's/^/    /'
+          done
+          exit $stopped
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-part-${{ matrix.part }}
+          path: layout/
+          retention-days: 1
+
+  compare:
+    name: Compare
+    needs: part
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FIRST: 40    # each matrix lists its first 40 windows with something new, and takes their pictures
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: layout-part-*
+          path: parts
+
+      # Joins each side's parts, then compares head with base: gate.py --new for the windows, weather-steady.js
+      # --compare for steadiness. Writes layout/report.md, which the next steps print.
+      - name: Compare head with base
+        id: compare
+        env:
+          PARTS: ${{ needs.part.result }}
+        run: |
+          set +e -uo pipefail
+          MATRICES=${MATRICES//,/ }
+          # "a", "a and b", or "a, b, and c".
+          say() { local a=("$@") n=$#; if [ $n -le 2 ]; then echo "$1${2:+ and $2}"; else printf '%s, ' "${a[@]:0:n-1}"; echo "and ${a[n-1]}"; fi; }
+          mkdir -p layout/logs
+          parts=$(ls -d parts/layout-part-* 2>/dev/null | sort -V)
+          stops=() news=()
+          [ "$PARTS" = success ] || stops+=("a part stopped before the end")
+          first=$(echo "$parts" | head -n1)
+          if [ -z "$first" ] || [ ! -f "$first/base.txt" ]; then
+            echo "Head ${GITHUB_SHA::7}, with no results to compare." > layout/report.md
+            printf '\nLayout: FAIL. No part kept its results.\n' >> layout/report.md
+            exit 0
+          fi
+          cp "$first/base.txt" layout/base.txt
+          for p in $parts; do cmp -s "$p/base.txt" layout/base.txt || stops+=("part ${p##*-} measured another base"); done
+          base=$(cut -d' ' -f1 layout/base.txt) how=$(cut -d' ' -f2- layout/base.txt)
+          R=layout/report.md
+          echo "Head ${GITHUB_SHA::7}${CSS:+ with $CSS}, against base ${base::7}, $how." > $R
+          shots=no
+          for m in $MATRICES; do
+            n=$(basename "$m" .json)
+            for s in head base; do
+              mkdir -p "layout/$s/$n"
+              for p in $parts; do
+                cp "$p/$s/$n/log.txt" "layout/logs/$(basename "$p")-$s-$n.txt" 2>/dev/null
+                [ "$(cat "$p/$s/$n/exit.txt" 2>/dev/null || echo 2)" -lt 2 ] || stops+=("$s $n stopped in part ${p##*-}")
+              done
+            done
+            echo >> $R
+            case $m in
+              steady|steady-*)
+                for s in head base; do for p in $parts; do cat "$p/$s/$n/steady.jsonl" 2>/dev/null; done > "layout/$s/$n/steady.jsonl"; done
+                node tools/layout/weather-steady.js --compare "layout/base/$n/steady.jsonl" "layout/head/$n/steady.jsonl" --json "layout/$n.json" > "layout/$n.txt"
+                code=$?
+                v=$(tail -n1 "layout/$n.txt"); v=${v#Steadiness: }
+                if [ $code = 0 ]; then echo "**$n**: PASS. ${v^}" >> $R
+                elif [ $code = 1 ]; then
+                  echo "**$n**: FAIL. ${v^}" >> $R; news+=("$n")
+                  echo >> $R
+                  jq -r --argjson k "$FIRST" '.news[:$k][] | "- \(.type): \(.id). \(.text[:300])"' "layout/$n.json" >> $R
+                  more=$(jq --argjson k "$FIRST" '.news | length - $k' "layout/$n.json")
+                  [ "$more" -le 0 ] || echo "- And $more more in $n.txt." >> $R
+                  jq --argjson k "$FIRST" '.shots[:$k]' "layout/$n.json" > "layout/$n-shots.json"
+                  [ "$(jq length "layout/$n-shots.json")" = 0 ] || shots=yes
+                else echo "**$n**: the comparison stopped. See $n.txt." >> $R; stops+=("the $n comparison stopped"); fi
+                ;;
+              *)
+                for s in head base; do for p in $parts; do cat "$p/$s/$n/metrics.jsonl" 2>/dev/null; done > "layout/$s/$n/metrics.jsonl"; done
+                python3 tools/layout/gate.py --new --ref "layout/base/$n" --cand "layout/head/$n" --out "layout/$n-gate.md" --json "layout/$n-gate.json" > "layout/$n-gate.txt" 2>&1
+                code=$?
+                if [ $code -le 1 ]; then
+                  v=$(grep -m1 -E '^\*\*(PASS|FAIL)\.\*\*' "layout/$n-gate.md"); echo "**$n**: ${v//\*\*/}" >> $R
+                fi
+                if [ $code = 1 ]; then
+                  news+=("$n")
+                  echo >> $R
+                  jq -r --argjson k "$FIRST" '.new[:$k][] | "- \(.id) (\(.layout // "-")). \(.problems | map(sub("^problem: "; "")) | join("; "))"' "layout/$n-gate.json" >> $R
+                  more=$(jq --argjson k "$FIRST" '.new | length - $k' "layout/$n-gate.json")
+                  [ "$more" -le 0 ] || echo "- And $more more in $n-gate.md." >> $R
+                  jq -r --argjson k "$FIRST" '.new[:$k][].id' "layout/$n-gate.json" > "layout/$n-ids.txt"
+                  [ ! -s "layout/$n-ids.txt" ] || shots=yes
+                elif [ $code -ge 2 ]; then
+                  echo "**$n**: the gate stopped. See $n-gate.txt." >> $R; stops+=("the $n gate stopped")
+                fi
+                ;;
+            esac
+          done
+          echo >> $R
+          [ $shots = no ] || printf "The artifact's pictures folder shows base and head for up to %s windows a matrix.\n\n" "$FIRST" >> $R
+          if [ ${#stops[@]} -gt 0 ]; then s=$(say "${stops[@]}"); echo "Layout: FAIL. ${s^}." >> $R
+          elif [ ${#news[@]} -gt 0 ]; then echo "Layout: FAIL. Something new in $(say "${news[@]}")." >> $R
+          else echo "Layout: PASS. Nothing new in head." >> $R; fi
+          echo "shots=$shots" >> "$GITHUB_OUTPUT"
+
+      - name: Install Playwright and Chromium
+        if: steps.compare.outputs.shots == 'yes'
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+
+      - name: Match the fonts
+        if: steps.compare.outputs.shots == 'yes'
+        run: |
+          sudo apt-get install -y --no-install-recommends fonts-inter fonts-jetbrains-mono fonts-crosextra-carlito fonts-crosextra-caladea
+          sudo cp .github/fonts/*.conf /etc/fonts/conf.d/
+          fc-cache -f
+
+      # Each window with something new, on head and on base at once.
+      - name: Take pictures
+        if: steps.compare.outputs.shots == 'yes'
+        run: |
+          set +e -uo pipefail
+          MATRICES=${MATRICES//,/ }
+          git worktree add --detach .layout-base "$(cut -d' ' -f1 layout/base.txt)"
+          shoot() {
+            local side=$1 root=$2 css=()
+            [ "$side" = head ] && [ -n "$CSS" ] && css=(--css "$CSS")
+            for m in $MATRICES; do
+              local n=$(basename "$m" .json); local out=layout/pictures/$side/$n
+              if [ -s "layout/$n-ids.txt" ]; then
+                node tools/layout/weather.js --root "$root" --matrix "$m" --ids "layout/$n-ids.txt" --shots all --out "$out" "${css[@]}"
+              elif [ -s "layout/$n-shots.json" ] && [ "$(jq length "layout/$n-shots.json")" != 0 ]; then
+                node tools/layout/weather-steady.js --shoot "layout/$n-shots.json" --root "$root" --out "$out" "${css[@]}"
+              else continue; fi > "layout/logs/pictures-$side-$n.txt" 2>&1
+              echo "$side $n: exit $?"
+            done
+          }
+          shoot head . & shoot base .layout-base & wait
+
+      - name: Report
+        run: |
+          sed 's/\*\*//g' layout/report.md
+          cat layout/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep everything
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout
+          path: layout/
+          retention-days: 7
+
+      - name: Verdict
+        run: |
+          grep -q '^Layout: PASS\.' layout/report.md

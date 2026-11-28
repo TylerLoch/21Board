@@ -30,7 +30,8 @@ After: "Your work is stored only on this device."
 
 Every release follows docs/RELEASING.md, from the spec to the report. A small change takes its short path. Every other
 release runs tools/release-workflow.js, which builds, reviews, and fixes it. GitHub runs the whole test file on every
-push. tools/ci-wait.js waits for it and prints the failures. Run it in the background.
+push. tools/ci-wait.js waits for it and prints the failures. Run it in the background. A push that changes Weather
+also runs its layout checks, and `--layout` waits for those.
 
 ## Calculator manual
 
