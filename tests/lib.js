@@ -702,11 +702,13 @@ const apng = (w, h, noise) => {
 };
 // The alpha of one pixel (x, y) of a picture given as a data: URL, decoded in page p.
 const alphaAt = (p, src, x, y) => p.evaluate(async ([src, x, y]) => { const i = new Image(); i.src = src; await i.decode(); const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; const g = c.getContext('2d'); g.drawImage(i, 0, 0); return g.getImageData(x, y, 1, 1).data[3]; }, [src, x, y]);
+// A window's frame on page p, by its name: 'b21-board:<ikey>', or 'b21-board:<ikey>;<language>' in another language.
+const frameNamed = (p, ikey) => p.frames().find(f => { const n = f.name(); return n === 'b21-board:' + ikey || n.startsWith('b21-board:' + ikey + ';'); }) || null;
 // A paste or a drop made in a page or a window's frame (where: a Page, or a window's ikey on page p): a DataTransfer
 // holding these files (and text), sent as a ClipboardEvent to the element with focus, or as a DragEvent (dragover,
 // then drop) to the element at x, y. Returns whether the page's own code took it (preventDefault).
 const sendFiles = async (p, where, kind, files, o = {}) => {
-  const target = typeof where === 'string' ? p.frame({ name: 'b21-board:' + where }) : p;
+  const target = typeof where === 'string' ? frameNamed(p, where) : p;
   return target.evaluate(([kind, files, o]) => {
     const dt = new DataTransfer();
     for (const f of files) dt.items.add(new File([Uint8Array.from(atob(f.b64), c => c.charCodeAt(0))], f.name, { type: f.type }));
@@ -996,7 +998,7 @@ const WXT = {
   // (Its frame by name, so fn gets arg as its first parameter, as page.evaluate gives it.)
   F: async (p, fn, arg, k = WXT.K) => {
     let f = null;
-    for (let i = 0; i < 50 && !(f = p.frame({ name: 'b21-board:' + k })); i++) await p.waitForTimeout(100);
+    for (let i = 0; i < 50 && !(f = frameNamed(p, k)); i++) await p.waitForTimeout(100);
     if (!f) throw new Error(`no frame for ${k}`);
     return f.evaluate(fn, arg);
   },
@@ -1139,7 +1141,7 @@ module.exports = {
   EMBED, EMBED_CODE, PLAYLIST_EMBED, D1, D2, RK, V1, V2, VH, VIMEO_TITLES, DRIVE_EMBED, VIMEO_EMBED, VIMEO_OEMBED,
   DRIVE_OPEN, VIMEO_OPEN, DRIVE_LABEL, VMSG, vidFrames, DRIVE_CODE, VIMEO_CODE, stubVideos, ytWin, ytLook, ytFrames,
   ytMenu, ytData, ytChoose, ytShow, ytHistory, ytPick, picWin, picLook, picData, picConf, picMenu, picOpen, picFile,
-  FIXTURE, picWins, drawPic, PMSG, padGif, padWebp, pngChunk, PNG_SIG, pngHeader, apng, alphaAt, sendFiles, copyPic,
+  FIXTURE, picWins, drawPic, PMSG, padGif, padWebp, pngChunk, PNG_SIG, pngHeader, apng, alphaAt, frameNamed, sendFiles, copyPic,
   copyText, contentOf, contrast, rgbOf, hexOf, mixOf, hslOf, hueGap, ZC, NP_STYLES, WX_HOSTS, WX_AT, WX_FIX, wxShift,
   stubWeather, WXT, TESTS_DIR, setBase, setSuite, counts
 };

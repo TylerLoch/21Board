@@ -593,7 +593,8 @@ module.exports = T => {
     const classroom = await B(() => { const h = Array.from(document.querySelectorAll('#settings .sheet-body > h3')).find(e => e.textContent === 'Classroom'), rows = [];
       for (let e = h && h.nextElementSibling; e && e.tagName !== 'H3'; e = e.nextElementSibling) rows.push(Array.from(e.querySelectorAll('[data-act]')).map(b => b.dataset.act).join('+') || e.className);
       return { rows, lock: !!document.querySelector('#settings [data-act="lock-windows"]'), text: /Lock windows|This device only/.test(document.getElementById('settings').textContent) }; });
-    ok(!classroom.lock && !classroom.text && classroom.rows.join() === 'hist-open,close-all,awake', `Settings › Classroom: no “Lock windows in place”, only Board history, Close all windows and Stay awake (${classroom.rows.join(', ')})`);
+    ok(!classroom.lock && !classroom.text && classroom.rows.filter(r => /^(hist-open|close-all|awake)$/.test(r)).join() === 'hist-open,close-all,awake',
+      `Settings › Classroom: no “Lock windows in place”; Board history, Close all windows, and Stay awake are there (${classroom.rows.join(', ')})`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
 
     // ---- The dialog: a tap on Lock closes the Widget Picker and asks how.

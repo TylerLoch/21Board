@@ -9,7 +9,8 @@ layout, and nothing to saved data. Most are under 50 lines of code.
 
 1. Write what changes and the test that shows it, in a few lines. No mockups.
 2. Make a branch from main. Write the test, see it fail, then make the change.
-3. Update the docs and guides where they say otherwise. Stamp the next free version, as in step 3.
+3. Update the docs and guides where they say otherwise. A word a window shows changes in all four languages, and
+   node tools/words.js passes. Stamp the next free version, as in step 3.
 4. Run the suites the change touches. Then push the branch and wait for GitHub, as in step 4.
 5. Merge, push, publish, and report, as in steps 5 to 8.
 
@@ -27,6 +28,8 @@ Test what the change does, with the fewest checks that prove it.
 - Add to the feature's suite, in its area's file in `tests/suites/`. Start a new suite only for a new feature.
 - Name a suite for what it tests, not for its release.
 - Don't tie a check to this release. A recorded layout or a version number fails the next one.
+- Set a window's language through the board, never the browser's locale.
+- Board Sync gets the most thorough tests. Never cut `tests/merge.js`'s runs to save time.
 
 ## 1. Spec
 
@@ -46,7 +49,16 @@ The main branch is `claude/focused-curie-9oovoy`, GitHub's default. Make a branc
 git worktree add -b <key> <spec folder>/wt claude/focused-curie-9oovoy
 ```
 
-Then run `tools/release-workflow.js` with Claude Code's Workflow tool. Its top lists the args. It runs four agents:
+Write the args to `release-args.json` in the spec's folder. The top of `tools/release-workflow.js` lists them. Give it a
+short `name` and a one-line `summary`, such as "Languages 1b" and "A language for each Timer and Traffic Light window."
+Then name the run:
+
+```bash
+node tools/release-name.js <spec folder>/release-args.json <spec folder>/release-workflow.js
+```
+
+It writes a copy of the script that shows as "Release 2026.11.28-1 · Languages 1b", and checks that it runs. Run that copy
+with Claude Code's Workflow tool. It runs four agents:
 
 - **Build.** Writes the tests first and shows they fail on the old code. Then builds the change, updates the docs and the
   guides, stamps the release, and commits.

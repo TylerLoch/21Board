@@ -388,8 +388,8 @@ module.exports = T => {
     ok(await A.p.locator('#settings [data-act="link-send"], #settings [data-act="link-auto"], #settings [data-act="link-photo"], #settings [data-act="group"][data-val="boards"], #settings [data-act="group"][data-val="folder"]').count() === 0,
       'no Send, Send automatically, Send the background photo, Boards from other devices or Folder settings');
     const hints = await A.p.evaluate(() => Array.from(document.querySelectorAll('#settings .hint')).map(h => h.textContent));
-    ok(hints.filter(h => /This page, on all your devices\./.test(h)).length >= 2 && hints.filter(h => h === 'This device only.').length >= 2 && hints.filter(h => h === 'On all your devices.').length === 3 && !hints.some(h => /This page only\./.test(h)),
-      'while linked, the page’s own settings say “This page, on all your devices.”, the device’s own say “This device only.”, and Theme, Accent color and Text style “On all your devices.”');
+    ok(hints.filter(h => /This page, on all your devices\./.test(h)).length >= 2 && hints.filter(h => h === 'This device only.').length >= 2 && hints.filter(h => h === 'On all your devices.').length === 4 && !hints.some(h => /This page only\./.test(h)),
+      'while linked, the page’s own settings say “This page, on all your devices.”, the device’s own say “This device only.”, and Theme, Accent color, Text style, and Default widget language “On all your devices.”');
     await openSettings(A.p, ['about']);
     const footer = (await A.p.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
     ok(footer.endsWith(' Your work is stored only on this device and in your school Google Drive.') && !/sends nothing/.test(footer), `About says the work is stored only here and in the school Google Drive (${footer})`);
@@ -2221,7 +2221,7 @@ module.exports = T => {
   }],
 
   // The text style (Settings › Text style, called Letters before 2026.11.17-2) is the board's too, as the theme and accent.
-  ['Board Sync: theme and accent color, and the text style (Early readers from the laptop, all three at once, Settings open, locked, another tab, kiosk, Import)', async (browser) => {
+  ['Board Sync: theme and accent color, and the text style, and the default widget language (Early readers from the laptop, all three at once, Settings open, locked, another tab, kiosk, Import)', async (browser) => {
     const errors = [];
     const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
     const FAM = { standard: 'system-ui', legible: '"Atkinson Hyperlegible"', early: '"21Board Early Readers"' };
@@ -2287,6 +2287,30 @@ module.exports = T => {
       `all three: “The smartboard changed the theme to Light, the accent color to Green, and the text style to “Early readers”.” (${await look(A.p)}; ${(await heard(A.p)).join(' | ')})`);
     await round(A, B);
     ok(await look(B.p) === 'light green early', 'nothing changes back');
+
+    // The default widget language: Español from the laptop, with Settings open on the smartboard at that group. It is put
+    // in place there, said with no Undo, kept in the laptop's file with its version, and a Timer opened on the smartboard
+    // then opens in Spanish.
+    await openSettings(B.p, ['widget-language']);
+    await B.p.evaluate(() => { const body = document.querySelector('#settings .sheet-body'); window.__drawn = 0; new MutationObserver(ms => { if (ms.some(m => m.target === body)) window.__drawn++; }).observe(body, { childList: true }); });
+    await hear(B.p);
+    await openSettings(A.p, ['widget-language']); await A.p.click('#settings [data-act="widget-language"][data-val="es"]');
+    await stored(A.p, () => window.__board21.state.settings.widgetLanguage === 'es'); await A.p.keyboard.press('Escape');
+    await round(A, B);
+    const wl = await B.p.evaluate(() => ({ set: window.__board21.state.settings.widgetLanguage, es: document.querySelector('#settings [data-act="widget-language"][data-val="es"]').getAttribute('aria-checked'),
+      ticks: Array.from(document.querySelectorAll('#settings .lang-opt .tick'), t => t.parentElement.dataset.val).join(), value: document.querySelector('#settings [data-val="widget-language"] .v').textContent,
+      lang: (document.querySelector('#settings [data-val="widget-language"] .v [lang]') || {}).lang, drawn: window.__drawn }));
+    ok(wl.set === 'es' && wl.es === 'true' && wl.ticks === 'es' && wl.value === 'Español' && wl.lang === 'es' && wl.drawn === 0,
+      `the smartboard takes Español within a round: its card ticked and its row reading Español, put in place, not drawn again (${JSON.stringify(wl)})`);
+    ok((await heard(B.p)).includes('The laptop changed the default widget language to Español.') && await said(B.p, 'default widget language').locator('button').count() === 0,
+      `it says “The laptop changed the default widget language to Español.”, with no Undo (${(await heard(B.p)).join(' | ')})`);
+    const fileL = await ownJSON(A.p);
+    ok(fileL.widgetLanguage === 'es' && fileL.sync.style.widgetLanguage && fileL.sync.style.widgetLanguage[0] === devA, `the laptop’s file has it, and its version (${JSON.stringify(fileL.sync.style.widgetLanguage)})`);
+    await B.p.keyboard.press('Escape');
+    const tk = await addWin(B.p, 'timer');
+    ok(await B.p.evaluate(ik => window.__board21.state.insts.get(ik).language, tk) === 'es' && await eventually(async () => !!B.p.frame({ name: `b21-board:${tk};es` })),
+      `a Timer opened on the smartboard opens in Spanish (${await B.p.evaluate(ik => window.__board21.state.insts.get(ik).language, tk)})`);
+    await B.p.evaluate(ik => window.__board21.deleteInstance(ik), tk); await round(B, A);
 
     // Locked, with another tab and a kiosk tab of the smartboard open: Standard from the laptop applies everywhere.
     const B2 = await B.c.newPage(); B2.on('pageerror', e => errors.push('smartboard tab 2: ' + e.message)); await B2.goto(BASE); await boardUp(B2);

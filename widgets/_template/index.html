@@ -5,6 +5,8 @@
   1. Copy this folder to widgets/<your-widget-id>/. An id is lowercase letters, numbers, and dashes.
   2. Add an entry for it in widgets/registry.js
   3. Change VERSION in sw.js and run `node tools/release.js`. See README, Deploying.
+  4. Keep every word in the words table below, in English, Spanish, Russian, and Ukrainian. Run node tools/words.js
+     to check it. See docs/WIDGET-SDK.md, Languages.
   To try it, open this file in a browser or paste it into sdk/lab.html. The SDK shows it in the
   dev window, a real 21Board window. Add #b21-bare to the address to see the widget on its own.
   The SDK must be the first script in <head>. Keep the manifest block below the same as your registry entry.
@@ -17,7 +19,21 @@
 <meta charset="UTF-8">
 <script src="../../sdk/board21.js"></script>
 <script type="application/json" id="board21-widget">
-  {"id": "my-widget", "name": "My Widget", "version": "1.0.0", "window": {"width": 320, "height": 240, "minWidth": 200, "minHeight": 160}}
+  {"id": "my-widget", "name": "My Widget", "version": "1.0.0", "languages": ["en", "es", "ru", "uk"], "window": {"width": 320, "height": 240, "minWidth": 200, "minHeight": 160}}
+</script>
+<script>
+Board21.words({
+  window: {
+    add: { note: 'The main button. Adds one to the count.',
+      en: 'Add one',
+      es: 'Sumar uno',
+      ru: 'Прибавить один',
+      uk: 'Додати один' }
+  },
+  board: {
+    zero: { note: 'Menu row. Sets the count back to 0.', en: 'Back to 0' }
+  }
+});
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>My Widget</title>
@@ -37,7 +53,7 @@
 <body>
   <div style="text-align:center">
     <div id="count">0</div>
-    <button id="add">Add one</button>
+    <button id="add" data-t="add">Add one</button>
   </div>
 <script>
   // Board21.save() keeps content for each window (instance) and brings it back
@@ -60,9 +76,13 @@
   // 21Board tab, an import, or a reset.
   Board21.on('data', data => { state = read(data); render(); });
 
+  // The window menu's own rows. Their words are English for now, from the table's board rows.
+  Board21.on('menu', id => { if (id === 'zero') { state.count = 0; Board21.save(state); render(); } });
+
   Board21.ready().then(ctx => {
     state = read(ctx.data);
     render();
+    Board21.menu.set([{ id: 'zero', label: Board21.ui('zero') }]);
   });
 </script>
 </body>

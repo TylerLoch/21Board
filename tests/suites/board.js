@@ -1125,7 +1125,7 @@ module.exports = T => {
     const dv = await ctx.newPage();   // (no error listener: the test widget throws on purpose, see DEV_WIDGET)
     await dv.goto(BASE + '__dev/widget.html'); await dv.waitForTimeout(2500);
     const more = await dv.evaluate(() => Array.from(document.getElementById('b21-dev').shadowRoot.querySelectorAll('.pop button'), b => b.textContent).join(' | '));
-    ok(more === 'Reload the widget | Reset size and data | Open another window | Switch board shape | Show the widget on its own | Copy for 21Board | How this works', `the dev window’s ⋯ menu says each thing in a few words (${more})`);
+    ok(more === 'Reload the widget | Reset size and data | Open another window | Open in every language | Switch board shape | Show the widget on its own | Copy for 21Board | How this works', `the dev window’s ⋯ menu says each thing in a few words (${more})`);
     await dv.goto(BASE + 'sdk/lab.html'); await dv.waitForTimeout(500);
     const lab = (await dv.locator('#editor p').first().innerText()).replace(/\s+/g, ' ');
     ok(lab === 'Paste a widget’s whole HTML file, or drop or open the file. Then tap Try it to open it in a real 21Board window. It runs in a sandbox with its own empty storage, so it can’t see your boards.', `the widget lab says what to do (${lab})`);
@@ -1460,7 +1460,7 @@ module.exports = T => {
     let [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="1"]')]);
     const oneP = OUT + 'page-one.21board'; await dl.saveAs(oneP);
     const single = JSON.parse(fs.readFileSync(oneP, 'utf8'));
-    ok(Object.keys(single).join() === 'format,formatVersion,kind,exportedAt,generator,viewport,theme,accent,letters,board,instances' && single.formatVersion === 1 && !single.pages && single.board.name === 'Page 1' && single.instances.length === 1,
+    ok(Object.keys(single).join() === 'format,formatVersion,kind,exportedAt,generator,viewport,theme,accent,letters,widgetLanguage,board,instances' && single.formatVersion === 1 && !single.pages && single.board.name === 'Page 1' && single.instances.length === 1,
       `“This page” is a .21board file exactly as before pages (${Object.keys(single).join(',')})`);
     await openPicker(); await page.click('[data-ctl="export"]'); await settle(200);
     [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="0"]')]);

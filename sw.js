@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.27-2';
+const VERSION = '2026.11.28-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '7d0568c4';
+const BUILD = '04a2a5c3';
 const FILES = {
-  './': '77459f9dca233cd6',
-  'index.html': '77459f9dca233cd6',
-  'board.js': '3afc2cbecc4da53f',
+  './': 'e3dd61b1256f2736',
+  'index.html': 'e3dd61b1256f2736',
+  'board.js': '73b75c7240607a0c',
   'sdk/board21.js': '08906190c5acd9e7',
-  'sdk/board21-dev.js': '4bc3617a17b2185c',
-  'sdk/dev/board-shell.js': 'ab3f1ec62f52697e',
-  'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': 'ae15a05c3bb4ec69',
+  'sdk/board21-dev.js': '8a581bec97559eaf',
+  'sdk/dev/board-shell.js': '49c875caff4259fa',
+  'sdk/lab.html': '0f64e592aad54c02',
+  'widgets/registry.js': '0bc966acbae82c8b',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -37,7 +37,7 @@ const FILES = {
   'fonts/EarlyReaders-Regular.woff2': 'e96901beca9ae308',
   'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
   'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
-  'widgets/timer/index.html': 'd73dcc04bf88ec6b',
+  'widgets/timer/index.html': '46ecb3641dd9a842',
   'widgets/timer/words.js': '16517f04ba8ae70f',
   'widgets/stopwatch/index.html': '5c56c767f8f86c2a',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
@@ -64,7 +64,7 @@ const FILES = {
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
   'widgets/zones-check-in/index.html': '9264fcdf821b3af2',
   'widgets/dice/index.html': '7e6e22547b32875e',
-  'widgets/traffic-light/index.html': '16a8b931b0dc6d66',
+  'widgets/traffic-light/index.html': 'aef3d9ed351ee704',
   'widgets/traffic-light/words.js': 'fdb19ea10bfd8c2b',
   'widgets/youtube-player/index.html': '176df55af520e59f',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',

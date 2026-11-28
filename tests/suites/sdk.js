@@ -715,6 +715,25 @@ module.exports = T => {
     board = kids(page.mainFrame())[0]; widget = board && kids(board)[0];
     ok(!!widget && await widget.evaluate(() => Board21.context.widgetId === 'notes' && Board21.context.host === 'dev'), 'opening a widget\'s file shows it in the dev window');
     ok(await widget.evaluate(async () => { await document.fonts.ready; await new Promise(r => setTimeout(r, 300)); return [...document.fonts].some(f => /Crayon/.test(f.family)) && !!document.getElementById('t'); }), 'its own files (relative paths) still load');
+    // ---- The Timer's own file: a widget in this repo, its words in words.js and its languages in the registry.
+    await page.goto(BASE + 'widgets/timer/index.html'); await page.waitForTimeout(3000);
+    board = kids(page.mainFrame())[0];
+    const dev = (fn, arg) => page.evaluate(([fn, arg]) => new Function('r', 'arg', fn)(document.getElementById('b21-dev').shadowRoot, arg), [fn, arg]);
+    const titles = await page.evaluate(() => window.__board21DevWindow.state().checks.map(c => c.title));
+    ok(titles.length && !titles.some(t => /words\.js|"languages"/.test(t)), `the Timer’s Checks: no words.js warning and no “languages” error (${titles.join(' | ')})`);
+    const names = () => Promise.resolve(kids(board).map(f => f.name()).filter(n => /^b21-board:timer:/.test(n)).sort());
+    await dev("const s = r.querySelector('[data-k=\"lang\"]'); s.value = 'es'; s.dispatchEvent(new Event('change', { bubbles: true }));");
+    ok(await eventually(async () => (await names()).join() === 'b21-board:timer:1;es'), `the toolbar’s Language ▸ Español: the window’s frame name ends ;es (${(await names()).join(', ')})`);
+    await dev("r.querySelector('[data-act=\"more\"]').click(); r.querySelector('[data-act=\"every\"]').click();");
+    ok(await eventually(async () => (await names()).map(n => n.split(';')[1] || 'en').sort().join() === 'en,es,ru,uk'), `⋯ ▸ Open in every language: four Timer windows, in English, Español, Русский, and Українська (${(await names()).join(', ')})`);
+    await dev("r.querySelector('[data-view=\"window\"]').click();"); await page.waitForTimeout(600);
+    await tap(page.mainFrame(), board, '.win.focused .win-label'); await page.waitForTimeout(300);
+    await tap(page.mainFrame(), board, '#menu [data-act="lang"]'); await page.waitForTimeout(900);
+    const box = await board.evaluate(() => { const m = document.querySelector('#menu-sub.open'); return m && m.querySelectorAll('[role="menuitemradio"]').length; });
+    const tl = await at(page.mainFrame(), board, '#menu-sub', 0, 0).catch(() => null), br = await at(page.mainFrame(), board, '#menu-sub', 1, 1).catch(() => null);
+    const stage = await dev("const s = r.querySelector('.stage').getBoundingClientRect(); return { l: s.left, t: s.top, r: s.right, b: s.bottom };");
+    ok(box === 4 && tl && br && tl.x >= stage.l - 1 && tl.y >= stage.t - 1 && br.x <= stage.r + 1 && br.y <= stage.b + 1,
+      `back in the Window view, a Timer’s Language flyout is inside the stage (${box} choices; ${tl && br ? [tl.x, tl.y, br.x, br.y].map(Math.round).join(',') : 'none'} in ${JSON.stringify(stage)})`);
     // ---- Inside the real board, widgets never load the dev window. (Its own context: the board's offline
     // cache would answer the other test pages.)
     const ctxB = await browser.newContext({ viewport: { width: 1400, height: 860 } });
@@ -770,6 +789,16 @@ module.exports = T => {
     ok(labPaste.open && !labPaste.paste, `the test board’s Widget Picker has no Paste (${JSON.stringify(labPaste)})`);
     await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-act="edit"]').click()); await page.waitForTimeout(300);
     ok(await page.evaluate(() => !document.getElementById('editor').hidden && !document.getElementById('b21-dev')), '"Edit code" goes back to the code');
+    // A words table row without Spanish and Russian: Checks says so, and Copy fix request names the row and what it lacks.
+    await page.evaluate(() => { window.__copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__copied.push(t); return Promise.resolve(); } } }); });
+    await page.fill('#code', (await page.inputValue('#code')).replace(/\s*es: 'Sumar uno',/, '').replace(/\s*ru: 'Прибавить один',/, ''));
+    await page.click('#run'); await page.waitForTimeout(3000);
+    await page.locator('#b21-dev [data-drawer="checks"]').click(); await page.waitForTimeout(300);
+    const rows = page.locator('#b21-dev .chk', { hasText: 'row needs more languages' });
+    if (await rows.count()) { await rows.first().locator('[data-act="copy-fix"]').click(); await page.waitForTimeout(200); }
+    const rowFix = await page.evaluate(() => window.__copied[window.__copied.length - 1] || '');
+    ok(/^Please fix this in my 21Board widget: 1 row needs more languages\. Add the missing words to the words table, in English, Spanish, Russian, and Ukrainian\. add: Spanish and Russian\.$/.test(rowFix),
+      `Copy fix request for a row that needs more languages names the row and the languages it lacks (${rowFix || 'no such check'})`);
 
     // ---- The board shell is up to date with index.html.
     let built = true;
@@ -891,8 +920,8 @@ module.exports = T => {
       const fits = () => page.evaluate(() => { const b = document.getElementById('b21-dev').shadowRoot.querySelector('.bar'); return b.scrollWidth <= b.clientWidth ? 'fits' : `${b.scrollWidth} px wide`; });
       let off = await notShown(BAR), fit = await fits();
       ok(!off.length && fit === 'fits', `${px}: the toolbar fits the pane, with Data, Events, Checks and ⋯ on top (${fit}; ${off.join('; ') || 'all four shown'})`);
-      off = await notShown([['[data-view="window"]', 'Window'], ['[data-k="screen"]', 'Screen'], ['[data-k="theme"]', 'Theme'], ['.size output', 'Size'], ['.brand', 'the 21']]);
-      ok(!off.length, `${px}: Window, Screen, Theme, Size and the 21 show too (${off.join('; ') || 'all five'})`);
+      off = await notShown([['[data-view="window"]', 'Window'], ['[data-k="screen"]', 'Screen'], ['[data-k="theme"]', 'Theme'], ['[data-k="lang"]', 'Language'], ['.size output', 'Size'], ['.brand', 'the 21']]);
+      ok(!off.length, `${px}: Window, Screen, Theme, Language, Size, and the 21 show too (${off.join('; ') || 'all six'})`);
 
       // From the keyboard: Enter on ⋯ opens it, Tab goes to its first item, and Escape closes it.
       await dev('[data-act="more"]').focus(); await page.keyboard.press('Enter'); await page.waitForTimeout(150);
@@ -926,7 +955,7 @@ module.exports = T => {
           ok(await panel() === HEAD[name], `${px}: ${HEAD[name]} is open`);
           await tap('[data-act="more"]', '⋯'); await page.waitForTimeout(150);
           const its = await items();
-          ok(await menuOpen() && its.length === 7 && its.every(i => i.top && i.over),
+          ok(await menuOpen() && its.length === 8 && its.every(i => i.top && i.over),
             `${px}, ${HEAD[name]} open: ⋯ opens over the panel, every item on top (${its.filter(i => !i.top || !i.over).map(i => `${i.label}: ${i.over ? 'under ' + i.at : 'not over the panel'}`).join('; ') || its.length + ' items'})`);
           // Tap one item where it shows, and see it work.
           const act = TAPS[name], it = its.find(i => i.act === act);
@@ -998,7 +1027,7 @@ module.exports = T => {
         ok(!off.length && fit === 'fits', `${px}, the widget lab: the toolbar fits the pane, with Data, Events, Checks, Edit code, ⋯, Theme and Size on top (${fit}; ${off.join('; ') || 'all shown'})`);
         await tap('[data-act="more"]', '⋯'); await page.waitForTimeout(150);
         const its = await items();
-        ok(await menuOpen() && its.length === 7 && its.every(i => i.top), `${px}, the widget lab: ⋯ opens, every item on top (${its.filter(i => !i.top).map(i => `${i.label}: under ${i.at}`).join('; ') || its.length + ' items'})`);
+        ok(await menuOpen() && its.length === 8 && its.every(i => i.top), `${px}, the widget lab: ⋯ opens, every item on top (${its.filter(i => !i.top).map(i => `${i.label}: under ${i.at}`).join('; ') || its.length + ' items'})`);
         // At 800 px one row fits the dev window's toolbar but not the lab's, which also has Edit code.
         await reset(); await page.setViewportSize({ width: 800, height: 768 }); await page.waitForTimeout(400);
         off = await notShown(BAR.concat([['[data-act="edit"]', 'Edit code']])); fit = await fits();

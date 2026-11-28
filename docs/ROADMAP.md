@@ -50,8 +50,8 @@ Done:
 - The SDK reads each widget's words table, with plurals, and shows dates in the window's language. Numbers stay in
   English form.
 - The Timer and the Traffic Light have their words in English, Spanish, Russian, and Ukrainian.
+- The Timer and Traffic Light switch from their window menu. Settings sets the language new windows start in.
 
 Next:
-- A Language row in each window's menu, and a default for new windows in Settings.
-- Then the other widgets, a few at a time.
+- The other widgets, a few at a time.
 - Then the board's own words. Its menus and Settings stay English for now.

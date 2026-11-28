@@ -34,7 +34,9 @@
     <button class="lamp green" data-c="green" aria-label="Green" data-t-aria-label="green"></button>
   </div>
 <script>
-  // Content: { active: 'red' | 'yellow' | 'green' | null }, the color the teacher chose.
+  // Content: { active: 'red' | 'yellow' | 'green' | null }, the color the teacher chose. A tap while following is also
+  //   kept as the window closes, as over (see tapped), so it still shows when the window starts again (a language
+  //   switch starts it again). The window drops over once it has it.
   // Config:  { follow: true } while Follow timers is on: the light shows the color of the Timer or 21Timer on the page
   //   that is closest to ending (the board's 'timers'). That color is worked out here, the same in every tab and on
   //   every device, from what the board sends. It is never saved.
@@ -135,8 +137,11 @@
   });
   Board21.on('config', c => { config = readConfig(c); render(); });
   Board21.on('timers', l => { timers = readTimers(l); render(); });
+  Board21.on('beforeclose', () => { if (following() && tapped !== null) Board21.save(Object.assign({}, state, { over: tapped })); });
   Board21.ready().then(ctx => {
     state = readState(ctx.data); config = readConfig(ctx.config); timers = readTimers(ctx.timers);
+    // (a tap kept as the window closed: it shows until the followed color changes, as before)
+    if (ctx.data && typeof ctx.data.over === 'string') { if (following()) tapped = ctx.data.over; Board21.save(state); }
     render();
     setInterval(render, 1000);
   });

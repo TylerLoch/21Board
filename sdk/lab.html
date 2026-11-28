@@ -71,13 +71,18 @@
   document.getElementById('run').onclick = run;
   document.getElementById('file').onchange = function (e) { load(e.target.files && e.target.files[0]); e.target.value = ''; };
   document.getElementById('sample').onclick = function () {
-    code.value = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<script src="../../sdk/board21.js"><\/script>\n' +
-      '<script type="application/json" id="board21-widget">{"id": "counter", "name": "Counter", "version": "1.0.0", "window": {"width": 320, "height": 240, "minWidth": 200, "minHeight": 150, "aspectRatio": "4:3"}}<\/script>\n' +
-      '<meta charset="UTF-8">\n<title>Counter</title>\n<style>\n  html, body { margin: 0; height: 100%; }\n  body { display: grid; place-items: center; background: var(--b21-bg); color: var(--b21-text); font: 700 30vmin/1 var(--b21-font); }\n</style>\n</head>\n<body>\n<div id="n">0</div>\n<script>\n' +
-      '  let state = { count: 0 };\n  const show = () => { document.getElementById("n").textContent = state.count; };\n' +
-      '  Board21.ready().then(ctx => { state = Object.assign(state, ctx.data); show();\n    Board21.menu.set([{ id: "add", label: "Add one" }, { id: "zero", label: "Back to 0" }]); });\n' +
+    code.value = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<script src="../../sdk/board21.js"><\/script>\n' +
+      '<script type="application/json" id="board21-widget">{"id": "counter", "name": "Counter", "version": "1.0.0", "languages": ["en", "es", "ru", "uk"], "window": {"width": 320, "height": 240, "minWidth": 200, "minHeight": 150, "aspectRatio": "4:3"}}<\/script>\n' +
+      '<script>\nBoard21.words({\n  window: {\n    add: { note: \'The main button. Adds one to the count.\',\n      en: \'Add one\',\n      es: \'Sumar uno\',\n      ru: \'Прибавить один\',\n      uk: \'Додати один\' }\n  },\n' +
+      '  board: {\n    zero: { note: \'Menu row. Sets the count back to 0.\', en: \'Back to 0\' }\n  }\n});\n<\/script>\n' +
+      '<title>Counter</title>\n<style>\n  html, body { margin: 0; height: 100%; }\n  body { display: grid; place-items: center; background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font); }\n' +
+      '  #count { font-size: 30vmin; font-weight: 800; }\n  button { font: inherit; font-size: 6vmin; border: 0; border-radius: 999px; padding: 2vmin 6vmin; background: var(--b21-accent); color: var(--b21-on-accent); cursor: pointer; }\n</style>\n</head>\n<body>\n' +
+      '  <div style="text-align:center">\n    <div id="count">0</div>\n    <button id="add" data-t="add">Add one</button>\n  </div>\n<script>\n' +
+      '  let state = { count: 0 };\n  const show = () => { document.getElementById("count").textContent = state.count; };\n' +
+      '  document.getElementById("add").onclick = () => { state.count++; Board21.save(state); show(); };\n' +
       '  Board21.on("data", d => { state = Object.assign({ count: 0 }, d); show(); });\n' +
-      '  Board21.on("menu", id => { state.count = id === "add" ? state.count + 1 : 0; show(); Board21.save(state); });\n<\/script>\n</body>\n</html>\n';
+      '  Board21.on("menu", id => { if (id === "zero") { state.count = 0; Board21.save(state); show(); } });\n' +
+      '  Board21.ready().then(ctx => { state = Object.assign(state, ctx.data); show(); Board21.menu.set([{ id: "zero", label: Board21.ui("zero") }]); });\n<\/script>\n</body>\n</html>\n';
   };
   ['dragenter', 'dragover'].forEach(function (t) { code.addEventListener(t, function (e) { e.preventDefault(); code.classList.add('drag'); }); });
   ['dragleave', 'drop'].forEach(function (t) { code.addEventListener(t, function () { code.classList.remove('drag'); }); });

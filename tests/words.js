@@ -3,8 +3,10 @@
  *
  * Loads the "// #region Words" region of sdk/board21.js into a vm, as tests/merge.js loads board.js's merge region,
  * and requires tools/words.js. Then checks:
- *   1. the real tables pass: every widget with a words.js, and the common words, with no problems;
- *   2. each rule of tools/words.js bites once, on one small broken copy each, with its file and line;
+ *   1. the real tables pass: every widget with a words.js, the common words, and the starter's (widgets/_template),
+ *      with no problems;
+ *   2. each rule of tools/words.js bites once, on one small broken copy each, with its file and line, and the widgets
+ *      that list their languages are the ones with a table, but those still to come (NOT_YET);
  *   3. the layout: --format leaves every real table as it is, and lays out a scrambled copy;
  *   4. the Sheet: --sheet's columns, plural lines and hints, and --apply's changes, conflicts, and English edits;
  *   5-12. the engine: lookup, plurals, placeholders, numbers and dates, frame names and addresses, the pseudo
@@ -121,12 +123,13 @@ const trailer = used => {
 let FIXTURE = {};
 try {
   FIXTURE = {
-    'widgets/registry.js': `self.BOARD21_WIDGETS = [{ id: 'fixture', name: 'Fixture', entry: '${FIX_PAGE}', files: ['${FIX_PAGE}', '${FIX}'] }];\n`,
+    'widgets/registry.js': `self.BOARD21_WIDGETS = [{ id: 'fixture', name: 'Fixture', entry: '${FIX_PAGE}', files: ['${FIX_PAGE}', '${FIX}'], languages: ['en', 'es', 'ru', 'uk'] }];\n`,
     [FIX]: FIX_TABLE + trailer(['b21.start', 'b21.pause']),
     [FIX_PAGE]: FIX_HTML
   };
 } catch (e) { loadError = loadError || e.message; }
-const fixture = (changes = {}) => Object.assign({}, FIXTURE, changes);
+// (the real starter, widgets/_template/index.html, left out: tools/words.js checks it with the widgets)
+const fixture = (changes = {}) => Object.assign({ 'widgets/_template/index.html': null }, FIXTURE, changes);
 const fixTable = () => W.parse(FIX, FIXTURE[FIX]);
 
 // ---- 1. The real tables pass.
@@ -134,7 +137,7 @@ test('the real tables: every widget with a words.js, and the common words, with 
   need();
   const box = { self: {} };
   vm.runInNewContext(read('widgets/registry.js'), box);
-  const want = box.self.BOARD21_WIDGETS.filter(w => !w.external && fs.existsSync(path.join(ROOT, path.dirname(w.entry), 'words.js'))).map(w => w.id).concat('common');
+  const want = box.self.BOARD21_WIDGETS.filter(w => !w.external && fs.existsSync(path.join(ROOT, path.dirname(w.entry), 'words.js'))).map(w => w.id).concat('common', '_template');
   const r = W.check();
   eq(r.tables.map(t => t.id).sort(), want.sort(), 'tables');
   eq(r.problems, [], 'problems');
@@ -206,6 +209,71 @@ for (const [name, file, change, want] of BITES) {
     yes(r.problems.includes(expect), `want “${expect}” in:\n${r.problems.join('\n') || '(no problems)'}`);
   });
 }
+// The languages a widget lists (its registry entry, or the starter's manifest) and its table go together.
+const REG = FIXTURE['widgets/registry.js'] || '';
+const TEMPLATE = 'widgets/_template/index.html';
+const TEMPLATE_HTML = (manifest, row) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">
+  ${manifest}
+</script>
+<script>
+Board21.words({
+  window: {
+    ${row}
+  }
+});
+</script>
+<title>My Widget</title>
+</head>
+<body>
+  <button id="add" data-t="add">Add one</button>
+</body>
+</html>
+`;
+const ADD_ROW = "add: { note: 'The main button.', en: 'Add one', es: 'Sumar uno', ru: 'Прибавить один', uk: 'Додати один' }";
+const LANGS4 = '"languages": ["en", "es", "ru", "uk"]';
+const LANG_BITES = [
+  ['a table and no languages', { 'widgets/registry.js': swapSafe(REG, ", languages: ['en', 'es', 'ru', 'uk']", '') }, 'widgets/registry.js: fixture has a words table but no languages. Add languages: [\'en\', \'es\', \'ru\', \'uk\'].'],
+  ['languages and no table', { 'widgets/registry.js': swapSafe(REG, '}];', "}, { id: 'plain', name: 'Plain', entry: 'widgets/plain/index.html', languages: ['en', 'es', 'ru', 'uk'] }];"), 'widgets/plain/index.html': '<!doctype html><title>Plain</title>' }, 'widgets/registry.js: plain lists languages but has no words table.'],
+  ['languages that aren’t the four', { 'widgets/registry.js': swapSafe(REG, "languages: ['en', 'es', 'ru', 'uk']", "languages: ['es', 'en']") }, 'widgets/registry.js: fixture’s languages must be [\'en\', \'es\', \'ru\', \'uk\'].'],
+  ['the starter’s manifest with no languages', { [TEMPLATE]: TEMPLATE_HTML('{"id": "my-widget", "name": "My Widget", "version": "1.0.0"}', ADD_ROW) }, `${TEMPLATE}: the manifest has no languages. Add ${LANGS4}.`]
+];
+function swapSafe(text, a, b) { return text.includes(a) ? text.replace(a, b) : text + `\n// (not found: ${a})`; }
+for (const [name, files, want] of LANG_BITES) {
+  test(`each rule bites: ${name}`, () => {
+    need();
+    const r = W.check({ files: fixture(files) });
+    yes(r.problems.includes(want), `want “${want}” in:\n${r.problems.join('\n') || '(no problems)'}`);
+  });
+}
+test('the starter is checked as a widget is: its table, by its file and line', () => {
+  need();
+  const ok1 = TEMPLATE_HTML(`{"id": "my-widget", "name": "My Widget", "version": "1.0.0", ${LANGS4}}`, ADD_ROW);
+  let r = W.check({ files: fixture({ [TEMPLATE]: ok1 }) });
+  eq([r.tables.map(t => t.id), r.problems], [['common', 'fixture', '_template'], []], 'a good starter: its table, and no problems');
+  const bad = swap(ok1, " ru: 'Прибавить один',", '');
+  r = W.check({ files: fixture({ [TEMPLATE]: bad }) });
+  eq(r.problems, [`${TEMPLATE} line ${lineOf(bad, 'add: {')}: add has no Russian.`], 'a row with no Russian');
+});
+// Widgets in four languages, and those still to come (docs/ROADMAP.md): NOT_YET shrinks each phase, and is empty after
+// Phase 4b. A widget that isn't in it lists all four languages and has a table; one in it lists none.
+const NOT_YET = ['stopwatch', 'task-timer', 'calendar', 'clock', 'notes', 'name-picker', 'first-then-board',
+  'zones-check-in', 'dice', 'youtube-player', 'image', 'calculator', 'weather'];
+test('every widget lists all four languages and has a words table, but those still to come (NOT_YET), which list none', () => {
+  need();
+  const box = { self: {} };
+  vm.runInNewContext(read('widgets/registry.js'), box);
+  const tables = new Set(W.check().tables.map(t => t.id)), bad = [];
+  for (const w of box.self.BOARD21_WIDGETS.filter(x => !x.external && x.id !== 'sdk-playground')) {
+    const langs = JSON.stringify(Array.from(w.languages || []));
+    if (NOT_YET.includes(w.id)) { if (w.languages) bad.push(`${w.id} lists ${langs}, and is in NOT_YET`); }
+    else if (langs !== JSON.stringify(['en', 'es', 'ru', 'uk']) || !tables.has(w.id)) bad.push(`${w.id}: ${langs}, ${tables.has(w.id) ? 'a table' : 'no table'}`);
+  }
+  eq(bad, [], 'widgets');
+});
 test('each problem reads right: a row named like an object’s own member, and English that ends a sentence', () => {
   need();
   const t = swap(FIXTURE[FIX], '    minus: {', "    constructor: {\n      en: 'Build',\n      es: 'Construir',\n      ru: 'Строить',\n      uk: 'Будувати' },\n    minus: {");
@@ -244,7 +312,7 @@ test('node tools/words.js --format with a file that isn’t there', () => {
 // ---- 3. Layout.
 test('--format leaves every real table as it is', () => {
   need();
-  const real = W.check().tables.map(t => t.file);
+  const real = W.check().tables.filter(t => !t.inline).map(t => t.file);   // (an inline table, the starter's, is laid out by hand)
   yes(real.includes(SDK) && real.length > 1, real.join());
   for (const f of real) eq(W.layout(f, read(f)) === read(f), true, f);
 });

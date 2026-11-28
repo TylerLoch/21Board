@@ -92,10 +92,11 @@ widget.
 | **Move a window** | Drag its title bar. In widgets without typing, such as Timer, Calendar, and Dice, drag anywhere inside. In widgets with typing, such as Notes, drag inside with two fingers. The Video Player's video takes every tap, so move or bring forward its window by the title bar. Windows snap next to each other and resist overlapping. Keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
 | **Select a window** | Tap anywhere on it. It comes forward and gets an outline in the accent color, a stronger title bar tint, and resize handles. Tap the empty board to deselect. |
-| **Window menu** | Tap the widget's name ⌄ in the title bar for its own options, **Zoom to fill**, **Reset…**, and **Close**. 21Sketch, 21Timer, and 21DocCam swap **Reset…** for **Refresh** and **Open in new tab**. Double-tap the title bar to fill the board or restore the window. A tap that slides a little still counts as a tap. On a keyboard, Enter on the window's name opens the menu, the arrow keys move, Enter chooses, and Escape closes. |
+| **Window menu** | Tap the widget's name ⌄ in the title bar for its own options, **Zoom to fill**, **Language** where the widget has it, **Reset…**, and **Close**. 21Sketch, 21Timer, and 21DocCam swap **Reset…** for **Refresh** and **Open in new tab**. Double-tap the title bar to fill the board or restore the window. A tap that slides a little still counts as a tap. On a keyboard, Enter on the window's name opens the menu, the arrow keys move, Enter chooses, and Escape closes. |
+| **Languages** | The Timer and Traffic Light come in English, Spanish, Russian, and Ukrainian. Tap the window's name ⌄, then **Language**, and pick one. Only that window changes. **Settings → Classroom → Default widget language** sets the language new windows start in. Title bars and menus stay English. A window that switches starts again and keeps what it saved. Nothing goes online to translate. |
 | **Close a window** | Its content is kept. Open the widget again to pick up where you left off. Several of one widget come back in order: 1, 2, 3. |
 | **Export** | *Full backup* saves everything, closed windows too. *Blank template* saves the layout and widget settings with no content, so it's safe to share with colleagues. With several pages, choose *All pages*, *This page*, or *This page as a blank template*. You get a `.21board` file. In Chrome and Edge on computers and Chromebooks, you choose where it goes, such as Google Drive. *Back up now* in Settings and the backup reminders always save every page. |
-| **Import** | Pick a `.21board` file, or drop it on the board. The suggested choice is *Open as a new page*. The others are *Replace this page* and *Add to this page*. For a file of several pages, choose *Add these pages* or *Replace all pages*, which has Undo. *Replace this page* keeps the page itself and takes the file's theme, accent color, and text style, and says so when they differ. With Board Sync, the new windows, content, theme, accent color, and text style reach your other devices too. Its Undo puts back the page, theme, accent color, and text style it replaced. The other choices leave the theme, accent color, and text style alone. A Board Sync device file opens as a backup of every page. |
+| **Import** | Pick a `.21board` file, or drop it on the board. The suggested choice is *Open as a new page*. The others are *Replace this page* and *Add to this page*. For a file of several pages, choose *Add these pages* or *Replace all pages*, which has Undo. *Replace this page* keeps the page itself and takes the file's theme, accent color, text style, and default widget language, and says so when they differ. With Board Sync, the new windows, content, theme, accent color, text style, and default widget language reach your other devices too. Its Undo puts back the page, theme, accent color, text style, and default widget language it replaced. The other choices leave the theme, accent color, text style, and default widget language alone. A Board Sync device file opens as a backup of every page. |
 | **Paste** | Ctrl+V or ⌘V opens a copied picture in a new Picture window. A copied video link opens in a new Video Player. Dropping either on the board does the same. On a touch screen, tap *Paste* in the Widget Picker. An animation copied from a web page pastes as a still. Open or drop its file to keep it moving. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so your layout looks the same on a laptop and the smartboard. In Settings, *Fill* lets the board take any window's shape, and you can change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover from a curious student. Settings → Classroom → **Board history…** lists earlier versions in a column beside Settings. Tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board, and can be undone. *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, and Import. An empty board offers *Go back to an earlier version*. Each window's menu has *Go back…*, for that window's earlier versions. |
@@ -123,6 +124,8 @@ time Settings opens.
   folder*. When the board can't sync, it says what's wrong. Not in kiosk mode, the dev window, or browsers without it.
   See [Board Sync](#board-sync).
 - **Classroom**
+  - **Default widget language:** English, Spanish, Russian, or Ukrainian, for windows opened from now on. Open windows
+    keep theirs. With Board Sync, on all your devices.
   - **Go back to an earlier version:** *Board history…* opens beside Settings, which stays open. Tap it again to
     close it. A line here says when history is paused or short of space. See
     [Board history](#board-history).
@@ -217,6 +220,7 @@ tools/make-glossary.py  Builds docs/GLOSSARY.md and tools/glossary.json from one
 tools/test-halves.js    Runs tests/run.js as two halves at once. See Tests.
 tools/ci-wait.js        Waits for GitHub to test a push and prints the failures. See Tests.
 tools/release-workflow.js  Builds, reviews, and fixes a release with Claude Code. See docs/RELEASING.md.
+tools/release-name.js   Names a release's run after the release, and checks the script runs. See docs/RELEASING.md.
 tests/run.js            Runs the browser tests. See Tests.
 tests/words.js          The Node test of the words tables and the SDK's words engine
 tests/suites/<area>.js  The browser tests, one file per area, such as calculator.js or board-sync.js
@@ -254,7 +258,9 @@ tests/timings.json      How long each suite takes, to split the tests evenly
 ## Adding a widget
 
 1. Copy `widgets/_template/` to `widgets/<id>/` and build it (see **[docs/WIDGET-SDK.md](docs/WIDGET-SDK.md)**).
-2. Add an entry to `widgets/registry.js` listing every file it needs.
+   Every word its window shows goes in its words table, in English, Spanish, Russian, and Ukrainian. Run
+   `node tools/words.js` to check it.
+2. Add an entry to `widgets/registry.js` listing every file it needs, and `languages: ['en', 'es', 'ru', 'uk']`.
 3. Change `VERSION` in `sw.js` and run `node tools/release.js`. See [Deploying](#deploying).
 
 To try a widget, open its file in a browser. It appears in the **dev window**: a real 21Board window with its title
@@ -352,23 +358,24 @@ in Settings → Board Sync.
 **What happens when you link a folder.** The last step says which of these happened, and ends with "Changes on any
 of your devices show up on the others, usually within a minute."
 
-- **An empty folder:** this device's board goes there at once, with its theme, accent color, and text style. A device
-  with only its untouched first page, "Page 1", writes nothing yet, and takes the board from your other device. If
-  two or three devices set up the same folder before Google Drive has carried one's file to the others, a theme,
-  accent color, or text style chosen on any of them wins on all. The defaults never replace a choice.
+- **An empty folder:** this device's board goes there at once, with its theme, accent color, text style, and default
+  widget language. A device with only its untouched first page, "Page 1", writes nothing yet, and takes the board from
+  your other device. If two or three devices set up the same folder before Google Drive has carried one's file to the
+  others, a theme, accent color, text style, or default widget language chosen on any of them wins on all. The
+  defaults never replace a choice.
 - **A folder with a board, on a device that has never synced:** this device shows the board, in its theme, accent
-  color, and text style. This device's own pages go after the board's: "This device’s 2 pages were added at the end."
-  A page both have, from the same import, keeps the folder's values, and this device's different content stays
-  beside it as a copy. This device's own theme, accent color, and text style don't count as a change, so they never
-  replace the board's.
-- **A folder with another board,** after *Change…* to another class's folder, or after *Unlink* and linking a
-  different folder: this device switches to that board, and to its theme, accent color, and text style. Its own pages
-  stay in the other folder, and under Board history › Deleted pages for 30 days. Two boards are never combined.
-  Before it leaves, *Change…* writes this device's file once more, with the work done here since its last write and
-  a note that it left, as *Unlink* does. So the devices still on that folder get the work and stop listing this one.
-  When both folders have the same name, the last step says "…the “21Board” folder this device used before".
-  Switching back within 20 seconds, while Undo for the pages it left is still offered, waits until that Undo is
-  gone, so those pages come back with the work this device's file there holds.
+  color, text style, and default widget language. This device's own pages go after the board's: "This device’s 2
+  pages were added at the end." A page both have, from the same import, keeps the folder's values, and this device's
+  different content stays beside it as a copy. This device's own theme, accent color, text style, and default widget
+  language don't count as a change, so they never replace the board's.
+- **A folder with another board,** after *Change…* to another class's folder, or after *Unlink* and linking a different
+  folder: this device switches to that board, and to its theme, accent color, text style, and default widget language.
+  Its own pages stay in the other folder, and under Board history › Deleted pages for 30 days. Two boards are never
+  combined. Before it leaves, *Change…* writes this device's file once more, with the work done here since its last
+  write and a note that it left, as *Unlink* does. So the devices still on that folder get the work and stop listing
+  this one. When both folders have the same name, the last step says "…the “21Board” folder this device used before".
+  Switching back within 20 seconds, while Undo for the pages it left is still offered, waits until that Undo is gone, so
+  those pages come back with the work this device's file there holds.
 - **The same folder again,** after *Unlink*, or after the folder was renamed or moved: it carries on. Changes made
   here while unlinked join the board, a theme, accent color, or text style too. If another device chose one since,
   the later choice wins. Nothing is deleted anywhere because of how this device looked while it wasn't syncing.
@@ -384,8 +391,9 @@ nothing more. Nothing is read, written, or redrawn until a file changes, or some
 being typed in, is due again.
 
 - **Part by part:** a page's name, background, size, place, and photo merge separately, and so do each window's
-  place, whether it's open, its content, and its settings. A window moved on the laptop and typed in on the
-  smartboard keeps both changes. Changes to different windows never clash.
+  place, whether it's open, its content, its settings, and its language. A window moved on the laptop and typed in on
+  the smartboard keeps both changes. Changes to different windows never clash. A window's language takes the later
+  change, and never brings back a deleted window or page.
 - **The same content changed on both,** such as two edits to one note: both are kept. The later one stays in the
   window, and the other appears beside it as a labeled copy, "Copy · 9:41 AM". For the Timer, Stopwatch, Clock, Dice,
   Traffic Light, Video Player, Picture, Calculator, and Weather, the later one wins. For the Video Player that includes
@@ -405,22 +413,23 @@ being typed in, is due again.
   locking takes away an Undo already shown. A clash where your text stayed in the window says so without Undo,
   because the other device kept its own version as the copy. Several pages deleted at once on another device make
   one message, "3 pages were deleted on the laptop.", with one Undo that leaves you on the page you're on.
-- **Theme, accent color, and text style belong to the board.** The latest choice, made on any device, shows on all of
-  them at once, in every tab, even while the board is locked. Set the laptop to Dark and the smartboard turns dark.
-  Choose Early readers on the laptop, and the smartboard's text and widgets change too. If Settings is open, it shows
-  the new choice in place without being redrawn. The device that shows the change says who made it, in one message:
-  "The laptop changed the theme to Dark and the accent color to Green.", "The laptop changed the text style to “Early
-  readers”.", or "The laptop changed the accent color to a custom one." There's no Undo, since changing it back in
-  Settings is one tap, and syncs. Auto stays Auto everywhere, so each device follows its own light or dark setting.
-  A device that only ever had the defaults, or the folder's, never replaces another's choice. A choice made while
-  unlinked counts when the same folder is linked again, and of two made apart, the later wins on every device. Board
-  history never changes them, and neither does Undo on an "Updated from…" message. A device still on 2026.11.16-4
-  doesn't know the text style. It keeps its own, and changes nobody's, until it updates. Then each device keeps its
-  text style until one is chosen on any of your devices, or takes one already chosen on another updated device. A
-  device on a release before 2026.11.18-2 shows Blue for a custom accent color until it updates. The page shown,
-  Lock, Stay awake, the clock, and the Widget Picker's corners stay on each device. Settings says "On all your
-  devices." beside Theme, Accent color, and Text style, "This device only." beside Stay awake and the clock,
-  and "This page, on all your devices." beside the page's own settings.
+- **Theme, accent color, text style, and default widget language belong to the board.** The latest choice, made on any
+  device, shows on all of them at once, in every tab, even while the board is locked. Set the laptop to Dark and the
+  smartboard turns dark. Choose Early readers on the laptop, and the smartboard's text and widgets change too. If
+  Settings is open, it shows the new choice in place without being redrawn. The device that shows the change says who
+  made it, in one message: "The laptop changed the theme to Dark and the accent color to Green.", "The laptop changed
+  the text style to “Early readers”.", "The laptop changed the accent color to a custom one.", or "The laptop changed
+  the default widget language to Español." There's no Undo, since changing it back in Settings is one tap, and syncs.
+  Auto stays Auto everywhere, so each device follows its own light or dark setting. A device that only ever had the
+  defaults, or the folder's, never replaces another's choice. A choice made while unlinked counts when the same folder
+  is linked again, and of two made apart, the later wins on every device. Board history never changes them, and neither
+  does Undo on an "Updated from…" message. A device still on 2026.11.16-4 doesn't know the text style. It keeps its own,
+  and changes nobody's, until it updates. Then each device keeps its text style until one is chosen on any of your
+  devices, or takes one already chosen on another updated device. A device on a release before 2026.11.18-2 shows Blue
+  for a custom accent color until it updates. The page shown, Lock, Stay awake, the clock, and the Widget Picker's
+  corners stay on each device. Settings says "On all your devices." beside Theme, Accent color, Text style, and Default
+  widget language, "This device only." beside Stay awake and the clock, and "This page, on all your devices." beside the
+  page's own settings.
 
 **Settings → Board Sync** has three rows:
 
@@ -817,6 +826,7 @@ device is a browser profile of its own. The tests bring files from one device's 
 would: late, cut short, out of order, or twice, with clocks that disagree. `node tests/merge.js` tests the merge
 itself, `board.js` section 13d, in Node with no browser: the rules, reading device files, and a randomized run of
 devices changing and merging one board. It takes a couple of minutes, and `tests/run.js` runs it as a suite too.
+For a deeper run, `MERGE_LANG` and `MERGE_OLD` make language changes and devices on the older release more common.
 `node tools/test-halves.js` runs the whole of `tests/run.js` as two halves at once, in about 40 minutes, and adds up
 the results. It takes a filter too. It won't start while another test run is going.
 
@@ -829,7 +839,8 @@ while it waits. It needs the GitHub CLI, `gh`. Add `--save-timings` to save how 
 `node tests/calc-engine.js` tests the Calculator's math in Node, with the answers Desmos gave. It runs as a suite too.
 
 `node tests/words.js` checks every words table and the SDK's words engine in Node, in about a second. It runs as a
-suite too. `node tools/words.js` runs just the table check.
+suite too. `node tools/words.js` runs just the table check. The *Languages* suites also switch windows' languages on
+the board, and open each converted widget in the pseudo language to find English left over or words cut off.
 
 The tests check that the release stamp matches the files, with `node tools/release.js --check`. If that fails, run
 `node tools/release.js`. The *Updating* suites serve one release, then a changed one. They check the prompt,
