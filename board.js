@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.28-2';
-  const BOARD_BUILD = 'a14f9f4a';
+  const BOARD_BUILD = 'e93a8ff7';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3584,16 +3584,21 @@
     },
 
     // A choice's label too wide for its circle ("Wed", "XXL") gets smaller letters, so all of it shows. (--fit scales the
-    // label's size in the CSS. Measured once the menu has its size: compact and tight circles are smaller.)
+    // label's size in the CSS. Measured once the menu has its size: compact and tight circles are smaller. Small text
+    // may not shrink in step with its size, where a device draws each letter on whole pixels, so it's measured again
+    // at its new size, up to three times.)
     fitChoices() {
-      const bs = $$('.menu-choice', this.el);
+      const bs = $$('.menu-choice', this.el), fit = new Map(bs.map(b => [b, 1]));
       for (const b of bs) b.style.setProperty('--fit', '1');
-      const fits = bs.map(b => {
-        const r = document.createRange(); r.selectNodeContents(b);
-        const text = r.getBoundingClientRect().width, room = b.getBoundingClientRect().width * 0.78;
-        return text > room && room > 0 ? room / text : 1;
-      });
-      bs.forEach((b, i) => { if (fits[i] < 1) b.style.setProperty('--fit', fits[i].toFixed(3)); });
+      for (let pass = 0; pass < 4; pass++) {
+        const next = bs.map(b => {
+          const r = document.createRange(); r.selectNodeContents(b);
+          const text = r.getBoundingClientRect().width, room = b.getBoundingClientRect().width * 0.78;
+          return text > room && room > 0 ? fit.get(b) * room / text : null;
+        });
+        if (!next.some(v => v)) break;
+        bs.forEach((b, i) => { if (next[i]) { fit.set(b, next[i]); b.style.setProperty('--fit', next[i].toFixed(3)); } });
+      }
     },
 
     position() {

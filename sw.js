@@ -14,11 +14,11 @@
 const VERSION = '2026.11.28-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'a14f9f4a';
+const BUILD = 'e93a8ff7';
 const FILES = {
-  './': 'd39cb85d57cba1d9',
-  'index.html': 'd39cb85d57cba1d9',
-  'board.js': 'ab8649d76a387c2d',
+  './': '5c76bf60ad3ce6b0',
+  'index.html': '5c76bf60ad3ce6b0',
+  'board.js': 'e3c6d58defec0320',
   'sdk/board21.js': '05b38da7174470d4',
   'sdk/board21-dev.js': '8a581bec97559eaf',
   'sdk/dev/board-shell.js': 'b38759afe3f25c75',
@@ -38,7 +38,7 @@ const FILES = {
   'widgets/stopwatch/index.html': '858ae65e29d5dbc4',
   'widgets/task-timer/index.html': '9397776c2b9013d2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
-  'widgets/clock/index.html': '40bc9f1f49e83ffe',
+  'widgets/clock/index.html': 'd3940acf5a020228',
   'widgets/notes/index.html': '880c847110718dcb',
   'widgets/notes/fonts/CrayonLibre-21Board.woff2': '7456bd198b414e6c',
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
@@ -69,7 +69,7 @@ const FILES = {
   'widgets/calculator/calc-engine.js': 'bef93f908446ec8e',
   'widgets/calculator/fonts/InterItalic-21Board.woff2': '2fc235d6bccb7e40',
   'widgets/calculator/fonts/Inter-OFL.txt': '5b9321a4298cfeb6',
-  'widgets/weather/index.html': '968518cca725b94d',
+  'widgets/weather/index.html': 'd7d7fd4937c382e6',
   'widgets/weather/calendar.js': '6b801ee9abb6d70d',
   'widgets/sdk-playground/index.html': '51de5e392ddb97b2'
 };

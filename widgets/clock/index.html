@@ -680,8 +680,13 @@
     let emW = config.hour24 ? 2.7 : 3.6, vb = null;
     if (showD && disp && disp.vb) vb = disp.vb;
     else if (showD && disp) {
-      const fs = parseFloat(getComputedStyle(disp.el).fontSize);
-      if (fs > 0 && disp.el.scrollWidth) emW = disp.el.scrollWidth / fs;
+      // Measured at one size, 200 px, so the layout never depends on the size the time had before. (Small text can draw
+      // a little wider or narrower than its size says, where a device puts each letter on whole pixels.)
+      const el = disp.el, was = el.style.fontSize;
+      el.style.fontSize = '200px';
+      const w = el.getBoundingClientRect().width;
+      el.style.fontSize = was;
+      if (w > 0) emW = w / 200;
     }
     let dm = null;
     if (showY && !ruler.firstChild) dateText(new Date());
@@ -1033,10 +1038,12 @@
     const avail = W - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
     let qh;
     if (disp instanceof PlainDisplay) {
-      // As big as the room is tall, then smaller only if it's too wide (el.style.fontSize: shrunk to fit).
+      // As big as the room is tall, then smaller only if it's too wide (el.style.fontSize: shrunk to fit), keeping 2% of
+      // the width to spare. (Shrunk from the point where it would take more than 98%, so it never jumps smaller.)
       const el = disp.el, fs = Math.max(10, (H - padV) * .86);
       el.style.fontSize = ''; el.style.setProperty('--fs', fs + 'px');
-      if (el.scrollWidth > avail) el.style.fontSize = (fs * avail / el.scrollWidth * .98) + 'px';
+      const tw = el.getBoundingClientRect().width;
+      if (tw > avail * .98) el.style.fontSize = (fs * avail * .98 / tw) + 'px';
       qh = el.style.fontSize ? parseFloat(el.style.fontSize) : fs;
     } else {
       const r = disp.el.getBoundingClientRect(), vb = disp.vb;

@@ -296,7 +296,7 @@
 .wx.V-date .hero { grid-area: hero; display: grid; align-content: center; gap: .3em; }
 .wx.V-date .temp { font-size: 5.4em; }
 .wx.V-date .chartc { grid-area: chart; }
-.wx.V-date .side { grid-area: side; display: grid; grid-template-columns: 1fr 1fr; gap: .8em; }
+.wx.V-date .side { grid-area: side; display: grid; grid-template-columns: repeat(2, minmax(min-content, 1fr)); gap: .8em; }
 .wx .chart { width: 100%; flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(3.5em, 1fr) auto; }
 .wx .chart .plot { position: relative; min-height: 0; margin-block: 1.35em; }
 .wx .chart svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
@@ -1527,6 +1527,9 @@
   // 2 px into its own padding. Run on every draw, so a new size or font is measured again.
   const STEPS = ['tight', 'tighter', 'tightest'];
   const wraps = e => { e.style.whiteSpace = 'nowrap'; const w = e.scrollWidth > e.clientWidth + 1; e.style.whiteSpace = ''; return w; };
+  // Taller than it is on one line: it takes two. (Where a device puts each letter on whole pixels, text can take two lines
+  // that would just fit on one.)
+  const twoLines = e => { const h = e.getBoundingClientRect().height; e.style.whiteSpace = 'nowrap'; const one = e.getBoundingClientRect().height; e.style.whiteSpace = ''; return h > one + 1; };
   // Now, centered in its row, may run a little into the space around it, but never onto another part, under the board's
   // corner marks, or past half the window's margin.
   function spills(hero, inn) {
@@ -1543,7 +1546,7 @@
     // A warning in Medium keeps to one line, without its time span if need be. Tapped, it shows the span.
     if (band && wx.classList.contains('L-m') && wraps(band)) wx.classList.add('brief');
     if (!wx.matches('.V-simple, .V-date, .L-s:not(.V-detail)')) for (const k of STEPS) { if (!over()) break; wx.classList.add(k); }
-    if (band && over()) wx.classList.add('brief');
+    if (band && (over() || (wx.classList.contains('L-m') && twoLines(band)))) wx.classList.add('brief');
     // Simple words: the sentence and the clothes keep clear of the credit under them (lift).
     const cr = wx.classList.contains('V-simple') && inn.querySelector(':scope > .src'), above = cr && cr.previousElementSibling;
     if (above && above.getBoundingClientRect().bottom > cr.getBoundingClientRect().top - 1) wx.classList.add('lift');
