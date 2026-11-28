@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.28-2';
-  const BOARD_BUILD = '53bb0aa4';
+  const BOARD_BUILD = 'a14f9f4a';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -490,8 +490,9 @@
       let sdk;
       try { sdk = await this.sdk(); } catch (err) { return this.note('This widget can’t start', 'Couldn’t load the widget SDK. Connect to the Internet, then reload.'); }
       const tag = `<script>${sdk.replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '<\\!--')}</script>`;
-      // (Inter once, after the policy, outside the file's own markup: a comment in the file can't swallow it.)
-      const font = await this.font().catch(() => '');
+      // (Inter once, after the policy, outside the file's own markup: a comment in the file can't swallow it. A slow
+      // font doesn't hold up the start: after 1.5 s the widget starts without it, and gets it next time.)
+      const font = await Promise.race([this.font(), new Promise(res => setTimeout(res, 1500, ''))]).catch(() => '');
       const face = font ? `<style>@font-face { font-family: "Inter"; src: url(${font}) format("woff2"); font-weight: 100 900; font-display: swap; }</style>` : '';
       let src = f ? f.src : '', found = false;
       src = src.replace(SDK_TAGS_RE, () => { found = true; return tag; });

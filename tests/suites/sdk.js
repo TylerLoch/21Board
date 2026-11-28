@@ -1173,17 +1173,17 @@ module.exports = T => {
     ok(await eventually(async () => { const x = await interIn(); return /^"?Inter"?,/.test(x.font) && x.faces.includes('loaded'); }),
       `an uploaded widget’s text is in Inter, and its sealed frame has Inter loaded (${JSON.stringify(await interIn())})`);
     await B(ik => window.__board21.deleteInstance(ik), fk);
-    {
-      // With the font answered 404, an uploaded widget still starts, in the device's font.
+    // With the font answered 404, or never answered, an uploaded widget still starts, in the device's font.
+    for (const [how, answer] of [['answered 404', r => r.fulfill({ status: 404, body: 'Not found' })], ['never answered', () => new Promise(() => {})]]) {
       const c404 = await browser.newContext({ viewport: { width: 1400, height: 860 }, serviceWorkers: 'block' });
-      await c404.route(/\/fonts\/Inter-21Board\.woff2$/, r => r.fulfill({ status: 404, body: 'Not found' }));
-      const p4 = await c404.newPage(); p4.on('pageerror', e => { if (!/Service worker is disabled/.test(e.message)) errors.push('404 tab: ' + e.message); });   // (no offline worker in this tab)
-      await p4.goto(BASE); await boardUp(p4, { fonts: false });
+      await c404.route(/\/fonts\/Inter-21Board\.woff2$/, answer);
+      const p4 = await c404.newPage(); p4.on('pageerror', e => { if (!/Service worker is disabled/.test(e.message)) errors.push(how + ' tab: ' + e.message); });   // (no offline worker in this tab)
+      await p4.goto(BASE, { waitUntil: 'domcontentloaded' }); await boardUp(p4, { fonts: false });   // (a font never answered holds up the page's load event)
       await openSettings(p4, ['advanced']); await p4.click('#settings [data-act="devmode"]'); await p4.keyboard.press('Escape');
       await p4.setInputFiles('#widget-input', noSdk);
-      const started = await eventually(async () => await frame(p4, 'dev-no-sdk-tag:1').locator('#s').textContent() === 'connected');
+      const started = await eventually(async () => await frame(p4, 'dev-no-sdk-tag:1').locator('#s').textContent() === 'connected', 4000);
       const faces = started ? await frame(p4, 'dev-no-sdk-tag:1').locator('html').evaluate(() => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === 'Inter').length) : -1;
-      ok(started && faces === 0, `with the font file answered 404, an uploaded widget still starts, with no Inter face (${started ? faces + ' faces' : 'it didn’t start'})`);
+      ok(started && faces === 0, `with the font file ${how}, an uploaded widget still starts within 4 s, with no Inter face (${started ? faces + ' faces' : 'it didn’t start'})`);
       await c404.close();
     }
     // ---- A file with no SDK tag still connects.

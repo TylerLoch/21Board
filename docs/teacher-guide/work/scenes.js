@@ -69,16 +69,19 @@ async function ftCard(p, ik, which, search, label) {
   await f.locator('.aac-tile-btn', { hasText: label }).first().click();
   await wait(p, 500);
 }
-// Rolls until the dice don't all match (a first roll of all 1s looks like dice that never rolled).
-async function rollDice(p, ik, n = 3) {
+// Rolls until the dice don't all match (a first roll of all 1s looks like dice that never rolled). With `want`, one
+// roll that lands on those values, so the shot keeps matching its alt text.
+async function rollDice(p, ik, n = 3, want) {
   if (n !== 1) { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="count:${n}"]`); await wait(p, 400); }   // (Number of dice: a row of choices)
   for (let i = 0; i < 6; i++) {
+    // (The roll draws one Math.random per die first: those give the values. The rest are its tumble.)
+    if (want) await frame(p, ik).locator('html').evaluate((html, want) => { const q = want.map(v => (v - 0.5) / 6), r = Math.random; Math.random = () => q.length ? q.shift() : r(); }, want);
     await frame(p, ik).locator('#roll').click();
     await wait(p, 2500);
     const said = await frame(p, ik).locator('#said').textContent();
     const vals = (/Rolled ([\d, ]+)/.exec(said) || [, ''])[1].split(',').map(v => +v.trim()).filter(Boolean);
     log('  dice', said);
-    if (new Set(vals).size === vals.length) break;
+    if (want ? vals.join() === want.join() : new Set(vals).size === vals.length) break;
   }
 }
 // Zones Check-In: counts typed in its Counts view (Zones Check-In ⌄ › Edit…), then Done.
@@ -198,7 +201,7 @@ const W = {
     await frame(p, ik).locator('html').evaluate(() => { crypto.getRandomValues = a => { a[0] = 4; return a; }; }); await pickName(p, ik); } },
   'first-then-board': { r: { w: 1080, h: 760 }, set: async (p, ik) => { await ftCard(p, ik, 'first', 'math', 'Math'); await ftCard(p, ik, 'then', 'play', 'Playground'); } },
   'zones-check-in': { r: { w: 560, h: 460 }, set: (p, ik) => zonesCounts(p, ik, { blue: 2, green: 9, yellow: 4, red: 1 }) },   // (the size it opens at)
-  dice: { r: { w: 820, h: 560 }, set: (p, ik) => rollDice(p, ik, 3) },
+  dice: { r: { w: 820, h: 560 }, set: (p, ik) => rollDice(p, ik, 3, [5, 6, 1]) },   // (the alt text says 5, 6, and 1)
   'youtube-player': { r: { w: 960, h: 580 } },
   image: { r: { w: 1080, h: 760 }, set: async (p, ik) => { await openPicture(p, ik, path.join(HERE, 'water-cycle.svg')); await setRect(p, ik, { x: 660, y: 245, w: 1080, h: 760 }); await wait(p, 800); } },
   calculator: { r: { w: 900, h: 640 }, at: { x: 200, y: 120 }, set: async (p, ik) => { await choose(p, ik, 'History', { exact: true }); await calcType(p, ik, ['Digit2', 'Digit5', 'Shift+Equal', 'Digit1', 'Digit7', 'Enter']); await calcType(p, ik, ['Digit1', 'Digit2', 'Shift+Digit8', 'Digit4', 'Enter']); } },
