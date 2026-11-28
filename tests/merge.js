@@ -33,7 +33,9 @@
  *     devices on 2026.11.16-4, that the file of a device that then leaves for good is removed two months on;
  *   - that the oracle bites: the same run with plain "later wins" content, and with the first draft's rules for
  *     removing old device files and tombstones, must fail.
- * Options: node tests/merge.js [runs-scale] (0.1 for a quick look; default 1).
+ * Options: node tests/merge.js [runs-scale] (0.1 for a quick look; default 1). For a deeper run, MERGE_LANG sets the
+ * share of steps that also choose a window's language (default 0.02), and MERGE_OLD the share of devices that start on
+ * 2026.11.27-1 (default 0.25).
  */
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm'), crypto = require('crypto'), os = require('os');
@@ -103,7 +105,8 @@ const pick = (a, r = rnd) => a[Math.floor(r() * a.length)];
 const token = v => (v && typeof v === 'object' ? (typeof v.text === 'string' ? v.text : Array.isArray(v.tasks) ? v.tasks[0] : null) : null);
 let LOG;
 const newLog = () => ({ typed: new Set(), gone: new Set(), dels: [], edits: [], sig: new Map(), writes: 0, fileKnow: new Map(),
-  replaced: new Set(), repl: new Map(), spur: [], udels: [], published: new Set(), resetCopies: new Set(), styles: [], folder: null, langs: new Map() });
+  replaced: new Set(), repl: new Map(), spur: [], udels: [], published: new Set(), resetCopies: new Set(), styles: [], folder: null, langs: new Map(),
+  english: [], langFiles: new Map() });
 // A name, color, place, setting or Timer state that a device changed while it showed it (folder|unit|mark): it must
 // never come back (oracle 7). Typed text is the "lost" oracle's.
 const LWW_MARK = /^(n|l|r|c|dur):/;
@@ -138,6 +141,7 @@ class Device {
     this.peers = new Map();      // dev -> decoded peer (the newest good file of each)
     this.decoded = new Map();    // text -> decode result
     this.busy = new Set(); this.stale = new Map(); this.staleBase = new Map(); this.heard = new Set(); this.know = new Set(); this.applied = new Set();
+    this.langHeard = new Set(); this.langKnow = new Set();   // (English chosen for a window: see langLost)
     this.lastWid = 0; this.writes = 0; this.away = false; this.blinded = new Set();
     if (opts.old) as4(this);   // (still on 2026.11.16-4)
     this.styleBase = { theme: 'system', accent: 'blue', letters: 'standard' };   // (the theme, accent and text style after its last round: oracle 9)
@@ -232,13 +236,27 @@ class Device {
   confWin(b, ik) { this.put(`conf:${b}:${ik}`, 'conf', { theme: 'c' + (++LOG.n) }); this.touchWin(b, ik); }
   // The window's menu › Language: saved with the window ('es', 'ru' or 'uk'; English deletes it). Not an edit for the
   // oracle's deletions: a window's language never brings a deleted window or page back. Each choice is noted by window
-  // (LOG.langs) for the oracle's language rule.
+  // (LOG.langs) for the oracle's language rule, and each English one with the devices that have had it (langLost).
   setLang(b, ik, lang) {
     const v = this.winVal(b, ik);
     if ((v.language || 'en') === (lang || 'en')) return;   // (its own language again: nothing happens, as on the board)
     if (lang && lang !== 'en') v.language = lang; else delete v.language;
     this.put(`inst:${b}:${ik}`, 'inst', v, { quiet: true });
-    if (LOG && LOG.langs) { const k = `${this.folderName}|${this.pageUnit(b)} ${v.wid}`; if (!LOG.langs.has(k)) LOG.langs.set(k, new Set()); LOG.langs.get(k).add(lang || 'en'); }
+    if (!LOG || !LOG.langs) return;
+    const k = `${this.folderName}|${this.pageUnit(b)} ${v.wid}`;
+    if (!LOG.langs.has(k)) LOG.langs.set(k, new Set());
+    LOG.langs.get(k).add(lang || 'en');
+    if (!v.language) { const c = { id: LOG.english.length + 1, k, by: this.dev, folder: this.folderName }; LOG.english.push(c); this.langKnow.add(c.id); }
+  }
+  // The ledger and this device's own file both lost: an English chosen here that no other device has had is lost with
+  // them. With no entry, it is no version (Rule 1), and the folder's language applies, as on a first set-up. Oracle 11
+  // no longer holds the window to it, as oracle 3 no longer holds a deletion lost the same way. (A device on 2026.11.27-1
+  // that merged it doesn't count: it reads past a window's language.)
+  langLost() {
+    for (const c of LOG.english) {
+      if (c.by !== this.dev || c.folder !== this.folderName || (global.__devs || []).some(o => o !== this && o.langKnow.has(c.id))) continue;
+      const s = LOG.langs.get(c.k); if (s) s.add('lost');
+    }
   }
   langOf(b, ik) { const r = this.recs.get(`inst:${b}:${ik}`); return r ? r.value.language || 'en' : null; }
   openWin(b, ik, open) { const v = this.winVal(b, ik); v.open = open; if (open) v.z = 999; this.put(`inst:${b}:${ik}`, 'inst', v, { quiet: true }); if (open) { this.markless(b, ik); this.touchWin(b, ik); } }
@@ -360,6 +378,7 @@ class Device {
   }
   look(L) {
     const peers = [], files = new Set();
+    this.langHeard = new Set();   // (the English choices in the files a round merges: had here once it completes, see langLost)
     for (const [name, text] of this.view) {
       const r = this.decodeText(text);
       if (!r || !r.peer) continue;
@@ -371,6 +390,7 @@ class Device {
       if (!have || p.seq >= have.seq) this.peers.set(p.dev, p);
       const k = LOG.fileKnow.get(`${p.dev}:${p.seq}`);
       if (k) for (const d of k) this.heard.add(d);
+      for (const id of LOG.langFiles.get(`${p.dev}:${p.seq}`) || []) this.langHeard.add(id);
     }
     for (const [d, p] of this.peers) if (!files.has(d)) this.peers.delete(d);
     return { peers: peers.concat(Array.from(this.peers.values()).filter(p => !peers.includes(p))), files };
@@ -462,6 +482,7 @@ class Device {
     for (const [d, p] of this.peers) if (p.left && now - p.left.at >= KEEP && Merge.includes(L3, p)) this.removeFile(d);
     // knowledge of deletions: applied ones only
     for (const id of this.heard) if (!this.know.has(id)) { const d = LOG.dels[id - 1]; if (!this.shows(d.unit)) this.know.add(id); }
+    if (!this.rel && !this.old) for (const id of this.langHeard) this.langKnow.add(id);   // (and of English choices, by a release that has a window's language)
     this.writeFile(L3);
     this.lastSum = plan.summary; (this.sums || (this.sums = [])).push(plan.summary);
     this.styleBase = this.styleOf();
@@ -491,8 +512,15 @@ class Device {
       if (M && !M.gone && (!wid || M.w[wid])) { d.undone = true; d.relink = true; }
     }
     // (and with its own file missing too: its deletions that no other device has had are gone, as §3.4 accepts)
-    if (!this.view.has(this.fileName())) for (const x of LOG.dels) if (x.by === this.dev && !(global.__devs || []).some(o => o !== this && o.know.has(x.id))) { x.undone = true; x.relink = true; }
+    if (!this.view.has(this.fileName())) { for (const x of LOG.dels) if (x.by === this.dev && !(global.__devs || []).some(o => o !== this && o.know.has(x.id))) { x.undone = true; x.relink = true; } this.langLost(); }
     this.link = null; this.lostLedger = true; this.restamp = true; this.lostAt = LOG.dels.length;
+  }
+  // Its own file lost from the folder. With its ledger lost too, before a round rebuilt it: its deletions, and English
+  // chosen here, that no other device has had are gone, as §3.4 accepts.
+  loseFile() {
+    if (!this.folder) return;
+    this.view.delete(this.fileName()); this.folder.remove(this.fileName());
+    if (!this.link) { for (const x of LOG.dels) if (x.by === this.dev && !(global.__devs || []).some(o => o !== this && o.know.has(x.id))) { x.undone = true; x.relink = true; } this.langLost(); }
   }
   // A lost ledger's first round stamps everything shown here again: for the oracle, an edit of each of them.
   restamped(lost) {
@@ -545,6 +573,7 @@ class Device {
       for (const T of Object.values(M.wgone || {})) if (T.seq == null) T.seq = this.link.sync.seq;
     }
     LOG.fileKnow.set(`${this.dev}:${this.link.sync.seq}`, Array.from(this.know));
+    LOG.langFiles.set(`${this.dev}:${this.link.sync.seq}`, Array.from(this.langKnow));
     this.writes++; LOG.writes++;
     return true;
   }
@@ -675,7 +704,7 @@ function run(seed, nDev, steps, variant = {}) {
   // 2026.11.27-1, which has no window language, each updated at a step of its own, all of them before Drive catches up.
   // A stream of numbers of its own, so that the rest of each run is as it was.)
   const lrnd = seeded(seed * 1299709 + 5);
-  if (!variant.old) for (const d of devs) if (lrnd() < 0.25) { asRel(d, Merge27, '27'); d.up27 = Math.floor(lrnd() * steps); }
+  if (!variant.old) for (const d of devs) if (lrnd() < OLD_27) { asRel(d, Merge27, '27'); d.up27 = Math.floor(lrnd() * steps); }
   LOG.folder = folder.name;
   devs[0].addPage('Math'); devs[0].addWindow(devs[0].ids()[1], W.NOTES);
   before(devs[0]);
@@ -707,11 +736,7 @@ function run(seed, nDev, steps, variant = {}) {
     else if (r < 0.90) { const w = pick(d.liveWins()); if (w && d.linked) { d.busy.clear(); d.busy.add(`${w[0]}:${w[1]}`); } }
     else if (r < 0.91) d.busy.clear();
     else if (r < 0.925) blind(d);
-    else if (r < 0.93) {   // its own file lost
-      if (d.folder) { d.view.delete(d.fileName()); d.folder.remove(d.fileName()); }
-      // (with its ledger lost too, before a round rebuilt it: its deletions that no other device has had are gone, as §3.4 accepts)
-      if (d.folder && !d.link) for (const x of LOG.dels) if (x.by === d.dev && !devs.some(o => o !== d && o.know.has(x.id))) { x.undone = true; x.relink = true; }
-    }
+    else if (r < 0.93) d.loseFile();   // its own file lost
     else if (r < 0.935) { if (d.link && d.linked && !d.blindSince && !noLoss) { d.loseLedger(); d.stale = new Map(); } }   // its ledger lost (not in the seconds a stale tab's write waits for a round, and the stale tabs' writes still to come go with it, as after a device closed for weeks: a rebuilt ledger can't tell one from an edit)
     else if (r < 0.945) { if (d.linked && d.folder === folder && !variant.noUnlink) d.unlink(); else if (!d.linked) { d.view = new Map(folder.files); d.linkTo(folder); } }
     else if (r < 0.95) { if (d.linked && d.folder === folder && !variant.noChange) { d.farewell(); d.linkTo(other); } else if (d.linked && d.folder === other) { d.farewell(); d.view = new Map(folder.files); d.linkTo(folder); } }
@@ -777,7 +802,8 @@ function run(seed, nDev, steps, variant = {}) {
   // value shows that one: an updated device never stamps English over it, Rule 1. Its language never brings a deleted
   // window or page back: oracle 3 counts no language choice as an edit. Not once a device on 2026.11.27-1 removed the
   // file of one that left with a language version in it: that device knows nothing of a window's language, and the
-  // version may have been the only one, as with the text style and 2026.11.16-4, see oracle 9.)
+  // version may have been the only one, as with the text style and 2026.11.16-4, see oracle 9. Nor a window whose
+  // English was lost with a ledger and an own file before any other device had it, see langLost.)
   const langs = [];
   for (const P of LOG.langGone ? [] : devs[0].readLocal().pages.values()) {
     if (P.gone || P.held || !L0.mine[P.uid] || L0.mine[P.uid].gone || wasGone.has(P.uid)) continue;
@@ -832,8 +858,10 @@ function run(seed, nDev, steps, variant = {}) {
   return { converged, quiet, lost, twice: LOG.lostLedger ? [] : twice, twiceLost: LOG.lostLedger ? twice : [], pending, back, wins, copies, writes: LOG.writes, lostLedger: !!LOG.lostLedger,
     needless, reverted, unlinked, style, kept, langs };
 }
-// How often a step also chooses a window's language (see run): a small share, as each part costs every round time.
-const LANG_EDITS = 0.02;
+// How often a step also chooses a window's language (see run): a small share, as each part costs every round time. And
+// how often a device starts on 2026.11.27-1. MERGE_LANG and MERGE_OLD raise them for a deeper run.
+const share = (k, d) => (process.env[k] === undefined || process.env[k] === '' ? d : +process.env[k]);
+const LANG_EDITS = share('MERGE_LANG', 0.02), OLD_27 = share('MERGE_OLD', 0.25);
 // A window's language chosen on device d: any window on any page, any of the four.
 function langEdit(d, r) {
   if (d.away) return;
@@ -1021,6 +1049,91 @@ function rules() {
     const b2 = A.ids()[0], k2 = A.addWindow(b2, W.NOTES), u2 = A.boardOf(b2).uid, w2 = A.winVal(b2, k2).wid; sync();
     A.delWin(b2, k2); B.delWin(bOf(B, u2), ikOf(B, u2, w2)); sync(4);
     ok(!winsOf(A, u2).some(x => x.wid === w2) && !winsOf(B, u2).some(x => x.wid === w2), 'the same window deleted on both: deleted');
+  });
+  // The same window deleted on two devices, one after it had every edit of it, the other before an edit reached it: it
+  // stays deleted, even when the other merges that edit later, its deletion's counter the larger. three: the smartboard
+  // had the laptop's edit and deleted; home deleted without it, then merged it. two: the laptop deleted after its own
+  // edit; the smartboard deleted without it, then got the laptop's file from before its deletion, late. first: the same
+  // with home deleting without the edit too, and merging first, its own deletion beside the laptop's. unseen: the laptop
+  // types again after both deletions, unseen by either: that brings it back, with its text.
+  for (const how of ['three', 'two', 'first', 'unseen']) block(() => {
+    const { A, B, C, devs, b, sync } = pair(how === 'two' ? 2 : 3);
+    const uid = A.boardOf(b).uid, ik = A.addWindow(b, W.NOTES), wid = A.winVal(b, ik).wid, unit = `${uid} ${wid}`; sync();
+    const del = d => d.delWin(bOf(d, uid), ikOf(d, uid, wid));
+    NOW += MIN; A.type(b, ik); A.round();
+    const withEdit = A.folder.files.get(A.fileName());
+    let t = null;
+    if (how === 'three' || how === 'unseen') {
+      NOW += MIN; B.deliver(A); B.round();
+      NOW += MIN; del(C);
+      NOW += MIN; del(B); B.round();
+      NOW += MIN; C.deliver(A); C.round();
+      if (how === 'unseen') { NOW += MIN; A.type(b, ik); t = token(dataOf(A, uid, wid)); A.round(); }
+    } else {
+      NOW += MIN; del(B); if (how === 'first') { del(C); C.round(); }
+      NOW += MIN; del(A); A.round();
+      NOW += MIN; B.view.set(A.fileName(), withEdit); B.round();
+      NOW += MIN; const D = how === 'first' ? C : A; for (const o of devs) if (o !== D) D.deliver(o); D.round();
+    }
+    sync(4);
+    const on = devs.filter(d => d.shows(unit)).map(d => d.label), one = devs.every(d => d.canon() === A.canon());
+    if (how === 'unseen') ok(on.length === 3 && devs.every(d => token(dataOf(d, uid, wid)) === t) && one, `[${how}] a window deleted on two devices, then typed in where neither deletion was seen: back on all three, with that text (${on.join(', ') || 'deleted everywhere'})`);
+    else ok(!on.length && one, `[${how}] a window deleted on a device that had every edit of it stays deleted, though another device deleted it before an edit reached it and merged that edit later (${on.join(', ') || 'deleted everywhere'})`);
+  });
+  // And a page, the same way. three: the smartboard had the laptop's new name for it and deleted it; home deleted it
+  // without, then merged it. two: the laptop deleted it after renaming it; the smartboard deleted it without, then got
+  // the laptop's file from before its deletion, late.
+  for (const how of ['three', 'two']) block(() => {
+    const { A, B, devs, sync } = pair(how === 'two' ? 2 : 3), C = devs[2];
+    const b2 = A.addPage('Science'); A.addWindow(b2, W.NOTES); sync();
+    const uid = A.boardOf(b2).uid, del = d => d.delPage(bOf(d, uid));
+    NOW += MIN; A.editPage(b2, 'name'); A.round();
+    const withEdit = A.folder.files.get(A.fileName());
+    if (how === 'three') {
+      NOW += MIN; B.deliver(A); B.round();
+      NOW += MIN; del(C);
+      NOW += MIN; del(B); NOW += UNDO + 5000; B.round();
+      NOW += MIN; C.deliver(A); C.round();
+    } else {
+      NOW += MIN; del(B);
+      NOW += MIN; del(A); NOW += UNDO + 5000; A.round();
+      NOW += MIN; B.view.set(A.fileName(), withEdit); B.round();
+      NOW += MIN; A.deliver(B); A.round();
+    }
+    sync(4);
+    const on = devs.filter(d => d.shows(uid)).map(d => d.label);
+    ok(!on.length && devs.every(d => d.canon() === A.canon()), `[${how}] a page deleted on a device that had every edit of it stays deleted, though another device deleted it before an edit reached it and merged that edit later (${on.join(', ') || 'deleted everywhere'})`);
+  });
+  // A labelled copy deleted on the laptop, which made it, after it lost its ledger and its own file: its next round
+  // stamped everything it shows again, as new, the copy too. The deletion still covers the copy's making, by the copy's
+  // own key (see plan), which every device that had the copy saw. So a file from before the loss, with the copy as it
+  // was made, never brings it back. late: home gets that file after the deletion. early: before the loss. older: late,
+  // home still on 2026.11.27-1, and then updated. typed: the laptop typed in the copy before deleting it. page: late,
+  // the laptop deleting the copy's whole page. edited: the smartboard, which had the copy, types in it without having
+  // seen the deletion: that brings it back, with its text.
+  for (const how of ['late', 'early', 'older', 'typed', 'page', 'edited']) block(() => {
+    const { A, B, C, devs, folder, b, ik, sync } = pair(3);
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+    if (how === 'older') asRel(C, Merge27, '27');
+    if (how === 'page') { A.addPage('Spare'); NOW += MIN; sync(); }
+    A.type(b, ik); NOW += 2000; B.type(bOf(B, uid), ikOf(B, uid, wid)); NOW += 2000; B.round();
+    A.deliver(B); A.round();   // (the laptop wrote the version that lost: it keeps it as a copy at once)
+    const copy = winsOf(A, uid).find(x => x.copyOf && x.copyOf.wid === wid), cw = copy ? copy.wid : '', unit = `${uid} ${cw}`, made = folder.files.get(A.fileName());
+    if (how === 'early') { C.deliver(A); C.round(); }
+    if (how === 'edited') { B.deliver(A); B.round(); }
+    NOW += MIN; A.loseLedger(); A.loseFile();
+    NOW += 5000; A.round();
+    if (how === 'typed') { NOW += 5000; A.type(b, ikOf(A, uid, cw)); A.round(); }
+    if (how === 'page') { NOW += 5000; A.delPage(b); NOW += UNDO + 5000; A.round(); }
+    else { NOW += 5000; A.delWin(b, ikOf(A, uid, cw)); NOW += 1000; A.round(); }
+    let t = null;
+    if (how === 'edited') { NOW += 1000; B.type(bOf(B, uid), ikOf(B, uid, cw)); t = token(dataOf(B, uid, cw)); B.round(); }
+    else if (how !== 'early') { C.view.set(A.fileName(), made); C.round(); }
+    NOW += 5 * MIN; sync(6);
+    if (how === 'older') { asRel(C, null); NOW += 1000; sync(4); }
+    const on = devs.filter(d => d.shows(how === 'page' ? uid : unit)).map(d => d.label), one = devs.every(d => d.canon() === A.canon());
+    if (how === 'edited') ok(cw && on.length === 3 && devs.every(d => token(dataOf(d, uid, cw)) === t) && one, `[${how}] a copy deleted on the laptop after it lost its ledger and its own file, then typed in on the smartboard, which hadn't seen the deletion: back on all three, with that text (${on.join(', ') || 'deleted everywhere'})`);
+    else ok(cw && !on.length && one, `[${how}] a copy${how === 'page' ? '’s page' : ''} deleted on the laptop after it lost its ledger and its own file stays deleted, though a file from before still has the copy (${on.join(', ') || 'deleted everywhere'})`);
   });
   block(() => {
     // pages: rename on one, color on the other; both renamed: the later, summary names it; order
@@ -2274,6 +2387,28 @@ function languages() {
     const cps = d => winsOf(d, uid).filter(w => w.copyOf), cw = (cps(A)[0] || {}).wid, E = cw && ((A.link.mines.get(uid) || {}).w || {})[cw];
     ok(cps(A).length === 1 && [A, B].every(d => cps(d).length === 1 && cps(d)[0].language === 'uk' && d.langOf(bOf(d, uid), ikOf(d, uid, wid)) === 'uk') && A.canon() === B.canon() && E && E.p.language && E.p.language.v,
       `a copy kept from a clash keeps the window's Українська, on both, with a version in its ledger (${[A, B].map(d => cps(d).map(w => w.language || 'en').join('+'))})`);
+  });
+  for (const [lost, then] of [[['ledger', 'file'], ''], [['file', 'ledger'], ''], [['ledger'], ''], [['file'], ''], [['ledger', 'file'], 'unread'], [['ledger', 'file'], 'read']]) block(() => {
+    // English chosen on the smartboard for a clash copy in Українська (the copy's own, which nobody chose), then its
+    // ledger and its own file lost. An English no other device has had is lost with them: with no entry, it is no
+    // version (Rule 1), and the folder's language applies, as on a first set-up. Oracle 11 then lets the copy go, as
+    // oracle 3 lets go a deletion lost the same way. With either one kept, or once the laptop has merged it: English.
+    const { A, B, b, ik, sync } = pair(), was = global.__devs;
+    global.__devs = [A, B];   // (which devices have had a choice: see langLost)
+    try {
+      const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+      A.setLang(b, ik, 'uk'); NOW += 1000; sync();
+      A.type(b, ik); B.type(bOf(B, uid), ikOf(B, uid, wid)); NOW += 1000; sync(4);
+      const cw = (winsOf(B, uid).find(w => w.copyOf) || {}).wid;
+      NOW += 1000; B.setLang(bOf(B, uid), ikOf(B, uid, cw), 'en');
+      if (then) { NOW += 1000; B.round(); if (then === 'read') { A.deliver(B); A.round(); } }
+      for (const x of lost) if (x === 'ledger') B.loseLedger(); else B.loseFile();
+      NOW += 5000; sync(3);
+      const gone = lost.length === 2 && then !== 'read', want = gone ? 'uk' : 'en', got = [A, B].map(d => langOn(d, uid, cw));
+      const held = LOG.langs.get(`${A.folderName}|${uid} ${cw}`) || new Set();
+      ok(cw && got.every(x => x === want) && A.canon() === B.canon() && (gone ? held.has('lost') : held.size === 1 && held.has('en')),
+        `[${lost.join(', then ')} lost${then ? `, after a round the laptop ${then === 'read' ? 'merged' : 'never read'}` : ''}] English chosen for a copy in Українська: ${gone ? 'the folder’s Українська on both, and oracle 11 lets the copy go' : 'English on both, and oracle 11 holds the copy to it'} (${got}; ${[...held].join(', ')})`);
+    } finally { global.__devs = was; }
   });
   for (const order of ['laptop first', 'smartboard first']) block(() => {
     // 2. Rule 1: an updated device has no version for its windows' language (English, never chosen there): it never

@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.27-2';
-  const BOARD_BUILD = 'fdccfabc';
+  const BOARD_BUILD = '9dab3d42';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -9434,6 +9434,12 @@
     const rootOf = wid => wid.split('~')[0].slice(0, 113);
     const sameLabel = (lb, wid, v) => !!lb && lb.wid === wid && lb.from === v.by && lb.at === v.t;
     const copyWid = (wid, v) => `${rootOf(wid)}~${hash53(`${wid}:${v.by}:${nOf(v)}`).slice(0, 6)}`;
+    // A labelled copy's own key, which makes its versions (see plan's copies): "cp" and a hash of its wid, 14 characters.
+    const copyBy = wid => ('cp' + hash53(wid)).padEnd(14, '0').slice(0, 14);
+    // A deletion of a labelled copy here covers its making too, by the copy's key, whatever its counter: this device had
+    // the copy, so it saw it made, though a ledger stamped again since (lost, with no file of its own) no longer names
+    // that version. (Earlier releases read such a deletion the same way.)
+    const madeOf = wid => (wid.includes('~') ? { [copyBy(wid)]: Number.MAX_SAFE_INTEGER } : {});
     // A window's identity on its page: <widget>@<createdAt>, then .2, .3... if that is taken.
     function newWid(widgetId, createdAt, taken) {
       const base = `${widgetId}@${fin(createdAt, 0)}`.slice(0, 110);
@@ -9775,11 +9781,11 @@
           if (first) { delete M.w[wid]; dropped1.add(`${P.uid} ${wid}`); continue; }   // (a first round deletes nothing: the folder's version is taken)
           note(now);
           items.push(n => {
-            const cover = {};
+            const cover = {}, made = madeOf(wid);
             // (and every change this device made to it before: one its entry no longer names, after the page came back
             // with another device's version, say, was still seen here)
-            for (const k of WIN_PARTS) if (mw.p[k] && mw.p[k].v) cover[k] = vjoin(mw.p[k].v[1], { [dev]: n });
-            M.wgone[wid] = { exists: nv(mw.p.exists ? mw.p.exists.v[1] : {}, now)(n), cover, seq: null, seen: now };
+            for (const k of WIN_PARTS) if (mw.p[k] && mw.p[k].v) cover[k] = vjoin(mw.p[k].v[1], Object.assign({ [dev]: n }, made));
+            M.wgone[wid] = { exists: nv(vjoin(mw.p.exists ? mw.p.exists.v[1] : {}, made), now)(n), cover, seq: null, seen: now };
             delete M.w[wid]; touched.add(M);
           });
         }
@@ -9836,7 +9842,7 @@
         items.push(n => {
           const cover = {};
           for (const k of PAGE_PARTS) if (M.p[k] && M.p[k].v) cover[k] = vjoin(M.p[k].v[1], { [dev]: n });
-          for (const [wid, mw] of Object.entries(M.w)) for (const k of WIN_PARTS.concat('exists')) if (mw.p[k] && mw.p[k].v) cover[`${wid}/${k}`] = vjoin(mw.p[k].v[1], { [dev]: n });
+          for (const [wid, mw] of Object.entries(M.w)) for (const k of WIN_PARTS.concat('exists')) if (mw.p[k] && mw.p[k].v) cover[`${wid}/${k}`] = vjoin(mw.p[k].v[1], Object.assign({ [dev]: n }, madeOf(wid)));
           M.gone = { exists: nv(M.p.exists ? M.p.exists.v[1] : {}, now)(n), cover, seq: null, seen: now };
           M.p = {}; M.w = {}; touched.add(M);
         });
@@ -9976,7 +9982,12 @@
           J.pending = content.slice(1);
         } else { J.main = vs[0]; J.pending = vs.slice(1); }
       } else J.main = Object.assign({}, vs[0], { vv: vs.reduce((a, v) => vjoin(a, v.vv), {}) });
-      if (covers.length) J.cover = covers.reduce((a, v) => { for (const k in v.cover) a[k] = vjoin(a[k] || {}, v.cover[k]); return a; }, {});
+      const unite = list => list.reduce((a, v) => { for (const k in v.cover) a[k] = vjoin(a[k] || {}, v.cover[k]); return a; }, {});
+      if (covers.length) J.cover = unite(covers);
+      // (a shown version beside deletions it hadn't seen: what they had seen, see shown. One shown at a deletion's own
+      // vector, see plan, had seen that one)
+      const rival = covers.filter(v => !covered(v, vs[0].vv));
+      if (!vs[0].cover && rival.length) J.rival = unite(rival);
       return J;
     }
     function join(ledger0, peers, o = {}) {
@@ -10046,13 +10057,18 @@
       const out = (J, cover, open) => !!J && [J.main].concat(J.pending).some(v => (!open || v.h === TRUE_H) && !covered(v, cover));
       for (const [uid, S] of state.pages) {
         const alive = new Set();
+        // (a window shown beside a deletion its version hadn't seen, brought back on a device whose own deletion hadn't
+        // seen an edit, say: still deleted if such deletions had seen every edit that would bring it back, whichever
+        // counter is the larger. A page the same way.)
         for (const [wid, W] of S.wins) {
-          if (W.exists.main.h === '1' || (W.cover && WIN_BACK.some(k => out(W.parts[k], W.cover[k], k === 'open')))) alive.add(wid);
+          const C = W.exists.main.h === '1' ? W.exists.rival : W.cover;
+          if ((W.exists.main.h === '1' && !C) || (C && WIN_BACK.some(k => out(W.parts[k], C[k], k === 'open')))) alive.add(wid);
         }
-        let on = S.exists.main.h === '1';
-        if (!on && S.cover) {
-          on = PAGE_BACK.some(k => out(S.parts[k], S.cover[k])) ||
-            Array.from(alive).some(wid => { const W = S.wins.get(wid); return !covered(W.exists.main, S.cover[`${wid}/exists`]) || WIN_BACK.some(k => out(W.parts[k], S.cover[`${wid}/${k}`], k === 'open')); });
+        const PC = S.exists.main.h === '1' ? S.exists.rival : S.cover;
+        let on = S.exists.main.h === '1' && !PC;
+        if (!on && PC) {
+          on = PAGE_BACK.some(k => out(S.parts[k], PC[k])) ||
+            Array.from(alive).some(wid => { const W = S.wins.get(wid); return !covered(W.exists.main, PC[`${wid}/exists`]) || WIN_BACK.some(k => out(W.parts[k], PC[`${wid}/${k}`], k === 'open')); });
         }
         if (on) { pages.add(uid); wins.set(uid, alive); }
       }
@@ -10298,7 +10314,9 @@
               pageChanged = true; sumP.risky = true;
               if (!LP.gone) { acc.applied.push(SW.exists.main); if (mw0 && mw0.p.exists) acc.replaced.push(mw0.p.exists.v); }
             }
-            if (SW.exists.main.h === '0' || LW || mw0) nm.wgone[wid] = tomb(SW.exists, SW.cover, M && M.wgone && M.wgone[wid]);
+            // (one shown beside a deletion that had seen every edit of it too, see shown: as a deletion at the joined
+            // vector, which replaces the shown version)
+            nm.wgone[wid] = tomb(SW.exists, SW.cover, M && M.wgone && M.wgone[wid]);
             continue;
           }
           // (a window new here whose picture isn't here yet waits, whole: it comes with its picture)
@@ -10458,7 +10476,7 @@
           // characters, a device's are 12), with the copied version's counter and time. So a copy made by the author and
           // one made by a fallback device are one, whatever else each had joined into that version, and no change that
           // never saw the copy, even its author's, is taken to include it or to come after it)
-          const cby = ('cp' + hash53(c.wid)).padEnd(14, '0').slice(0, 14);
+          const cby = copyBy(c.wid);
           const cv = arr({ by: cby, vv: { [cby]: Math.max(1, nOf(c.P)) }, t: c.P.t, u: false });
           const mk = (h, val, rev) => Object.assign({ h, v: cv, rev }, rev > 0 ? { applied: rev, val: clone(val === undefined ? null : val) } : {});
           nm.w[c.wid] = { ikey: ik, p: {

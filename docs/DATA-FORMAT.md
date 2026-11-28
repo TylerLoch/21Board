@@ -276,7 +276,8 @@ chosen after one. A window never given one has an entry with no `v`, so a device
 over a language chosen elsewhere. Rule 2: a window's language never brings back a deleted window or page. `keep` and
 `keepW` always leave it out, and a file's parts leave it out until it has a version, as on 2026.11.27-1. A tombstone
 that release wrote, with no `language` in its cover, still covers the window. A device on 2026.11.27-1 reads past the
-part.
+part. A lost ledger with no file there also loses an English chosen here that no other device has yet. The folder's
+language applies.
 
 **The theme, accent, text style, and default widget language** (`settings.theme`, `settings.accent` and
 `settings.accentColor`, `settings.letters`, `settings.widgetLanguage`) are five more parts, of the board as a whole,
@@ -314,8 +315,10 @@ says nothing about it (never a change, never a reset back to Standard), and it r
 file, so the text style chosen on a newer device never reaches it and its rounds stay as quiet as before.
 
 A device on 2026.11.27-1 doesn't know the default widget language or a window's language, in the same way. A copy it
-keeps from a clash opens in English. Each linked device writes its file once after it updates to 2026.11.27-2, since
-the new style part changes the file's fingerprint. Nothing in the board changes.
+keeps from a clash opens in English. A copy it deletes after losing its ledger and its own file can come back. So can
+a window or page deleted on two devices, when it merges both deletions first. Each linked device writes its file once
+after it updates to 2026.11.27-2, since the new style part changes the file's fingerprint. Nothing in the board
+changes.
 
 A vector is written with its devices in sorted order, in files and in the ledger, so that the same version joined
 from the same devices in another order (two or more devices setting up one folder at once) is the same text and
@@ -329,11 +332,14 @@ its device's next change, which is no clash with that device's own older value; 
 A deletion covers a version the same way (its device's change at that counter, or a later one, was seen). Its
 cover also holds the deleting device's own counter at the deletion, so it covers every earlier change that device
 made: its own older version of the page or window, still in another device's file after the page came back with
-another device's version, say, never brings it back (the same format, read the same way by earlier releases). A
-labeled copy's versions are the copy's own: made by `cp<hash of the copy's wid>` (14 characters, so no device's,
-which has 12), with the copied version's counter and time, the same on every device that makes it. In a first
-round (linking again, a rebuilt ledger), a page or window missing here is taken from the other devices' files,
-not from this device's own, whose older version of it mustn't come back as a clash.
+another device's version, say, never brings it back (the same format, read the same way by earlier releases).
+Deleted on two devices, a window or page stays deleted if one of them saw every edit that would bring it back,
+whichever deletion came last. A labeled copy's versions are the copy's own: made by `cp<hash of the copy's wid>` (14
+characters, so no device's, which has 12), with the copied version's counter and time, the same on every device that
+makes it. A deletion of a copy covers them at the largest counter there is. The device that deletes it had the copy,
+so it saw it made, even if a lost ledger stamped the copy again as new. In a first round (linking again, a rebuilt
+ledger), a page or window missing here is taken from the other devices' files, not from this device's own, whose
+older version of it mustn't come back as a clash.
 
 **Deletions are forgotten** (`gc`, at most once a day, when every device file in the folder could be read): a
 tombstone goes once this device has held it 30 days and every device it has seen in the folder shows it (its file

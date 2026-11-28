@@ -826,6 +826,7 @@ device is a browser profile of its own. The tests bring files from one device's 
 would: late, cut short, out of order, or twice, with clocks that disagree. `node tests/merge.js` tests the merge
 itself, `board.js` section 13d, in Node with no browser: the rules, reading device files, and a randomized run of
 devices changing and merging one board. It takes a couple of minutes, and `tests/run.js` runs it as a suite too.
+For a deeper run, `MERGE_LANG` and `MERGE_OLD` make language changes and devices on the older release more common.
 `node tools/test-halves.js` runs the whole of `tests/run.js` as two halves at once, in about 40 minutes, and adds up
 the results. It takes a filter too. It won't start while another test run is going.
 
