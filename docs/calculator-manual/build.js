@@ -6,8 +6,11 @@
  *
  * It takes page-src.html and fills its placeholders from the repo, so the page always shows the Calculator as it
  * ships:
- *   <!--@WIDGET-->  widgets/calculator/index.html, its two scripts (sdk/board21.js, calc-engine.js) inlined, for the
- *                   live demo's frame (srcdoc). The page plays the board's side of the SDK for that one window.
+ *   <!--@WIDGET-->  widgets/calculator/index.html, its two scripts (sdk/board21.js, calc-engine.js) and its fonts
+ *                   inlined, for the live demo's frame (srcdoc). The page plays the board's side of the SDK for that
+ *                   one window.
+ *   /*@INTER*\/ /*@INTER_LETTERS*\/   the board's font and the Calculator's letters, fonts/Inter-21Board.woff2 and
+ *                   widgets/calculator/fonts/InterItalic-21Board.woff2, as base64
  *   /*@ENGINE*\/     calc-engine.js again, for the page's own math examples
  *   /*@CECSS*\/      the engine's stylesheet, scoped to .cx
  *   /*@WINDOW*\/     the widget's name, version and window size, from its manifest
@@ -35,7 +38,7 @@ const once = (text, find, what) => {
 };
 
 const src = read('page-src.html', HERE);
-const widget = read('widgets/calculator/index.html');
+const widget0 = read('widgets/calculator/index.html');
 const engine = read('widgets/calculator/calc-engine.js');
 const sdk = read('sdk/board21.js');
 const tests = read('tests/calc-engine.js');
@@ -51,13 +54,20 @@ function scriptSafe(js, what) {
 
 // ---- The widget's document, its scripts inlined
 const SDK_TAG = '<script src="../../sdk/board21.js"></script>', ENGINE_TAG = '<script src="calc-engine.js"></script>';
+// (Its fonts as data: URLs: the letters in place of their file, and Inter before the SDK, as the board gives it.)
+const b64 = f => fs.readFileSync(path.join(ROOT, f)).toString('base64');
+const INTER = b64('fonts/Inter-21Board.woff2'), INTER_LETTERS = b64('widgets/calculator/fonts/InterItalic-21Board.woff2');
+const LETTERS_URL = 'url("fonts/InterItalic-21Board.woff2")';
+once(widget0, LETTERS_URL, 'widgets/calculator/index.html');
+const widget = widget0.replace(LETTERS_URL, () => 'url(data:font/woff2;base64,' + INTER_LETTERS + ')');
+const INTER_FACE = '<style>@font-face { font-family: "Inter"; src: url(data:font/woff2;base64,' + INTER + ') format("woff2"); font-weight: 100 900; font-display: swap; }</style>';
 once(widget, SDK_TAG, 'widgets/calculator/index.html');
 once(widget, ENGINE_TAG, 'widgets/calculator/index.html');
 // (Its markup, without what its scripts say, may load nothing else.)
 const markup = widget.replace(SDK_TAG, '').replace(ENGINE_TAG, '').replace(/(<script\b[^>]*>)[\s\S]*?<\/script>/gi, '$1</script>');
-if (/<script[^>]*\ssrc=|<link\b|<iframe\b|<img\b|url\(/i.test(markup)) fail('the widget loads a file the build doesn\'t inline');
+if (/<script[^>]*\ssrc=|<link\b|<iframe\b|<img\b|url\((?!data:font\/woff2;base64,)/i.test(markup)) fail('the widget loads a file the build doesn\'t inline');
 const doc = widget
-  .replace(SDK_TAG, () => '<script>\n' + scriptSafe(sdk, 'sdk/board21.js') + '\n</script>')
+  .replace(SDK_TAG, () => INTER_FACE + '<script>\n' + scriptSafe(sdk, 'sdk/board21.js') + '\n</script>')
   .replace(ENGINE_TAG, () => '<script>\n' + scriptSafe(engine, 'calc-engine.js') + '\n</script>');
 // Every script of the widget's own must end where it should.
 for (const m of widget.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) if (/<!--|<\/script/i.test(m[1])) fail('the widget\'s own script holds "<!--"');
@@ -144,6 +154,8 @@ if (/<\/style/i.test(scoped)) fail('calc-engine.js: its stylesheet holds "</styl
 const fill = {
   '<!--@WIDGET-->': attr(doc),
   '/*@ENGINE*/': scriptSafe(engine.trim(), 'calc-engine.js'),
+  '/*@INTER*/': INTER,
+  '/*@INTER_LETTERS*/': INTER_LETTERS,
   '/*@CECSS*/': scoped,
   '/*@WINDOW*/': JSON.stringify({ id: manifest.id, name: manifest.name, version: manifest.version, width: win.width, height: win.height, minWidth: win.minWidth, minHeight: win.minHeight }),
   '<!--@OPENS-->': `${win.width} × ${win.height}`,
@@ -166,7 +178,7 @@ if (left) fail('a placeholder is left: ' + left[0]);
 if (!out.startsWith('<title>21Board Calculator</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n<style>')) fail('the page must start with its <title>, the viewport-fit meta, then <style>');
 const tag = /<(!doctype|html|head|body)[\s>]/i.exec(out);
 if (tag) fail('document tag <' + tag[1] + '>: the page is wrapped in one when published');
-const api = /\b(alert|confirm|prompt)\s*\(|(^|[^.\w])print\s*\(|window\.print\b/m.exec(out);
+const api = /(^|[^.\w])(alert|confirm|prompt|print)\s*\(|window\.(alert|confirm|prompt|print)\b/m.exec(out);
 if (api) fail(api[0].trim() + ' does nothing in the viewer');
 const call = /\b(fetch|importScripts|sendBeacon)\s*\(|\bnew\s+(XMLHttpRequest|WebSocket|EventSource)\b/.exec(out);
 if (call) fail(call[0] + ': the page may call no server');
@@ -174,7 +186,7 @@ for (const m of out.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) if (/<!--
 const markupOnly = out.replace(/(<script\b[^>]*>)[\s\S]*?<\/script>/gi, '$1</script>');
 // A "</style" in a stylesheet ends it early, and leaves one more "</style" than "<style".
 if ((markupOnly.match(/<style\b/gi) || []).length !== (markupOnly.match(/<\/style/gi) || []).length) fail('a <style> on the page holds "</style", or never ends');
-if (/<script[^>]*\ssrc=|<link\b|<iframe[^>]*\ssrc=|<img\b|url\(/i.test(markupOnly.replace(/ data-doc="[^"]*"/, ''))) fail('the page loads a file');
+if (/<script[^>]*\ssrc=|<link\b|<iframe[^>]*\ssrc=|<img\b|url\((?!data:font\/woff2;base64,)/i.test(markupOnly.replace(/ data-doc="[^"]*"/, ''))) fail('the page loads a file');
 if (out.length > 16 * 1024 * 1024) fail('the page is over 16 MB');
 
 fs.mkdirSync(DIST, { recursive: true });

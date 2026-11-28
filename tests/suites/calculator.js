@@ -99,9 +99,9 @@ module.exports = T => {
 
     // ---- The registry and the Widget Picker
     const reg = await page.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'calculator'); return a && { name: a.name, version: a.version, entry: a.entry, files: a.files, clash: a.clash, permissions: a.permissions, win: a.win, color: a.color, icon: a.icon, external: !!a.external, single: !!a.single, description: a.description }; });
-    ok(!!reg && reg.name === 'Calculator' && reg.version === '1.0.0' && reg.entry === 'widgets/calculator/index.html' && JSON.stringify(reg.files) === '["widgets/calculator/index.html","widgets/calculator/calc-engine.js"]' &&
+    ok(!!reg && reg.name === 'Calculator' && reg.version === '1.0.0' && reg.entry === 'widgets/calculator/index.html' && JSON.stringify(reg.files) === '["widgets/calculator/index.html","widgets/calculator/calc-engine.js","widgets/calculator/fonts/InterItalic-21Board.woff2","widgets/calculator/fonts/Inter-OFL.txt"]' &&
       reg.clash === 'later' && reg.permissions.length === 0 && !reg.external && !reg.single && reg.win.width === 900 && reg.win.height === 600 && reg.win.minWidth === 280 && reg.win.minHeight === 400 && !reg.win.aspectRatio && reg.win.dragFromContent !== false,
-      `it is in the registry as Calculator (id calculator): its page and engine, clash 'later', 900 × 600, at least 280 × 400, no shape lock (${JSON.stringify(reg && reg.win)}, ${reg && reg.clash})`);
+      `it is in the registry as Calculator (id calculator): its page, engine, and font, clash 'later', 900 × 600, at least 280 × 400, no shape lock (${JSON.stringify(reg && reg.win)}, ${reg && reg.clash})`);
     ok(!!reg && reg.description === 'Work out problems and show each step.' && /<title>Calculator<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
     const mf = /<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src), manifest = mf ? JSON.parse(mf[1]) : {};
     ok(!!reg && manifest.id === 'calculator' && manifest.name === reg.name && manifest.version === reg.version && ['width', 'height', 'minWidth', 'minHeight'].every(k => (manifest.window || {})[k] === reg.win[k]), 'its manifest block matches the registry entry');
@@ -397,13 +397,25 @@ module.exports = T => {
     }
     await page.emulateMedia({ colorScheme: 'light' });
 
-    // ---- Every Text style: the keys and the canvas in its font
-    for (const style of ['legible', 'early', 'standard']) {
-      await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`); await page.keyboard.press('Escape'); await page.waitForTimeout(600);
-      const fonts = await W().locator('html').evaluate(() => { const cs = e => getComputedStyle(e).fontFamily; const t = document.createElement('span'); t.style.fontFamily = 'var(--b21-font)'; document.body.append(t); const want = cs(t); t.remove();
-        return { want, ok: [document.body, document.querySelector('#keys .key'), document.getElementById('next'), document.getElementById('eq')].every(e => cs(e) === want) }; });
+    // ---- The letters (a, b, n, x, and "of") in Inter Italic, the keys and the canvas in Inter
+    {
+      const adv = /✓ Advanced keys/.test(await menu()), apple = ((await conf()) || {}).percent === 'apple';
+      if (!adv) await choose('Advanced keys');
+      if (apple) await choose('Desmos %');
+      await press(['clear']); await type('50%8='); L = await look();
+      const it = await W().locator('html').evaluate(() => {
+        const cs = e => getComputedStyle(e), t = document.createElement('span'); t.style.fontFamily = 'var(--b21-font)'; document.body.append(t); const want = cs(t).fontFamily; t.remove();
+        const els = { key: document.querySelector('.key i'), rules: document.querySelector('.rules i'), of: document.querySelector('#eq .ce-word') };
+        return { want, letters: Object.entries(els).map(([k, e]) => e ? `${k} ${cs(e).fontFamily.split(',')[0]} ${cs(e).fontStyle}` : `${k} none`),
+          inter: [document.body, document.querySelector('#keys .key'), document.getElementById('eq')].every(e => cs(e).fontFamily === want) };
+      });
+      ok(/ of /.test(L.eq) && it.letters.every(x => /^\w+ "Inter Letters" italic$/.test(x)), `the keys’ letters, the rule strip’s, and the answer’s “of” are in Inter Letters, italic (${L.eq}; ${it.letters.join(', ')})`);
+      ok(await eventually(() => W().locator('html').evaluate(() => Array.from(document.fonts).some(f => f.family.replace(/"/g, '') === 'Inter Letters' && f.status === 'loaded'))), 'and the frame has Inter Letters loaded');
       L = await look();
-      ok(fonts.ok && L.keyMin >= 44 && L.keysInside, `${style}: the keys and the canvas are in the text style’s font, and fit (${fonts.want.split(',')[0]})`);
+      ok(it.inter && /^"?Inter"?,/.test(it.want) && L.keyMin >= 44 && L.keysInside, `the keys and the canvas are in Inter, and fit (${it.want.split(',')[0]})`);
+      await page.screenshot({ path: OUT + 'calculator-letters.png' });
+      if (apple) await choose('Desmos %');
+      if (!adv) await choose('Advanced keys');
     }
 
     // ---- The menu fits a 1366 × 768 board at the default size, without scrolling or squeezing
@@ -1743,7 +1755,7 @@ module.exports = T => {
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Calculator: the √ sign meets its bar in every text style', async (browser) => {
+  ['Calculator: the √ sign meets its bar', async (browser) => {
     const errors = [];
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 2 });
     const page = await ctx.newPage();
@@ -1779,17 +1791,9 @@ module.exports = T => {
       }, [png, r.x - clip.x, em]);
     };
     const meets = j => !!j.left && !!j.right && Math.abs(j.left[0] - j.right[0]) <= 1 && Math.abs(j.left[1] - j.right[1]) <= 1;
-    for (const style of ['standard', 'early']) {
-      if (style !== 'standard') {
-        await openSettings(page, ['letters']);
-        await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
-        await page.waitForFunction(s => window.__board21.state.settings.letters === s, style);
-        await page.keyboard.press('Escape'); await page.waitForTimeout(1200);
-      }
-      for (const [where, sel] of [['on the canvas', '#eq .ce-radicand'], ['in History', '#history .hline .ce-radicand']]) {
-        const j = await join(sel);
-        ok(meets(j), `${style === 'early' ? 'Early readers' : 'Standard'}, ${where}: the √'s last stroke meets the bar, no gap or step (sign ${JSON.stringify(j.left)}, bar ${JSON.stringify(j.right)})`);
-      }
+    for (const [where, sel] of [['on the canvas', '#eq .ce-radicand'], ['in History', '#history .hline .ce-radicand']]) {
+      const j = await join(sel);
+      ok(meets(j), `${where}: the √'s last stroke meets the bar, no gap or step (sign ${JSON.stringify(j.left)}, bar ${JSON.stringify(j.right)})`);
     }
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();

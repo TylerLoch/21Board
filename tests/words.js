@@ -10,7 +10,8 @@
  *   3. the layout: --format leaves every real table as it is, and lays out a scrambled copy;
  *   4. the Sheet: --sheet's columns, plural lines and hints, and --apply's changes, conflicts, and English edits;
  *   5-12. the engine: lookup, plurals, placeholders, numbers and dates, frame names and addresses, the pseudo
- *      language, fonts, and the common words.
+ *      language, and the common words; and the fonts: the board's Inter has every letter of tools/inter-chars.json and
+ *      every words table, one weight axis with a heavier regular, and the Calculator's italic has its letters.
  * The rule checks, the Sheet, and the engine's plurals run on a widget of the tests' own (FIXTURE below), so a
  * reviewer's edit to a real widget's words never breaks them. It writes no file: every broken copy and round trip
  * stays in memory.
@@ -495,12 +496,63 @@ test('pseudo: brackets, no English letters, one Cyrillic letter, {n} kept, as lo
   eq(['Start', 'OK ［…］', '［Ŝţàŕţ］', '15', 'a'].map(s => Words.auditText(s).length > 0), [true, true, false, false, false], 'auditText');
 });
 
-// ---- 11. Fonts.
-test('fonts: Russian, Ukrainian, and the pseudo language skip the bundled Latin fonts', () => {
+// ---- 11. Fonts: the shipped Inter files (tests/woff2.js reads them) against tools/inter-chars.json and the tables.
+const font = rel => require('./woff2.js')(fs.readFileSync(path.join(ROOT, rel)));
+const CHARS = JSON.parse(read('tools/inter-chars.json'));
+const points = ranges => ranges.flatMap(r => { const [a, b = a] = r.split('-').map(h => parseInt(h, 16)); return Array.from({ length: b - a + 1 }, (_, i) => a + i); });
+const U = cp => 'U+' + cp.toString(16).toUpperCase().padStart(4, '0');
+// Every table's words, by table: the window and board rows in each language, and each window row in the pseudo language.
+const allWords = () => {
+  const out = [['common', Object.values(Words.COMMON_WORDS.window)]];
+  for (const t of W.check().tables) {
+    if (t.id === 'common') continue;
+    let text = read(t.file);
+    if (t.inline) text = /<script>\s*(Board21\.words\([\s\S]*?)<\/script>/.exec(text)[1];
+    const table = W.parse(t.file, text);
+    out.push([t.id, Object.values(table.window || {}).concat(Object.values(table.board || {}))]);
+    out.push([t.id + ' (pseudo)', Object.values(table.window || {}).map(row => ({ qps: Words.pseudo(row) }))]);
+  }
+  return out.map(([id, rows]) => [id, rows.flatMap(row => Object.entries(row).filter(([k]) => ['en', 'es', 'ru', 'uk', 'qps'].includes(k))
+    .flatMap(([, v]) => (typeof v === 'string' ? [v] : Object.values(v || {}))))]);
+};
+test('fonts: the board’s font has every letter in every words table, and the list', () => {
   need();
-  const legible = '"Atkinson Hyperlegible", system-ui, sans-serif', early = '"21Board Early Readers", system-ui, sans-serif', plain = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  for (const lang of ['ru', 'uk', 'qps']) eq([Words.fontFor(legible, lang), Words.fontFor(early, lang), Words.fontFor(plain, lang)], ['system-ui, sans-serif', 'system-ui, sans-serif', plain], lang);
-  for (const lang of ['en', 'es']) eq([Words.fontFor(legible, lang), Words.fontFor(early, lang), Words.fontFor(plain, lang)], [legible, early, plain], lang);
+  const has = font('fonts/Inter-21Board.woff2').cmap, roman = new Set(Object.values(CHARS.roman).flatMap(points)), fallback = new Set(points(CHARS.fallback));
+  const lacks = [...roman].filter(cp => !has.has(cp));
+  yes(!lacks.length, `fonts/Inter-21Board.woff2 lacks ${lacks.slice(0, 12).map(U).join(', ')} from tools/inter-chars.json`);
+  const both = [...fallback].filter(cp => roman.has(cp));
+  yes(!both.length, `fallback holds ${both.map(U).join(', ')}, which roman has`);
+  const shown = /[\p{L}\p{M}\p{N}\p{P}\p{S}\p{Zs}]/u, picture = /\p{Extended_Pictographic}/u, missing = [];
+  for (const [id, words] of allWords()) {
+    for (const ch of new Set([...words.join('')])) {
+      const cp = ch.codePointAt(0);
+      if (shown.test(ch) && !picture.test(ch) && !has.has(cp) && !fallback.has(cp)) missing.push(`${U(cp)} ${ch} (${id})`);
+    }
+  }
+  yes(!missing.length, 'not in the font or fallback: ' + missing.join(', '));
+});
+test('fonts: one weight axis and a heavier regular', () => {
+  const f = font('fonts/Inter-21Board.woff2');
+  eq(f.axes.map(a => [a.tag, a.min, a.max]), [['wght', 100, 900]], 'fvar axes');
+  const { min, def, max } = f.axes[0];
+  yes(def < 400, `the default is ${def}, under 400`);
+  const map = f.avar.wght || [];
+  const lerp = x => { for (let i = 1; i < map.length; i++) { const [a, b] = map[i - 1], [c, d] = map[i]; if (x <= c) return c === a ? b : b + (d - b) * (x - a) / (c - a); } return x; };
+  const at = w => lerp(w < def ? (w - def) / (def - min) : (w - def) / (max - def));
+  const n = [400, 500, 600, 700].map(at);
+  yes(n[0] > 0 && n[0] < n[1] && n[1] < n[2] && n[2] < n[3], `avar maps 400, 500, 600, and 700 to ${n.map(x => x.toFixed(3)).join(', ')}`);
+  for (const rel of ['fonts/Inter-21Board.woff2', 'widgets/calculator/fonts/InterItalic-21Board.woff2']) {
+    const t = font(rel).tables;
+    eq(['STAT', 'fvar', 'avar', 'gvar', 'HVAR'].filter(x => !t.includes(x)), [], rel + ': tables missing');
+  }
+});
+test('fonts: the Calculator’s letters', () => {
+  const f = font('widgets/calculator/fonts/InterItalic-21Board.woff2');
+  const text = ['widgets/calculator/index.html', 'docs/calculator-manual/page-src.html'].map(read).join('\n');
+  const letters = [...text.matchAll(/<i>([^<]*)<\/i>/g)].map(m => m[1]).concat([...read('widgets/calculator/calc-engine.js').matchAll(/\.word\('([^']*)'\)/g)].map(m => m[1])).join('');
+  const lacks = [...new Set(letters)].filter(ch => !f.cmap.has(ch.codePointAt(0)));
+  yes(letters.length && !lacks.length, `the italic lacks ${lacks.join(' ')}`);
+  eq(f.axes.map(a => a.tag), ['wght'], 'fvar axes');
 });
 
 // ---- 12. The common words.

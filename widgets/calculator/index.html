@@ -13,6 +13,9 @@
 <style id="engine-css"></style>
 <script>document.getElementById('engine-css').textContent = window.CalcEngine ? CalcEngine.CSS : '';</script>
 <style>
+  /* The letters a, b, n, and x, and the word "of", in Inter Italic (tools/build-inter.py). A family of their own, so any
+     other italic stays Inter. */
+  @font-face { font-family: "Inter Letters"; src: url("fonts/InterItalic-21Board.woff2") format("woff2"); font-style: italic; font-weight: 100 900; font-display: swap; }
   /* Calculator: Teach's canvas and steps, its keys, and History drawn as Desmos draws its lines. The panels sit side by
      side, left to right (Swap sides mirrors them): the canvas, the keys, History. In a tall or narrow window the canvas
      sits above the keys, and History may go across the top. The script sets the grid for the window's size (layout());
@@ -112,7 +115,7 @@
   .rules b { flex: 0 0 auto; display: inline-block; height: 1.4em; padding: 0 .27em; border-radius: .38em; font-size: max(16px, .9em); font-weight: 700; line-height: 1.4em; white-space: nowrap; word-spacing: -.12em; color: var(--b21-muted); transition: background-color .2s, color .2s; }
   .rules b.lit { background: var(--b21-accent); color: var(--b21-on-accent); }
   .rules b.soft { background: var(--b21-accent-soft); color: var(--b21-text); }
-  .rules i { font-family: Georgia, "Times New Roman", serif; font-style: italic; }
+  .key i, .rules i, .ce-word { font-family: "Inter Letters", var(--b21-font); font-style: italic; }
   .rules sup { font-size: .62em; line-height: 0; vertical-align: baseline; position: relative; top: -.42em; margin-left: .04em; }
   .btn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: .3em; height: max(44px, 2.5em); min-width: max(44px, 2.5em); padding: 0 1em; border: 0; border-radius: 999px; background: var(--b21-surface-2); font-weight: 600; white-space: nowrap; cursor: pointer; }
   .btn svg { width: 1.15em; height: 1.15em; stroke-width: 2.3; }
@@ -234,7 +237,6 @@
   .key[aria-disabled="true"] { opacity: .38; }
   .key svg { width: 1.1em; height: 1.1em; stroke-width: 1.9; }
   .key .w { font-size: .8em; font-weight: 600; }
-  .key i { font-family: Georgia, "Times New Roman", serif; font-style: italic; }
   .key sup { font-size: .62em; line-height: 0; position: relative; top: -.42em; margin-left: .04em; }
   .key .ri { margin: 0 -.12em 0 0; top: -.5em; }
   .key .fk { display: inline-flex; flex-direction: column; align-items: center; font-size: .74em; line-height: 1.02; }
@@ -1136,7 +1138,7 @@
   }
   const soon = () => { if (!frame) frame = requestAnimationFrame(refit); };
   new ResizeObserver(soon).observe(el.app);
-  Board21.on('resize', soon);   // (also when the text style changes, and once its font has loaded)
+  Board21.on('resize', soon);   // (also once a font has loaded)
 
   // ---- Changes from elsewhere: another tab, an import, Board history
   Board21.on('data', d => { calc.load(d); savedData = JSON.stringify(calc.serialize()); render(); });

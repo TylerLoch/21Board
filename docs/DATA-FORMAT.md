@@ -90,15 +90,15 @@ device only. Never synced or exported, and not in Board history.
   accentColor: "#8040c0",  // from 2026.11.18-2: the accent chosen, one of the six or a custom "#rrggbb" (lowercase);
                            //   "" before any. It shows while accent goes with it: itself, or "blue" for a custom color.
                            //   Otherwise a release before 2026.11.18-2 chose accent since, and accent shows.
-  themeAt: 1794460416170,  // when the theme, the accent, the text style, and the default widget language were last
-  accentAt: 1794460410000, //   chosen on this device (ms; set by a change made here, never by Board Sync): of two
-  lettersAt: 1794460420000,//   choices made apart, the later wins on every device (lettersAt from 2026.11.17-2,
-  accentColorAt: 1794460410000,     // accentColorAt from 2026.11.18-2, widgetLanguageAt from 2026.11.27-2)
+  themeAt: 1794460416170,  // when the theme, the accent, and the default widget language were last chosen on this
+  accentAt: 1794460410000, //   device (ms; set by a change made here, never by Board Sync): of two choices made apart,
+  lettersAt: 1794460420000,//   the later wins on every device (accentColorAt from 2026.11.18-2, widgetLanguageAt from
+  accentColorAt: 1794460410000,     // 2026.11.27-2). lettersAt: the text style's, kept for releases up to 2026.11.28-1
   widgetLanguageAt: 1794460430000,
   locked: false,           // Lock in the Widget Picker: false | "all" (Lock everything) | "widgets" (Widgets still work)
   awake: "off",            // Settings → Classroom → Stay awake: "off" | "on" (the screen is kept on while 21Board is showing)
   clock: "auto",           // Settings → Advanced → Clock in the corner: "on" | "off" | "auto" (the default: only in full screen)
-  letters: "standard",     // Settings → Appearance → Text style (called Letters before 2026.11.17-2): "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika, as "21Board Early Readers")
+  letters: "standard",     // the text style, shown and chosen only by releases up to 2026.11.28-1: "standard" | "legible" | "early". Later releases never choose one. They keep it, and take a later one from an older device through Board Sync.
   widgetLanguage: "en",    // Settings → Classroom → Default widget language: "en" | "es" | "ru" | "uk", the language new windows start in
   lastBackupAt: null,      // ms of the last full backup (an export of every page, or Board Sync writing this device's
                            //   file), for backup reminders and the amber dot on Settings → Advanced (only when overdue)
@@ -111,13 +111,13 @@ device only. Never synced or exported, and not in Board history.
 }
 ```
 
-Only `theme`, the accent, `letters`, the text style, and `widgetLanguage`, the default widget language, go into exported
-files, and so into the device files in the Google Drive folder. Before 2026.11.17-2, `letters` stayed on the device.
-`widgetLanguage` is new in 2026.11.27-2. It syncs board-wide like `theme`. An export's `accent` is the accent shown: one
+Only `theme`, the accent, and `widgetLanguage`, the default widget language, go into exported files. Files from
+2026.11.17-2 to 2026.11.28-1 also hold `letters`, the text style. Later releases ignore it. Device files still carry it
+(Board Sync, below). `widgetLanguage` is new in 2026.11.27-2. It syncs board-wide like `theme`. An export's `accent` is the accent shown: one
 of the six, or a custom color. A device file has `accent` and `accentColor` as they are stored. With Board Sync they are
 the board's, on every device linked to the folder, and the later choice wins, as for a page's name (see
 `link:sync.style` below). *Import › Replace this page* takes the file's values as a choice made here, so they sync. A
-file without `letters` leaves the text style as it is, and one without `widgetLanguage` the default widget language. Its
+file without `widgetLanguage` leaves the default widget language as it is. Its
 Undo puts back the values it replaced, again as a choice made here, so that syncs too. The other ways to import, and
 going back in Board history, never change them. `locked`, `awake`, and `clock` belong to this device. They are never in
 exports, Board history, or the Google Drive folder, and an import leaves them as they are.
@@ -312,6 +312,10 @@ device: `accentColor` gives way once `accent` no longer goes with it.
 A device on 2026.11.16-4 doesn't know the text style: its files have no `letters` and no `sync.style.letters`, which
 says nothing about it (never a change, never a reset back to Standard), and it reads past both in a newer device's
 file, so the text style chosen on a newer device never reaches it and its rounds stay as quiet as before.
+
+21Board no longer shows the text style. It stays a style part, so devices that haven't updated keep syncing it. An
+updated device never chooses one, so it never stamps a version. It takes a later one from another device into
+`settings.letters` without a word, and writes it on in its own file.
 
 A device on 2026.11.27-1 doesn't know the default widget language or a window's language, in the same way. A copy it
 keeps from a clash opens in English. Each linked device writes its file once after it updates to 2026.11.27-2, since
@@ -667,7 +671,8 @@ A picture stays while any version names it. A version of a page with pictures co
 them, usually a few KB.
 
 `sig` is the content fingerprint, so identical versions aren't saved twice. Window stacking order doesn't count, nor do
-the theme, accent, text style, and default widget language, which going back never changes. Versions saved before Board
+the theme, accent, and default widget language, which going back never changes. Versions saved by earlier releases
+may also hold `letters`, the text style. Going back drops it. Versions saved before Board
 Sync merged boards may have `reason: "load"` and `link: "sent" | "loaded"`; `link` is ignored now. While the board is
 linked to a folder, versions saved when 21Board opens aren't copied to it unless saved by hand. They may hold only work
 merged from other devices, which those devices copy themselves. Retention is in README, "Board history". Settings for
@@ -675,8 +680,8 @@ this device only: `historyEvery` (minutes, 0 = off; default 10) and `historyFold
 
 **Folder copies:** `<shared folder>/Board history/<board name> <YYYY-MM-DD> <HH.MM>[ saved] (<device>) [<uid6>-<dev4>].21board`
 (local time; `uid6` and `dev4` are the first characters of the board's uid and the device id). A valid `.21board` file:
-the version's body plus `history: {at, kind, label, by, from}`, without theme, accent, text style, default widget
-language, or the photo. Its windows' pictures are named in `Photos/` (put there first), and it is then
+the version's body plus `history: {at, kind, label, by, from}`, without theme, accent, default widget language, or
+the photo. Its windows' pictures are named in `Photos/` (put there first), and it is then
 `formatVersion: 2`. Each device thins only files with its own `dev4` (by name only); files ending in ` saved` are never
 removed.
 
@@ -787,7 +792,6 @@ on Chrome) reads it.
   "viewport": { "width": 2400, "height": 1350 },   // the space the rects are in (the 16:9 board, grown to fit every window)
   "theme": "light",
   "accent": "blue",               // the accent shown: one of the six, or a custom color "#rrggbb"
-  "letters": "standard",          // the text style (from 2026.11.17-2; a file without it leaves the text style as it is)
   "widgetLanguage": "en",         // the default widget language (from 2026.11.27-2; a file without it leaves it as it is)
   "board": {
     "name": "Room 12",
@@ -886,17 +890,17 @@ the file is made anyway, the teacher is told which pages are incomplete, and it 
 Importing a one-page file offers three choices:
 
 - **Open as a new page**, the suggested choice. The file becomes a new page right after the page shown, with the file's
-  name, background, photo, size, and shape, but not its theme, accent color, text style, or default widget language. It
+  name, background, photo, size, and shape, but not its theme, accent color, or default widget language. It
   keeps the file's `board.uid` unless a page on this device already has it (then it gets a new one), so the same file
   opened on two linked devices is one page. Undo takes the page away again.
 - **Replace this page** removes this page's windows and content, then loads the file, with its board name,
-  background, theme, accent color, text style, and default widget language. The page keeps its `board.uid`, whatever
+  background, theme, accent color, and default widget language. The page keeps its `board.uid`, whatever
   board the file was. With Board Sync, the new content reaches the same page on the other devices as edits. The
-  theme, accent color, text style, and default widget language count as a choice made on this device, so they reach
+  theme, accent color, and default widget language count as a choice made on this device, so they reach
   the other devices too. The dialog says so when they differ from this board's. Its Undo goes back to the version
-  saved before, and chooses again the theme, accent color, text style, and default widget language it replaced.
-- **Add to this page** keeps everything here, including the theme, accent color, text style, and default widget
-  language, and adds the file's windows, each in its own language. Each gets the next free instance number for its
+  saved before, and chooses again the theme, accent color, and default widget language it replaced.
+- **Add to this page** keeps everything here, including the theme, accent color, and default widget language, and
+  adds the file's windows, each in its own language. Each gets the next free instance number for its
   widget, and windows are nudged into free space. Each added window gets a new `wid` and a `createdAt` of its own;
   *Replace this page* keeps the file's `wid`s (or makes the default from their `createdAt`), so a restored backup of a
   page is the same windows on every device.
@@ -909,7 +913,7 @@ Importing an all-pages file offers two choices:
   though the pages they replace have it, so a restored backup is the same boards in the Google Drive folder.
 
 Either way it is all or nothing. If a page can't be added, those that were go again and this device's pages stay.
-The theme, accent color, text style, and default widget language stay as they are.
+The theme, accent color, and default widget language stay as they are.
 
 *Replace this page* keeps this page's background photo unless the file brings one. It takes the file's `scale` and
 `shape`, so the board looks exactly as it did, zoomed to fit this screen. A file from before board sizes existed is

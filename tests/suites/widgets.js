@@ -679,8 +679,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     });
 
     // ---- 2. The cells fit wherever the letters showed: from a canvas 400 px wide. Below that they hide. Light and dark,
-    // every accent, and all three text styles.
-    await part('Rule cells: size, colors, and text styles', async () => {
+    // and every accent.
+    await part('Rule cells: size and colors', async () => {
       const C = await calcBoard();
       await C.press(['clear', '2', 'add', '3', 'multiply', '4', 'equals']); await C.next();
       // The window width where the canvas is first 400 px wide, beside the keys at 600 px tall.
@@ -693,11 +693,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         await C.setSize(w, h); const r = await C.rules();
         ok(r.shown && r.fit, `${w} × ${h}, a canvas ${r.cv.toFixed(1)} px wide: the cells fit (${r.room} px to spare, ${(r.px || 0).toFixed(1)} px type)`);
       }
-      // Every text style, at the narrowest canvas that shows them.
-      for (const style of ['legible', 'early', 'standard']) {
-        await openSettings(C.page, ['letters']); await C.page.click(`#settings [data-act="letters"][data-val="${style}"]`); await C.page.keyboard.press('Escape'); await C.page.waitForTimeout(900);
+      // At the narrowest canvas that shows them, the four cells.
+      {
         await C.setSize(at400 ? at400[0] : 704, 600); const r = await C.rules();
-        ok(r.shown && r.fit && same(r.cells, CELLS), `${style}, a canvas ${r.cv.toFixed(1)} px wide: the four cells fit (${r.room} px to spare)`);
+        ok(r.shown && r.fit && same(r.cells, CELLS), `a canvas ${r.cv.toFixed(1)} px wide: the four cells fit (${r.room} px to spare)`);
       }
       await C.setSize(900, 600);
       // Colors: the lit cell, a soft cell, and a plain one read on the canvas, light and dark, in every accent.

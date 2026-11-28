@@ -47,7 +47,7 @@
  *   skip()           Jump to the end of the show at once: the winners on screen, nothing left running. The host
  *                    calls it for a tap after the double-tap guard, a menu change, a pick from another copy, the
  *                    page being hidden, or a show that ran too long. No need to call host.done() after it.
- *   resize()         The stage changed size, or the letters did (Settings → Text style): fit the names again.
+ *   resize()         The stage changed size, or a font loaded: fit the names again.
  *   theme()          Light/dark or the accent color changed. CSS has the new colors already; redraw a canvas.
  *   destroy()        Another style was chosen: stop every timer and animation frame. (The host removes root.)
  *
@@ -991,7 +991,7 @@ window.NamePicker = {
     else renderChrome();
   });
   Board21.on('theme', () => call('theme'));
-  // Names fit the stage: again when the window changes size, or the letters change (the SDK fires 'resize' then),
+  // Names fit the stage: again when the window changes size, or a font loads (the SDK fires 'resize' then),
   // or the board draws the window at another size (Board21's 'resize': host.zoom() changed). On the 16:9 board the
   // zoom changes with almost every step of resizing the browser window: that refit waits until it stops (150 ms).
   let refitting = 0, zoomWas = 0, zoomTimer = 0;

@@ -17,7 +17,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      /* --b21-font: the letters chosen in 21Board's Settings (the device's own unless the teacher picked easier ones) */
+      /* --b21-font: the board's font, Inter, then the device's own */
       font-family: var(--b21-font, system-ui, -apple-system, "Comic Sans MS", "Chalkboard SE", "Comic Neue", cursive, sans-serif);
       background: var(--b21-bg, #f0f7ff);
       color: var(--b21-text, #0f172a);
@@ -29,7 +29,7 @@
       user-select: text;
       -webkit-user-select: text;
     }
-    /* Buttons don't take the page's font by themselves: the cards' labels are in the letters chosen in Settings too */
+    /* Buttons don't take the page's font by themselves: the cards' labels are in the board's font too */
     button {
       font-family: inherit;
     }

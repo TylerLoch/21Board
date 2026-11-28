@@ -80,6 +80,19 @@ module.exports = T => {
     const t0 = Date.now();
     await sp.goto(BASE + 'widgets/timer/index.html#b21-bare'); await sp.waitForFunction(() => window.Board21 && Board21.context, null, { timeout: 3000 });
     ok(await sp.evaluate(() => Board21.context.standalone === true && !document.getElementById('b21-dev')) && Date.now() - t0 < 2500, 'with #b21-bare a widget runs on its own, at once');
+    // On 21Board's site, the widget on its own loads Inter. With the SDK from another site (an AI tool's preview), it
+    // uses the device's font and fetches nothing.
+    const interFaces = () => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === 'Inter').map(f => f.status);
+    ok(await eventually(async () => (await sp.evaluate(interFaces)).includes('loaded')) && /^"?Inter"?,/.test(await sp.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--b21-font').trim())),
+      `on 21Board’s site a widget on its own loads Inter, first in --b21-font (${await sp.evaluate(interFaces)})`);
+    {
+      const xp = await ctx.newPage(), xFonts = [], xErr = [];
+      xp.on('request', r => { if (r.url().includes('/fonts/')) xFonts.push(r.url()); });
+      xp.on('console', m => { if (m.type() === 'error' && /font|woff2|CORS/i.test(m.text())) xErr.push(m.text().slice(0, 120)); });
+      await xp.goto(BASE.replace('127.0.0.1', 'localhost') + '__dev/widget.html#b21-bare'); await xp.waitForFunction(() => window.Board21 && Board21.context, null, { timeout: 3000 }); await xp.waitForTimeout(600);
+      ok(!(await xp.evaluate(interFaces)).length && !xFonts.length && !xErr.length, `with the SDK from another site it has no Inter face, asks for no font, and logs no font error (${xFonts.length} asked${xErr.length ? ': ' + xErr.join(' | ') : ''})`);
+      await xp.close();
+    }
     // ---- The Timer's words: its chips, their names, and its buttons' names, in English and in Russian, each as its
     // words.js has them (wordsOf).
     const timerWords = p => p.evaluate(() => {
@@ -246,7 +259,7 @@ module.exports = T => {
       await oc.close();
     }
   }],
-  ['SDK Playground: every call and event the SDK has, run with your own values (save and load, a menu from JSON with a heading and a checkmark, title, minimum size), bad JSON, copy as code, live state, the palette (theme, Custom… accent, text style), the log (timestamps, pretty JSON, filter, pause, clear, copy), the smallest window in every text style, the keyboard', async (browser) => {
+  ['SDK Playground: every call and event the SDK has, run with your own values (save and load, a menu from JSON with a heading and a checkmark, title, minimum size), bad JSON, copy as code, live state, the palette (theme, Custom… accent), the log (timestamps, pretty JSON, filter, pause, clear, copy), the smallest window, the keyboard', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -472,10 +485,10 @@ module.exports = T => {
     await page.evaluate(ik => window.__board21.setMaximized(ik, false), ik); await page.waitForTimeout(400);
     ok(await sv('wkey', 'maximized') === 'false' && await sv('wkey', 'zoom') === '1', `back again (zoom ${await sv('wkey', 'zoom')})`);
     const ctxShown = await F(() => Object.fromEntries([...document.querySelectorAll('#state [data-key] > .v')].map(e => [e.parentNode.dataset.key, e.textContent])));
-    ok(ctxShown.widgetId === '"sdk-playground"' && ctxShown.instance === '1' && ctxShown.kiosk === 'false' && ctxShown.standalone === 'false' && ctxShown.host === '"board"' && ctxShown.theme === '"light"' && ctxShown['text-style'] === 'Standard',
-      `the context: widget id, instance, kiosk, standalone, host, theme, text style (${JSON.stringify(ctxShown)})`);
+    ok(ctxShown.widgetId === '"sdk-playground"' && ctxShown.instance === '1' && ctxShown.kiosk === 'false' && ctxShown.standalone === 'false' && ctxShown.host === '"board"' && ctxShown.theme === '"light"' && !('text-style' in ctxShown),
+      `the context: widget id, instance, kiosk, standalone, host, and theme (${JSON.stringify(ctxShown)})`);
 
-    // ---- P4. The palette: every token, its swatch, name and value, following the theme, the accent and the text style.
+    // ---- P4. The palette: every token, its swatch, name and value, following the theme and the accent. --b21-font starts with Inter.
     await tab('palette');
     const tokens = [...new Set(between('## Theming', '## Registering a widget').match(/--b21-[a-z0-9-]+/g))];
     const pal = () => F(() => [...document.querySelectorAll('#palette [data-token]')].map(b => ({ t: b.dataset.token, v: b.querySelector('.value').textContent.trim(), sw: !!b.querySelector('.swatch'),
@@ -509,11 +522,9 @@ module.exports = T => {
     p = await pal();
     const custom = await page.evaluate(() => window.__board21.state.settings.accentColor);
     ok(custom === '#0d9488' && val('--b21-accent') !== '#60a5fa' && val('--b21-accent-soft') !== 'rgba(96,165,250,0.18)' && p.every(x => x.v === x.css), `a Custom… accent: it follows (${val('--b21-accent')}, ${val('--b21-accent-soft')})`);
-    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="legible"]'); await page.waitForTimeout(500);
-    p = await pal();
-    ok(/Atkinson Hyperlegible/.test(val('--b21-font')) && p.every(x => x.v === x.css), `the text style: it follows (${val('--b21-font')})`);
+    ok(/^"?Inter"?,/.test(val('--b21-font')), `--b21-font starts with Inter (${val('--b21-font')})`);
     await tab('state');
-    ok(await sv('key', 'text-style') === 'Easier to read' && await sv('key', 'theme') === '"dark"', `and State says so (${await sv('key', 'text-style')}, ${await sv('key', 'theme')})`);
+    ok(await sv('key', 'theme') === '"dark"', `and State follows the theme (${await sv('key', 'theme')})`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await tab('palette');
     await F(() => { window.__copied = []; });
@@ -576,10 +587,9 @@ module.exports = T => {
     const s2 = await scroll();
     ok(s1[1] > 100 && s1[0] === 0 && s2[0] === 0, `a wide window: tapping a tab leaves the log where it was (${s1[0]}, then ${s2[0]}, of ${s1[1]})`);
 
-    // ---- P7. The smallest window (320 × 260) in every text style, and the board's other sizes: every tab usable.
+    // ---- P7. The smallest window (320 × 260), and the board's other sizes: every tab usable.
     const cramped = [], tight = [];
-    for (const style of ['standard', 'legible', 'early']) {
-      await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    { const style = 'Inter';
       await page.evaluate(ik => window.__board21.setRect(ik, { x: 500, y: 60, w: 320, h: 300 }), ik); await page.waitForTimeout(500);
       for (const t of ['calls', 'state', 'palette', 'log']) {
         await f.locator(`[role="tab"][data-tab="${t}"]`).click(); await page.waitForTimeout(100);
@@ -590,7 +600,7 @@ module.exports = T => {
             over, font: getComputedStyle(document.querySelector('button')).fontFamily, room: panel ? panel.getBoundingClientRect().height : 0 };
         });
         if (m.w !== 320 || m.h !== 260 || m.sw > 320 || m.tabs !== 4 || m.clipped.length || m.over.length || m.room < 150 ||
-          !(style === 'standard' || m.font.includes(style === 'legible' ? 'Atkinson Hyperlegible' : '21Board Early Readers'))) cramped.push({ style, t, m });
+          !/^"?Inter"?,/.test(m.font)) cramped.push({ style, t, m });
       }
       await page.screenshot({ path: OUT + `sdk-playground-min-${style}.png`, clip: await page.locator(`.win[data-ikey="${ik}"]`).boundingBox() });
       // The log's bar stays one row while Pause counts, and the menu box and its code line leave room for Run.
@@ -602,9 +612,8 @@ module.exports = T => {
       const box = await F(() => { const r = s => Math.round(document.querySelector(`[data-call="Board21.menu.set"] ${s}`).getBoundingClientRect().height); return { box: r('textarea'), code: r('.code'), h: innerHeight }; });
       if (bar.rows !== 1 || !/^Resume\d\d$/.test(bar.pause) || box.box > box.h / 2 || box.code > box.h / 2) tight.push({ style, bar, box });
     }
-    ok(!cramped.length, `at 320 × 260, in every text style, all four tabs and their content fit, in the board’s font${cramped.length ? ': ' + JSON.stringify(cramped) : ''}`);
+    ok(!cramped.length, `at 320 × 260 all four tabs and their content fit, in the board’s font${cramped.length ? ': ' + JSON.stringify(cramped) : ''}`);
     ok(!tight.length, `and the log’s bar stays one row while Pause counts, and the menu box and its code line each take at most half the window${tight.length ? ': ' + JSON.stringify(tight) : ''}`);
-    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     for (const sc of [0.5, 2]) {
       await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(400);
       await page.evaluate(ik => window.__board21.setRect(ik, { x: 20, y: 20, w: 320, h: 300 }), ik); await page.waitForTimeout(400);
@@ -1154,6 +1163,29 @@ module.exports = T => {
     await settings(page);
     ok(after['devfile:dev-probe'] && after['devfile:dev-probe'].src.includes(MARK), 'the file’s text is kept on this device (its own record, devfile:dev-probe)');
 
+    // Its text is in Inter: the board puts the face into the sealed page, from the offline copy.
+    const fontProbe = W('font-probe.html', `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><script src="../../sdk/board21.js"></script>
+<title>Font probe</title><style>body { font-family: var(--b21-font); }</style></head><body><b id="s">Il1 Готово</b><script>/* ${MARK} */</script></body></html>`);
+    await page.setInputFiles('#widget-input', fontProbe);
+    const fk = 'dev-font-probe:1';
+    await eventually(() => B(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, fk));
+    const interIn = () => frame(page, fk).locator('html').evaluate(() => ({ font: getComputedStyle(document.getElementById('s')).fontFamily, faces: Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === 'Inter').map(f => f.status) }));
+    ok(await eventually(async () => { const x = await interIn(); return /^"?Inter"?,/.test(x.font) && x.faces.includes('loaded'); }),
+      `an uploaded widget’s text is in Inter, and its sealed frame has Inter loaded (${JSON.stringify(await interIn())})`);
+    await B(ik => window.__board21.deleteInstance(ik), fk);
+    {
+      // With the font answered 404, an uploaded widget still starts, in the device's font.
+      const c404 = await browser.newContext({ viewport: { width: 1400, height: 860 }, serviceWorkers: 'block' });
+      await c404.route(/\/fonts\/Inter-21Board\.woff2$/, r => r.fulfill({ status: 404, body: 'Not found' }));
+      const p4 = await c404.newPage(); p4.on('pageerror', e => { if (!/Service worker is disabled/.test(e.message)) errors.push('404 tab: ' + e.message); });   // (no offline worker in this tab)
+      await p4.goto(BASE); await boardUp(p4, { fonts: false });
+      await openSettings(p4, ['advanced']); await p4.click('#settings [data-act="devmode"]'); await p4.keyboard.press('Escape');
+      await p4.setInputFiles('#widget-input', noSdk);
+      const started = await eventually(async () => await frame(p4, 'dev-no-sdk-tag:1').locator('#s').textContent() === 'connected');
+      const faces = started ? await frame(p4, 'dev-no-sdk-tag:1').locator('html').evaluate(() => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === 'Inter').length) : -1;
+      ok(started && faces === 0, `with the font file answered 404, an uploaded widget still starts, with no Inter face (${started ? faces + ' faces' : 'it didn’t start'})`);
+      await c404.close();
+    }
     // ---- A file with no SDK tag still connects.
     await page.setInputFiles('#widget-input', noSdk);
     ok(await eventually(async () => await frame(page, 'dev-no-sdk-tag:1').locator('#s').textContent() === 'connected'), 'a file with no SDK tag still connects (the SDK is put in for it)');

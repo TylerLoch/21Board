@@ -46,7 +46,7 @@ module.exports = T => {
     ok(L.ask && !L.pic && L.title === 'Show a picture' && L.open === 'Open…' && L.paste && L.pasteLabel === 'Paste' && !L.err, `an empty window: “Show a picture”, Open… and Paste (${JSON.stringify([L.title, L.open, L.pasteLabel, L.err])})`);
     ok(await picMenu(page) === '', `no window menu items of its own while it is empty (${await picMenu(page)})`);
     ok(await picWin(page).locator('html').evaluate(() => document.activeElement === document.body).catch(() => false), 'nothing in it takes the focus by itself (no keyboard popping up)');
-    ok(!!L.font && L.buttonFont === L.font, `its buttons are in the text style’s font (${L.buttonFont})`);
+    ok(!!L.font && L.buttonFont === L.font, `its buttons are in the board’s font (${L.buttonFont})`);
 
     // Open… shows the file dialog, for the five kinds and SVG; a small PNG is kept exactly as it is.
     const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null), picWin(page).locator('#open').click({ timeout: 3000 }).catch(() => {})]);

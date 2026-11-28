@@ -708,7 +708,7 @@
         resize() {
           if (dead || !view) return;
           readTokens();
-          labelsKey = '';   // (the letters may have changed, or finished loading)
+          labelsKey = '';   // (a font may have finished loading)
           layout();
           if (!anim) draw(performance.now());
         },

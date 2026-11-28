@@ -41,8 +41,9 @@
   @media (max-width: 280px), (max-height: 230px) {
     #ask { padding: 8px 10px; }
     #ask .box { gap: .4em; }
-    h1 { font-size: 1em; }   /* (one line at 200 px in every text style) */
+    h1 { font-size: 1em; }   /* (one line at 200 px) */
     button { padding: 0 .5em; font-size: 14px; }   /* (Cancel and Show video side by side at 200 px) */
+    #err { letter-spacing: -.01em; }   /* (the longest message on two lines at 200 px) */
   }
   /* The player: the video site's own page, filling the window on black. Nothing is drawn over it (YouTube's rules), so
      in a window that fills the board it ends above the board's own buttons and clock in the bottom corners (--clear),

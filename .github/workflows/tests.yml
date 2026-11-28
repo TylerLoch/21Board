@@ -36,8 +36,8 @@ jobs:
           npm install --no-save playwright@1.63.0
           npx playwright install --with-deps chromium
 
-      # The fonts of the machines the tests are written on, so text measures the same: Inter for system-ui and
-      # sans-serif, with no hinting.
+      # The fonts of the machines the tests are written on, so text the board's own font doesn't draw measures the
+      # same everywhere: Inter for system-ui and sans-serif, with no hinting.
       - name: Match the fonts
         run: |
           sudo apt-get install -y --no-install-recommends fonts-inter fonts-jetbrains-mono fonts-crosextra-carlito fonts-crosextra-caladea

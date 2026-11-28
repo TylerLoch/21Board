@@ -1524,7 +1524,7 @@
   }
   // ---- Fitting what's drawn, measured: the mockup's sizes, closed up a step at a time while a part runs out of its card,
   // or Now out of its row (a short window, the board's corner strips, a long warning, wider letters). A card may run
-  // 2 px into its own padding. Run on every draw, so a new size or text style is measured again.
+  // 2 px into its own padding. Run on every draw, so a new size or font is measured again.
   const STEPS = ['tight', 'tighter', 'tightest'];
   const wraps = e => { e.style.whiteSpace = 'nowrap'; const w = e.scrollWidth > e.clientWidth + 1; e.style.whiteSpace = ''; return w; };
   // Now, centered in its row, may run a little into the space around it, but never onto another part, under the board's

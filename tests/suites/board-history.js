@@ -69,9 +69,8 @@ module.exports = T => {
     const goodId = await H(() => window.__board21.history.save('Good'));
     ok(!!goodId && (await metas()).find(x => x.id === goodId).manual, '“Save this version now” keeps a named version');
     // The wreck.
-    await openSettings(page, ['bg', 'letters']);
+    await openSettings(page, ['bg']);
     await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(200);
-    await page.click('#settings [data-act="letters"][data-val="early"]'); await page.waitForFunction(() => window.__board21.state.settings.letters === 'early');
     await page.click('#settings [data-act="bg"][data-val="#0a0a0a"]'); await page.waitForTimeout(200);
     await page.keyboard.press('Escape');
     await fillNote(note(), 'scribble'); await page.waitForTimeout(400);
@@ -91,9 +90,9 @@ module.exports = T => {
     await page.screenshot({ path: OUT + '81-history-detail.png' });
     await page.click('#history-detail [data-act="go"]'); await page.waitForTimeout(3500);
     ok(await page.locator('#settings.open, #history.open, #history-detail.open').count() === 0, 'Go back closes Board history and Settings, so the board can be seen');
-    const back = await page.evaluate(() => ({ wins: document.querySelectorAll('.win').length, bg: window.__board21.state.board.background.color, theme: window.__board21.state.settings.theme, letters: window.__board21.state.settings.letters }));
+    const back = await page.evaluate(() => ({ wins: document.querySelectorAll('.win').length, bg: window.__board21.state.board.background.color, theme: window.__board21.state.settings.theme }));
     ok(back.wins === 3 && await noteText() === 'Good setup' && back.bg === '#e0f2fe', 'Go back brings back the windows, their content and the background');
-    ok(back.theme === 'dark' && back.letters === 'early', `but leaves the settings alone (dark mode, and the text style: ${back.letters})`);
+    ok(back.theme === 'dark', `but leaves the settings alone (dark mode: ${back.theme})`);
     m = await metas();
     ok(m[0].kind === 'restored' && !!(await safety('scribble')), 'going back keeps the board as it was first, so it can be undone');
     await page.locator('.toast', { hasText: 'back to how it was' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(3500);

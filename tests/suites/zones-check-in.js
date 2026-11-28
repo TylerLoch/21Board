@@ -430,7 +430,7 @@ module.exports = T => {
     await page.click('.picker-btn.left'); await page.waitForTimeout(300);
     const tile = page.locator('#panel [data-widget="zones-check-in"]');
     ok(await tile.count() === 1 && (await tile.innerText()).trim() === 'Zones Check-In' && (await tile.getAttribute('title')) === 'Zones Check-In\nCheck in on how your class feels.', 'the Widget Picker has its tile, with its tooltip');
-    // Its name wraps after "Zones", never after the hyphen ("Zones Check- / In"), in every Text style.
+    // Its name wraps after "Zones", never after the hyphen ("Zones Check- / In").
     const lines = () => page.locator('#panel [data-widget="zones-check-in"] .widget-name').evaluate(n => {
       const out = []; let top = null;
       const walk = document.createTreeWalker(n, NodeFilter.SHOW_TEXT);
@@ -442,14 +442,8 @@ module.exports = T => {
       }
       return out.map(s => s.trim()).join(' / ');
     });
-    const wraps = [`standard: ${await lines()}`];
-    for (const [style, fam] of [['legible', 'Atkinson Hyperlegible'], ['early', '21Board Early Readers'], ['standard']]) {
-      await page.keyboard.press('Escape'); await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
-      if (fam) await page.waitForFunction(fam => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === fam && f.status === 'loaded').length >= 2, fam);
-      await page.keyboard.press('Escape'); await page.waitForTimeout(200);
-      if (fam) { await page.click('.picker-btn.left'); await page.waitForTimeout(300); wraps.push(`${style}: ${await lines()}`); await page.keyboard.press('Escape'); await page.waitForTimeout(200); }
-    }
-    ok(wraps.every(w => / Zones \/ Check-In$/.test(w.replace(/^\w+:/, ''))), `its tile reads “Zones / Check-In” on two lines, in every Text style (${wraps.join('; ')})`);
+    const wrap = await lines();
+    ok(wrap === 'Zones / Check-In', `its tile reads “Zones / Check-In” on two lines (${wrap})`);
     if (!await page.locator('#panel.open').count()) { await page.click('.picker-btn.left'); await page.waitForTimeout(300); }
     await tile.click();
     ok(await connected(page), 'tapping it opens a window, which connects');

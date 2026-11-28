@@ -25,6 +25,15 @@ module.exports = T => {
           seen++;
           if (!have.has(f)) missing.push(`${w.id}: ${f}`);
         }
+        // and every url(…) in its <style> blocks, such as a font (not data:, #… or %23…, another site, or a template's ${…})
+        for (const st of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
+          for (const m of st[1].matchAll(/url\(\s*(["']?)([^"')]+)\1\s*\)/g)) {
+            if (/^([a-z]+:|\/\/|#|%23)/i.test(m[2]) || m[2].includes('${')) continue;
+            const f = path.posix.normalize(path.posix.join(path.posix.dirname(w.entry), m[2].replace(/[?#].*$/, '')));
+            seen++;
+            if (!have.has(f)) missing.push(`${w.id}: ${f}`);
+          }
+        }
       }
       ok(seen > 5 && !missing.length, `every file a widget’s page loads from 21Board’s site is in the offline copy’s list (${missing.join(', ') || seen + ' files checked'})`);
     }
@@ -712,6 +721,8 @@ module.exports = T => {
       const unlisted = await page.evaluate(() => new Promise(res => { const f = document.createElement('iframe'); f.onload = () => { try { res(f.contentDocument.body.innerText.replace(/\n/g, ' / ')); } catch (e) { res(String(e)); } }; f.src = 'widgets/not-in-the-copy/index.html'; document.body.appendChild(f); setTimeout(() => res('(not loaded)'), 8000); }));
       ok(unlisted === 'This widget needs a connection / Only the widgets in 21Board’s own list are kept for offline use.',
         'offline, a page of the site that isn’t in the copy says in its window that it needs a connection, not that connecting once will save it: ' + unlisted);
+      const faces = await page.evaluate(() => new Promise(res => { const f = document.createElement('iframe'); f.onload = async () => { try { await f.contentDocument.fonts.ready; res(Array.from(f.contentDocument.fonts).filter(x => x.family.replace(/"/g, '') === 'Inter').map(x => x.status).join()); } catch (e) { res(String(e)); } }; f.src = 'widgets/not-in-the-copy/again.html'; document.body.append(f); }));
+      ok(/loaded/.test(faces), `and says it in Inter, from the copy (${faces || 'no Inter face'})`);
       await ctx.close();
     }
 

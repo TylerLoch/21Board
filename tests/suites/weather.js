@@ -365,30 +365,17 @@ module.exports = T => {
       await b.ctx.close();
     });
 
-    // ---- 7. Settings › Appearance › Text style reaches every word, and the window still fits in wider letters.
-    await part('Text style', async () => {
+    // ---- 7. Every word in Weather is in Inter, the Location sheet too.
+    await part('Every word in Inter', async () => {
       const { ctx, page } = await WXT.board(browser, errors, { opts: { viewport: { width: 1680, height: 1000 } } });
       await WXT.open(page);
-      const bad = [];
-      for (const [key, fam] of [['legible', 'Atkinson Hyperlegible'], ['early', '21Board Early Readers']]) {
-        await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${key}"]`); await page.keyboard.press('Escape'); await page.waitForTimeout(1200);
-        await WXT.choose(page, 'place');
-        const off = await WXT.F(page, fam => { const out = new Set(); const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-          for (let n; (n = walk.nextNode());) { const e = n.parentElement; if (e && /[A-Za-z0-9]/.test(n.textContent) && e.getBoundingClientRect().width && !getComputedStyle(e).fontFamily.startsWith(`"${fam}"`)) out.add(e.tagName.toLowerCase() + ' “' + n.textContent.trim().slice(0, 16) + '”'); }
-          const i = document.querySelector('#sheet input'); if (i && !getComputedStyle(i).fontFamily.startsWith(`"${fam}"`)) out.add('the search field');
-          return [...out]; }, fam);
-        await page.keyboard.press('Escape'); await page.waitForTimeout(200);
-        ok(!off.length, `${key}: every word in Weather is in ${fam}, the Location sheet too (${off.slice(0, 5).join(', ') || 'all'})`);
-        if (key !== 'legible') continue;
-        for (const [w, h] of [[260, 220], [380, 280], [480, 360], [760, 480], [900, 560], [1600, 860]]) for (const hide of [[], ['days'], ['wear', 'days'], ['hourly', 'wear', 'sun', 'wind', 'air']]) {
-          await WXT.size(page, w, h);
-          await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { hide })); await page.waitForTimeout(200);
-          const p = await WXT.problems(page, false), x = await WXT.parts(page), list = p.list.concat(x ? x.gaps : []);
-          if (list.length) bad.push(`${w} × ${h}${hide.length ? ' without ' + hide.join(', ') : ''}: ${list.join(', ')}`);
-        }
-        await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { hide: [] }));
-      }
-      ok(!bad.length, `in Easier to read, each size and the Show list still fit (${bad.join(' | ') || 'all'})`);
+      await WXT.choose(page, 'place');
+      const off = await WXT.F(page, () => { const out = new Set(), inter = e => /^"?Inter"?,/.test(getComputedStyle(e).fontFamily), walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let n; (n = walk.nextNode());) { const e = n.parentElement; if (e && /[A-Za-z0-9]/.test(n.textContent) && e.getBoundingClientRect().width && !inter(e)) out.add(e.tagName.toLowerCase() + ' “' + n.textContent.trim().slice(0, 20) + '”'); }
+        const i = document.querySelector('#sheet input'); if (i && !inter(i)) out.add('the search field');
+        return [...out]; });
+      await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+      ok(!off.length, `every word in Weather is in Inter, the Location sheet too (${off.slice(0, 5).join(', ') || 'all'})`);
       await ctx.close();
     });
 
@@ -1013,7 +1000,7 @@ module.exports = T => {
       ok(s.say === 'Cold and sunny.' && s.items.length === 3, 'it ignores the Show list');
       await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-simple.png' });
       { const pr = await WXT.problems(b.page, false); ok(!pr.list.length, `Simple words fits (${pr.list.join(', ') || pr.size})`); }
-      // In Small its credit takes two lines: the sentence stays clear of it, in Early readers' letters too.
+      // In Small its credit takes two lines: the sentence stays clear of it.
       const small = async (pg, tag) => {
         const bad = [];
         for (const [w, h] of [[260, 220], [300, 250], [340, 270]]) { await WXT.size(pg, w, h); const pr = await WXT.problems(pg, false); if (pr.list.length) bad.push(`${tag} at ${w} × ${h}: ${pr.list.join(', ')}`); }
@@ -1028,9 +1015,7 @@ module.exports = T => {
       s = await F(b.page, () => ({ say: (document.querySelector('#app .say') || {}).textContent, items: [...document.querySelectorAll('#app .simple figcaption')].map(e => e.textContent) }));
       ok(s.say === 'Chilly and cloudy.' && s.items.join() === 'Coat', `Mon Nov 23 follows Mon Nov 30: “Chilly and cloudy.”, the sky of Monday’s forecast, with a coat (${JSON.stringify(s)})`);
       smallBad.push(...await small(b.page, '“Chilly and cloudy.”'));
-      await openSettings(b.page, ['letters']); await b.page.click('#settings [data-act="letters"][data-val="early"]'); await b.page.keyboard.press('Escape'); await b.page.waitForTimeout(1200);
-      smallBad.push(...await small(b.page, 'Early readers'));
-      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-simple-small-early.png' });
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-simple-small.png' });
       ok(!smallBad.length, `Simple words in Small windows, from 260 × 220: the sentence clear of the credit, and everything fits (${smallBad.join(' | ') || 'all'})`);
       await b.ctx.close();
     });

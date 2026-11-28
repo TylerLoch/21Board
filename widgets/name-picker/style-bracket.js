@@ -80,7 +80,7 @@ NamePicker.register('bracket', {
     let slid = null;      // a tap's slide running: { anims, extra, done }
     let raf = 0, dead = false;
 
-    // ---- Measuring names in the board's letters (Settings → Text style), on a canvas that is never shown.
+    // ---- Measuring names in the board's letters, on a canvas that is never shown.
     const measure = document.createElement('canvas').getContext('2d');
     const widths = new Map();
     let fam = '';
@@ -451,7 +451,7 @@ NamePicker.register('bracket', {
       skip() { end(true); },
       resize() {
         if (dead) return;
-        fam = ''; widths.clear();   // (the letters may have changed, or a font finished loading: measure again)
+        fam = ''; widths.clear();   // (a font may have finished loading: measure again)
         endSlide();
         relayout();
         if (run && run.deck) place(run.deck, stackRect());   // (a draw running: the names still to come deal from here)

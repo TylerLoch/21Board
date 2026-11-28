@@ -228,7 +228,7 @@ self.BOARD21_WIDGETS = [
     description: 'Work out problems and show each step.',
     version: '1.0.0',
     entry: 'widgets/calculator/index.html',
-    files: ['widgets/calculator/index.html', 'widgets/calculator/calc-engine.js'],
+    files: ['widgets/calculator/index.html', 'widgets/calculator/calc-engine.js', 'widgets/calculator/fonts/InterItalic-21Board.woff2', 'widgets/calculator/fonts/Inter-OFL.txt'],
     color: '#ea580c',
     icon: '<svg viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8.5 6.5h7v3h-7z"/><circle cx="9" cy="13.5" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="13.5" r=".9" fill="currentColor" stroke="none"/><circle cx="15" cy="13.5" r=".9" fill="currentColor" stroke="none"/><circle cx="9" cy="17" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"/><circle cx="15" cy="17" r=".9" fill="currentColor" stroke="none"/></svg>',
     // 900 × 600: the canvas beside the keys from the start, its problem big enough to read from the back of the room,

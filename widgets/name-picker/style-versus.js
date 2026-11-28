@@ -322,12 +322,12 @@ NamePicker.register('versus', {
       skip() { end(); },
       resize() {
         if (dead || !stage) return;
-        fam = ''; widths.clear();   // (the letters may have changed, or a font finished loading: measure again)
+        fam = ''; widths.clear();   // (a font may have finished loading: measure again)
         if (run) {
           // The show is laid out for the stage it began on. A new size ends it at once, as a skip does. It ends on the
           // challenge sound only once the names have landed.
           if (stage.clientWidth !== run.g.W || stage.clientHeight !== run.g.H) { if (run.landed) finish(); else { end(); host.done(); } return; }
-          // The letters changed. In the build-up, the names take their new places, and the grey emblem is drawn again.
+          // A font loaded. In the build-up, the names take their new places, and the grey emblem is drawn again.
           if (!run.slammed) { run.g = place(run.look, run.pair); if (run.shake) emblem(run.look, 'waiting', run.g, run.shake); }
           return;
         }

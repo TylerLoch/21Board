@@ -33,7 +33,7 @@
   // from the old page doesn't count.)
   if (window.Board21 && window.Board21.page === document.documentElement) return;
 
-  var SDK_VERSION = '1.6.0';
+  var SDK_VERSION = '1.7.0';
   var PROTOCOL = 1;
   var ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
   var me = document.currentScript;
@@ -105,44 +105,36 @@
   function applyTheme(theme, palette) {
     palette = palette || PALETTES[theme] || PALETTES.light;
     var root = document.documentElement;
-    var font = Words.fontFor(palette.font, language);   // (a Russian or Ukrainian window skips the bundled Latin fonts)
     root.setAttribute('data-b21-theme', theme);
     root.style.colorScheme = theme;
-    Object.keys(palette).forEach(function (k) { root.style.setProperty('--b21-' + k, k === 'font' ? font : palette[k]); });
-    applyLetters(font);
+    Object.keys(palette).forEach(function (k) { root.style.setProperty('--b21-' + k, palette[k]); });
+    applyFace(palette.font);
   }
 
-  // ---------------------------------------------------------------- text style
-  // The teacher can choose easier-to-read letters (21Board's Settings → Appearance → Text style): --b21-font then
-  // starts with a font that comes with 21Board, in its fonts/ folder. Its @font-face rules are added here,
-  // pointing at that folder next to this script (…/sdk/board21.js), and fetch the files only once text uses
-  // them. For the built-in widgets that's the board's own site; a widget on another site that loads this
-  // script from the board gets them only if the board's site allows it (CORS), and one with its own copy of
-  // the SDK only if a fonts/ folder is next to it. Otherwise its text stays in the device's own font, the
-  // next one in --b21-font. Text a widget fits to its window must be fitted again in the new letters: a
-  // resize event (the window's, and Board21.on('resize')) fires when they change, and again once the font has
-  // loaded.
-  var LETTER_FACES = {
-    'Atkinson Hyperlegible': ['AtkinsonHyperlegible-Regular.woff2', 'AtkinsonHyperlegible-Bold.woff2'],
-    '21Board Early Readers': ['EarlyReaders-Regular.woff2', 'EarlyReaders-Bold.woff2']
-  };
+  // ---------------------------------------------------------------- the board's font
+  // Inside 21Board, --b21-font starts with Inter, 21Board's font. Its face is added here, pointing at the board's fonts/
+  // folder next to this script (…/sdk/board21.js), and loads at once. A widget on another site that loads this script
+  // from the board gets it only if the board's site allows it (CORS). One with its own copy of the SDK gets it only if a
+  // fonts/ folder is next to it. Otherwise its text is in the device's own font, the next one in --b21-font. Text a
+  // widget fits to its window is fitted again once any font has loaded: a resize event (the window's, and
+  // Board21.on('resize')) fires then, and when the stack changes.
+  var BOARD_FACES = { 'Inter': 'Inter-21Board.woff2' };
   var sdkFile = me && me.src ? me.src.replace(/[?#].*$/, '') : '';
   var fontBase = /sdk\/board21(\.min)?\.js$/.test(sdkFile) ? sdkFile.replace(/sdk\/board21(\.min)?\.js$/, '') + 'fonts/' : '';
-  var lettersNow = null, lettersAdded = {}, refitSoon = false;
-  function applyLetters(font) {
+  var fontNow = null, facesAdded = {}, refitSoon = false;
+  function applyFace(font) {
     font = String(font || '');
     var fam = (/^\s*"([^"]+)"/.exec(font) || [])[1];
-    if (fam && fontBase && LETTER_FACES.hasOwnProperty(fam) && !lettersAdded[fam]) {
-      lettersAdded[fam] = true;
+    if (fam && fontBase && BOARD_FACES.hasOwnProperty(fam) && !facesAdded[fam]) {
+      facesAdded[fam] = true;
       var css = document.createElement('style');
-      css.setAttribute('data-b21-letters', fam);
-      css.textContent = LETTER_FACES[fam].map(function (file, i) {   // (the UI's weights 600–800 come out in the Bold one)
-        return '@font-face { font-family: "' + fam + '"; src: url("' + fontBase + file + '") format("woff2"); font-weight: ' + (i ? 700 : 400) + '; font-display: swap; }';
-      }).join('\n');
+      css.setAttribute('data-b21-font', fam);
+      css.textContent = '@font-face { font-family: "' + fam + '"; src: url("' + fontBase + BOARD_FACES[fam] + '") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }';
       (document.head || document.documentElement).appendChild(css);
+      if (document.fonts && document.fonts.load) document.fonts.load('16px "' + fam + '"').catch(function () {});
     }
-    if (lettersNow !== null && font !== lettersNow) refit();
-    lettersNow = font;
+    if (fontNow !== null && font !== fontNow) refit();
+    fontNow = font;
   }
   function refit() {
     if (refitSoon) return;
@@ -151,13 +143,12 @@
       refitSoon = false;
       try { window.dispatchEvent(new Event('resize')); } catch (e) { /* (a very old browser) */ }
       // Board21's own 'resize' too, for a widget that fits or draws its text there: inside 21Board it otherwise
-      // comes only from the board, once, before the new font has arrived. (Standalone, the line above does it.)
+      // comes only from the board, once, before the font has arrived. (Standalone, the line above does it.)
       if (context && !standalone) emit('resize', context.window || windowInfo());
     }, 30);
   }
-  if (document.fonts && document.fonts.addEventListener) {
-    document.fonts.addEventListener('loadingdone', function () { if (Object.keys(lettersAdded).length) refit(); });
-  }
+  // (Inter, Notes' fonts, the Calculator's letters, and any face a host put in: each refits the window once loaded.)
+  if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', refit);
 
   // #region Words
   // tests/words.js and tools/words.js load this region by its markers.
@@ -280,20 +271,6 @@
     return String(text == null ? '' : text).replace(/［[^］]*(］|$)/g, ' ').match(/[A-Za-zÀ-ɏ]{2,}/g) || [];
   }
 
-  // ---- Fonts
-  // A family to put first for a language. Empty, and planned to stay so: one font for all four.
-  var LANG_FONT = { en: null, es: null, ru: null, uk: null };
-  // The scripts each bundled family has (fonts/). Neither has Cyrillic letters.
-  var FACE_SCRIPTS = { 'Atkinson Hyperlegible': ['latin'], '21Board Early Readers': ['latin'] };
-  var LANG_SCRIPT = { en: 'latin', es: 'latin', ru: 'cyrillic', uk: 'cyrillic', qps: 'cyrillic' };
-  // The teacher's font stack for a language: a leading bundled family without its letters is dropped, so a Russian or
-  // Ukrainian window keeps the device's own font, with no mixed letters.
-  function fontFor(stack, lang) {
-    var s = String(stack == null ? '' : stack), script = LANG_SCRIPT[lang] || 'latin', m;
-    while ((m = /^\s*"([^"]+)"\s*(?:,\s*|$)/.exec(s)) && hasOwn(FACE_SCRIPTS, m[1]) && FACE_SCRIPTS[m[1]].indexOf(script) < 0) s = s.slice(m[0].length);
-    return LANG_FONT[lang] ? '"' + LANG_FONT[lang] + '", ' + s : s;
-  }
-
   // ---- Numbers and dates. Numbers always in English form; dates in the window's locale.
   var format = {
     number: function (n, options) { return new Intl.NumberFormat('en-US', options).format(n); },
@@ -405,10 +382,10 @@
 
   var Words = {
     LANGS: LANGS, PSEUDO: PSEUDO, LOCALES: LOCALES, NAMES: NAMES, IN_ENGLISH: IN_ENGLISH, FORMS: FORMS, OPTIONAL_FORMS: OPTIONAL_FORMS,
-    KEY_RE: KEY_RE, COMMON_WORDS: COMMON_WORDS, LANG_FONT: LANG_FONT, FACE_SCRIPTS: FACE_SCRIPTS, LANG_SCRIPT: LANG_SCRIPT,
+    KEY_RE: KEY_RE, COMMON_WORDS: COMMON_WORDS,
     isCode: isCode, langFromName: langFromName, langFromHash: langFromHash, confirm: confirmLang, localeFrom: localeFrom,
     htmlLang: function (lang) { return lang === PSEUDO ? 'en-XA' : LOCALES[lang] || 'en-US'; },
-    placeholders: placeholders, fill: fill, plural: pluralOf, pseudo: pseudo, auditText: auditText, fontFor: fontFor, andList: andList,
+    placeholders: placeholders, fill: fill, plural: pluralOf, pseudo: pseudo, auditText: auditText, andList: andList,
     format: format, create: createWords
   };
   // #endregion Words
@@ -557,20 +534,25 @@
     var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
     var theme = mq && mq.matches ? 'dark' : 'light';
     var man = readManifest();
+    // Inter where its file is on the page's own site (or both are on disk); elsewhere, as in an AI tool's preview, the
+    // device's font, and nothing is fetched.
+    var here = false;
+    try { var fb = new URL(fontBase); here = !!fontBase && (fb.origin === location.origin || (fb.protocol === 'file:' && location.protocol === 'file:')); } catch (e) { here = false; }
+    var paletteOf = function (t) { return here ? Object.assign({}, PALETTES[t], { font: '"Inter", ' + PALETTES[t].font }) : PALETTES[t]; };
     context = {
       standalone: true, sdkVersion: SDK_VERSION, boardVersion: null,
       widgetId: standaloneId(), widgetName: String(man.name || document.title || 'Widget'), widgetVersion: String(man.version || ''), instance: 1,
       data: s.data === undefined ? null : s.data, config: s.config === undefined ? null : s.config,
-      theme: theme, palette: PALETTES[theme], window: windowInfo(),
+      theme: theme, palette: paletteOf(theme), window: windowInfo(),
       locale: navigator.language || 'en-US', language: language, uiLanguage: 'en', uiLocale: 'en-US', devMode: true, host: 'standalone', timers: []
     };
-    applyTheme(theme);
+    applyTheme(theme, context.palette);
     window.addEventListener('resize', function () { emit('resize', windowInfo()); });
     // Follow the device's light/dark setting, as the board does with "Auto".
     if (mq) {
       var onTheme = function () {
         var t = mq.matches ? 'dark' : 'light';
-        context.theme = t; context.palette = PALETTES[t]; applyTheme(t); emit('theme', t, PALETTES[t]);
+        context.theme = t; context.palette = paletteOf(t); applyTheme(t, context.palette); emit('theme', t, context.palette);
       };
       if (mq.addEventListener) mq.addEventListener('change', onTheme); else if (mq.addListener) mq.addListener(onTheme);
     }

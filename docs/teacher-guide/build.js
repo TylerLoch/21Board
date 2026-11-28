@@ -12,8 +12,7 @@ const DIST = path.join(HERE, 'dist');
 const b64 = f => fs.readFileSync(path.join(ROOT, f)).toString('base64');
 
 let t = fs.readFileSync(path.join(HERE, 'page-src.html'), 'utf8');
-t = t.replace('__ATK_REG__', () => b64('fonts/AtkinsonHyperlegible-Regular.woff2'))
-  .replace('__ATK_BOLD__', () => b64('fonts/AtkinsonHyperlegible-Bold.woff2'))
+t = t.replace('__INTER__', () => b64('fonts/Inter-21Board.woff2'))
   .replace('__CHALK__', () => b64('widgets/notes/fonts/CrayonLibre-21Board.woff2'));
 
 // [W] is the Widget Picker button, drawn as its 3 x 3 grid.

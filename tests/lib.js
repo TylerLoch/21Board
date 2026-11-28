@@ -37,7 +37,7 @@ async function freeBoard(page) {
 
 // Settings, opened from the ▦ in that corner (left or right), with the groups named open: Settings starts with every
 // group closed, and a control inside one can't be tapped until it is open. The groups: 'saved' (This page → Windows),
-// 'letters' and 'bg' (Appearance → Text style, Background) and 'advanced'. Settings already open on that side
+// 'bg' (Appearance → Background) and 'advanced'. Settings already open on that side
 // stays open (its open groups too).
 async function openSettings(p, groups = [], side = 'left') {
   if (!await p.locator(`#settings.open.${side}`).count()) {
@@ -347,7 +347,15 @@ const addNote = async (p, text) => {
 };
 const noteOf = (p, ik) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`).locator('#t').inputValue();
 // A window of this widget on the page shown (returns its ikey).
-const addWin = (p, id) => p.evaluate(async id => { const before = new Set(window.__board21.state.insts.keys()); window.__board21.openWidget(id); await new Promise(r => setTimeout(r, 900)); return Array.from(window.__board21.state.insts.keys()).find(k => !before.has(k)); }, id);
+// It waits for the window's fonts too (fontsIn), unless { fonts: false }.
+const addWin = async (p, id, { fonts = true } = {}) => {
+  const ik = await p.evaluate(async id => { const before = new Set(window.__board21.state.insts.keys()); window.__board21.openWidget(id); await new Promise(r => setTimeout(r, 900)); return Array.from(window.__board21.state.insts.keys()).find(k => !before.has(k)); }, id);
+  if (fonts && ik) {
+    const el = await p.$(`.win[data-ikey="${ik}"] iframe`), f = el && await el.contentFrame();
+    if (f && new URL(f.url(), p.url()).origin === new URL(p.url()).origin) await fontsIn(f);
+  }
+  return ik;
+};
 // The windows a device has (on pages not deleted), from its records: {uid, b, wid, ikey, widgetId, open, z, copyOf, data, rect}.
 const winList = p => p.evaluate(async () => {
   const recs = await window.__board21.store.getAll(), by = new Map(recs.map(r => [r.key, r])), st = (by.get('settings') || {}).value || {};
@@ -486,7 +494,13 @@ const parts = async page => {
   return top.concat(inside).join(' ');
 };
 const updateCheck = page => page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r.update()).then(() => true, () => false));
-const boardUp = page => page.waitForFunction(() => window.__board21 && window.__board21.store.loaded && !document.getElementById('startup'), null, { timeout: 20000 });
+// The board is up, and its fonts have loaded (fontsIn), unless { fonts: false }.
+const boardUp = async (page, { fonts = true } = {}) => {
+  await page.waitForFunction(() => window.__board21 && window.__board21.store.loaded && !document.getElementById('startup'), null, { timeout: 20000 });
+  if (fonts) await fontsIn(page);
+};
+// A page or frame's fonts loaded, for at most 2 s. Polled from Node, so it still works under page.clock.
+const fontsIn = f => f.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 2000, polling: 100 }).catch(() => {});
 
 // The Video Player suites never reach YouTube, Google Drive or Vimeo: their sites answer with a stand-in page
 // (stubVideos) that notes each address asked for (yt.hits) and keeps the Referer the site would see (window.__ref in its
@@ -1137,7 +1151,7 @@ module.exports = {
   setUpSync, SHORT, syncWaits, nameDevice, linkFolder, syncNow, shownBoard, sorted, sameBoards, notesText,
   loseLedger, typeNote, addNote, noteOf, addWin, winList, copiesOf, ikOf, saveData, syncDev, exchange, ownJSON, hear,
   heard, eventually, readHistory, writeHistory, OLD_NOTE, OLD_HIST_NOTE, STORAGE_FAULTS, storedRecords, release, wordsOf,
-  stamped, STAMPED, SITES, deploy, marked, parts, updateCheck, boardUp, VID, VID2, YT_TITLES, YT_LABEL, OEMBED,
+  stamped, STAMPED, SITES, deploy, marked, parts, updateCheck, boardUp, fontsIn, VID, VID2, YT_TITLES, YT_LABEL, OEMBED,
   EMBED, EMBED_CODE, PLAYLIST_EMBED, D1, D2, RK, V1, V2, VH, VIMEO_TITLES, DRIVE_EMBED, VIMEO_EMBED, VIMEO_OEMBED,
   DRIVE_OPEN, VIMEO_OPEN, DRIVE_LABEL, VMSG, vidFrames, DRIVE_CODE, VIMEO_CODE, stubVideos, ytWin, ytLook, ytFrames,
   ytMenu, ytData, ytChoose, ytShow, ytHistory, ytPick, picWin, picLook, picData, picConf, picMenu, picOpen, picFile,

@@ -51,6 +51,7 @@ Done:
   English form.
 - The Timer and the Traffic Light have their words in English, Spanish, Russian, and Ukrainian.
 - The Timer and Traffic Light switch from their window menu. Settings sets the language new windows start in.
+- One font, Inter, draws all four languages.
 
 Next:
 - The other widgets, a few at a time.

@@ -126,7 +126,7 @@ NamePicker.register('spotlight', {
     let L = null;        // the layout: the stage's size and the grid
     let result = '';     // the pick on the stage (pickId and winners), so a repeated show() leaves the cards alone
 
-    // ---- Measuring names, in the board's letters (Settings → Text style), on a canvas that is never shown.
+    // ---- Measuring names, in the board's letters, on a canvas that is never shown.
     const measure = document.createElement('canvas').getContext('2d');
     const widths = new Map();
     let fam = '';
@@ -522,7 +522,7 @@ NamePicker.register('spotlight', {
       skip: finish,
       resize() {
         if (dead) return;
-        fam = ''; widths.clear();   // (the letters may have changed, or a font finished loading: measure again)
+        fam = ''; widths.clear();   // (a font may have finished loading: measure again)
         relayout();
       },
       destroy() { dead = true; stop(); round = null; dropCards(); box.remove(); }

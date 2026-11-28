@@ -142,6 +142,9 @@ async function clearToasts(p) {
   await p.evaluate(() => { for (const t of document.querySelectorAll('#toasts .toast')) t.remove(); });
 }
 async function shot(p, name, clip) {
+  // (The board's font in the board and in every window, loaded first: a picture taken before shows the device's font.)
+  // (At most 3 s each: a district app's page may wait on a font from its own site.)
+  for (const f of p.frames()) await Promise.race([f.evaluate(() => document.fonts && document.fonts.ready.then(() => 1)).catch(() => {}), p.waitForTimeout(3000)]);
   const t = await toastsShown(p);
   if (t.length) log(`  ! toast on screen for ${name}: ${JSON.stringify(t)}`);
   const file = path.join(SHOTS, name);

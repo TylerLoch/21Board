@@ -503,15 +503,9 @@
   wide.addEventListener('change', () => { showTab(current); if (wide.matches) Log.toEnd(); });
 
   // ---- State: content, config, window info and the context, as they are now.
-  const CONTEXT_KEYS = ['widgetId', 'widgetName', 'widgetVersion', 'instance', 'theme', 'text-style', 'palette', 'locale', 'language', 'uiLanguage', 'uiLocale', 'devMode', 'boardVersion', 'sdkProtocol', 'host', 'kiosk', 'timers', 'standalone'];   // (on the board, only the Traffic Light and Clock get timers: — here)
+  const CONTEXT_KEYS = ['widgetId', 'widgetName', 'widgetVersion', 'instance', 'theme', 'palette', 'locale', 'language', 'uiLanguage', 'uiLocale', 'devMode', 'boardVersion', 'sdkProtocol', 'host', 'kiosk', 'timers', 'standalone'];   // (on the board, only the Traffic Light and Clock get timers: — here)
   const WINDOW_KEYS = ['width', 'height', 'x', 'y', 'maximized', 'focused', 'zoom', 'corners'];
   const SECTIONS = { data: 'Content', config: 'Config' };
-  // The text style the teacher chose, from the font that leads --b21-font.
-  function textStyle(font) {
-    const fam = (/^\s*"([^"]+)"/.exec(font || '') || [])[1];
-    return !fam ? 'Standard' : fam === 'Atkinson Hyperlegible' ? 'Easier to read' : fam === '21Board Early Readers' ? 'Early readers' : fam;
-  }
-  const font = () => getComputedStyle(document.documentElement).getPropertyValue('--b21-font').trim();
   function row(attr, key, label, derived) {
     const v = h('dd', { class: 'v' });
     return h('div', { class: 'row', ['data-' + attr]: key }, h('dt', { class: derived ? 'derived' : 'mono' }, label), v);
@@ -520,7 +514,7 @@
     const st = $('#state');
     for (const [k, title] of Object.entries(SECTIONS)) st.append(h('section', { 'data-key': k }, h('h3', {}, title), h('pre', { class: 'v' })));
     st.append(h('section', { 'data-key': 'window' }, h('h3', {}, 'Window'), h('dl', {}, WINDOW_KEYS.map(k => row('wkey', k, k)))));
-    st.append(h('section', {}, h('h3', {}, 'Context'), h('dl', { id: 'ctx-rows' }, CONTEXT_KEYS.map(k => row('key', k, k === 'text-style' ? 'Text style' : k, k === 'text-style')))));
+    st.append(h('section', {}, h('h3', {}, 'Context'), h('dl', { id: 'ctx-rows' }, CONTEXT_KEYS.map(k => row('key', k, k)))));
     st.append(h('section', {}, h('h3', {}, 'SDK'), h('dl', {}, ['version', 'embedded'].map(k => row('sdk', k, k)))));
   }
   function put(el, text, none) {
@@ -548,8 +542,7 @@
     }
     for (const k of CONTEXT_KEYS) {
       const v = $(`#state [data-key="${k}"] .v`);
-      if (k === 'text-style') put(v, textStyle(font()));
-      else if (k === 'palette') {
+      if (k === 'palette') {
         if (!v.firstChild) { const b = h('button', { class: 'link' }); b.onclick = () => showTab('palette', true); v.append(b); }
         v.firstChild.textContent = ctx.palette ? `${Object.keys(ctx.palette).length} tokens` : '—';
       } else putValue(v, ctx[k], true);

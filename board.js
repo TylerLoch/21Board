@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.27-2';
-  const BOARD_BUILD = 'fdccfabc';
+  const BOARD_VERSION = '2026.11.28-2';
+  const BOARD_BUILD = '53bb0aa4';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -120,8 +120,7 @@
     clock: 'auto',           // Clock in the corner: 'on' | 'off' | 'auto' (only in full screen). An older 'date' (Time and
                              // date, the old default) reads as 'auto', 'time' as 'on' (clockMode).
 
-    // The whole board's, like the theme and accent: exported, and with Board Sync on every device (section 12b).
-    letters: 'standard',     // Text style: 'standard' (the device's own font) | 'legible' (Atkinson Hyperlegible) | 'early' (Andika)
+    // The whole board's, like the theme and accent color: exported, and with Board Sync on every device.
     widgetLanguage: 'en'     // Default widget language: 'en' | 'es' | 'ru' | 'uk', for windows opened from now on
   };
   // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space. A new board's
@@ -190,7 +189,7 @@
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
   // The palette widgets receive (--b21-* variables), with the chosen accent applied.
   function paletteFor(theme) {
-    const base = Object.assign({}, PALETTES[theme], { font: letterFont() });   // Settings → Text style (section 12b)
+    const base = Object.assign({}, PALETTES[theme], { font: BOARD_FONT });   // the board's font (section 12b)
     const key = accentNow();
     if (key === 'blue') return base; // blue is the built-in default
     const c = accentOf(key)[theme === 'dark' ? 1 : 0];
@@ -471,6 +470,17 @@
       }
       return this.sdkP;
     },
+    fontP: null,
+    // The board's font, from the offline copy, as a data: URL (the sealed page's policy allows fonts from data: only).
+    // None if it can't be read: the widget's text is in the device's font then.
+    font() {
+      if (!this.fontP) {
+        this.fontP = fetch('fonts/Inter-21Board.woff2').then(r => { if (!r.ok) throw new Error(`fonts/Inter-21Board.woff2: ${r.status}`); return r.blob(); })
+          .then(b => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).replace(/^data:[^;,]*/, 'data:font/woff2')); fr.onerror = () => rej(fr.error); fr.readAsDataURL(b); }));
+        this.fontP.catch(() => { this.fontP = null; });   // (tried again next time)
+      }
+      return this.fontP;
+    },
     note: (title, text) => `<!DOCTYPE html><meta charset="utf-8"><body style="margin:0;height:100vh;display:grid;place-items:center;font:15px system-ui;color:#6b7280;text-align:center;padding:16px;box-sizing:border-box"><div><b style="color:#1f2937">${esc(title)}</b><br>${esc(text)}</div>`,
     // The page its window shows: the policy before anything of the file's (after its doctype, which must come
     // first), then the SDK in place of the file's SDK tag (each one: the first may be in a comment), or ahead of
@@ -480,13 +490,16 @@
       let sdk;
       try { sdk = await this.sdk(); } catch (err) { return this.note('This widget can’t start', 'Couldn’t load the widget SDK. Connect to the Internet, then reload.'); }
       const tag = `<script>${sdk.replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '<\\!--')}</script>`;
+      // (Inter once, after the policy, outside the file's own markup: a comment in the file can't swallow it.)
+      const font = await this.font().catch(() => '');
+      const face = font ? `<style>@font-face { font-family: "Inter"; src: url(${font}) format("woff2"); font-weight: 100 900; font-display: swap; }</style>` : '';
       let src = f ? f.src : '', found = false;
       src = src.replace(SDK_TAGS_RE, () => { found = true; return tag; });
       // (Only HTML's own white space may come before the doctype: after anything else the policy would land in
       // the page's body, where browsers may ignore it.)
       const dt = /^[\t\n\f\r ]*<!doctype[^>]*>/i.exec(src);
       const top = dt ? dt[0] : /^[\t\n\f\r ]*(<!--[\s\S]*?-->[\t\n\f\r ]*)+<!doctype html[\t\n\f\r ]*>/i.test(src) ? '<!DOCTYPE html>' : '';
-      return top + `<meta http-equiv="Content-Security-Policy" content="${SEALED_CSP}">` + (found ? '' : tag) + src.slice(dt ? top.length : 0);
+      return top + `<meta http-equiv="Content-Security-Policy" content="${SEALED_CSP}">` + face + (found ? '' : tag) + src.slice(dt ? top.length : 0);
     },
     // What its window shows: its page, or a note if its page left (see Win.onFrameLoad) or it stopped
     // responding last time (see begin).
@@ -894,7 +907,7 @@
       } catch (e) { throw thrown || e; }
       for (const r of written) { if (r.deleted) { if (Known.get(r.key)) Raced.gone.set(r.key, Known.get(r.key)); Known.delete(r.key); } else Known.set(r.key, r.rev); Pages.hold(r.key, r.deleted ? null : r); }
       // (a settings patch was put over what was stored, which may hold another tab's or a merge's pages added, moved or
-      // deleted, or a merge's theme, accent and text style, which this tab didn't show while its patch waited: shown here too)
+      // deleted, or a merge's style parts, which this tab didn't show while its patch waited: shown here too)
       const st = written.find(r => r.key === Keys.settings && batch.get(r.key) && batch.get(r.key).patch);
       if (st) {
         const w = this.pending.get(Keys.settings), v = w && w.patch ? Merge.patchSettings(st.value, w.patch) : st.value;
@@ -1287,8 +1300,7 @@
   function updateSettings(patch, quiet) {
     const p = { set: {}, drop: OLD_SETTINGS };
     for (const [k, v] of Object.entries(patch)) { if (k === 'gone') p.gone = v; else p.set[k] = v; }
-    // (when the theme, accent or text style was chosen here: with Board Sync the later choice wins on every device, see
-    // Merge.stamp)
+    // (when a style part was chosen here: with Board Sync the later choice wins on every device, see Merge.stamp)
     for (const k of Merge.STYLE_PARTS) if (k in p.set) p.set[k + 'At'] = Date.now();
     S.settings = Merge.patchSettings(S.settings, p);
     applySettings();
@@ -1323,7 +1335,7 @@
     applyAccent(theme);
     const palette = paletteFor(theme);
     window.__board21Host = { theme, palette, version: BOARD_VERSION };
-    const themeSig = theme + '|' + accentNow() + '|' + letterKey();   // (the text style goes to widgets with the theme)
+    const themeSig = theme + '|' + accentNow();
     if (themeSig !== S.appliedTheme) {
       const themeChanged = !S.appliedTheme || S.appliedTheme.split('|')[0] !== theme;
       S.appliedTheme = themeSig;
@@ -1335,7 +1347,7 @@
     Picker.btns.right.hidden = corners === 'left';
     if (Picker.side && Picker.btns[Picker.side].hidden) Picker.close();
     SaveNote.update();   // (it sits above the Widget Picker buttons)
-    applyClassroom();    // section 12b: lock, screen, clock, text style
+    applyClassroom();    // section 12b: lock, screen, clock
     updateCatalog();
     Picker.renderControls();
     Picker.render();
@@ -3216,7 +3228,7 @@
         this.close();
         openWidget(t.dataset.widget, { side });
       });
-      // A font for the text style finishing loading can change where names wrap, and the row's width: measure again.
+      // Inter can arrive after the first paint, and change where names wrap and the row's width: measure again.
       if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { this.fitRow(); this.fitNames(); });
     },
 
@@ -3926,7 +3938,7 @@
           const id = await this.create({ after, end: !after, name: p.board.name || null, uid, quiet: true });
           if (!id) break;
           made.push(id); after = id;
-          await applyImport(Object.assign({}, p, { theme: null, accent: null, letters: null, widgetLanguage: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
+          await applyImport(Object.assign({}, p, { theme: null, accent: null, widgetLanguage: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
         }
         return made;
       });
@@ -4158,7 +4170,7 @@
   //   Classroom    Go back to an earlier version (Board history, as a column beside Settings: section 13c), Close all
   //                windows, Stay awake
   //   This page    Windows ▸
-  //   Appearance   Theme, Background ▸, Accent color, Text style ▸, Board shape
+  //   Appearance   Theme, Background ▸, Accent color, Board shape
   //   Advanced ▸   Widget Picker, Clock in the corner, Size of windows and menus, moving windows, board history, backups
   //                and storage, Developer mode
   //   About ▸      the 21 gear, the team's line, the release and where the work is stored, License, Credits, the goat
@@ -4169,25 +4181,23 @@
   // Settings → Appearance → Background: one set of choices (the theme's, colors, Custom…, the photo). It's this
   // page's background (board.background, and its photo in media:<b>:background*).
   // =====================================================================
-  // 12b. Classroom features: lock, stay awake, clock in the corner, text style
+  // 12b. Classroom features: lock, stay awake, clock in the corner, the board's font
   // ---------------------------------------------------------------------
   // Each feature keeps its code in its own part below and is wired in through these hooks:
   // applySettings() calls applyClassroom(); Settings.render shows the rows; Settings.act passes actions on. (Lock is
   // the Widget Picker's, not Settings'.)
-  // Lock, Stay awake and the clock belong to this device (DEFAULT_SETTINGS, "Classroom features"); the text style is
-  // the whole board's, like the theme and accent color.
+  // Lock, Stay awake and the clock belong to this device (DEFAULT_SETTINGS, "Classroom features").
 
   function applyClassroom() {
     applyLock();
     applyAwake();
-    applyLetters();   // (before the clock, which measures its text)
     applyClock();
   }
 
   // Settings → Classroom: the default widget language, go back (board history, section 13c), close all, stay awake.
   // While Board Sync is set up (section 13b), the settings that stay on this device say so (the board's own ones
-  // say "This page, on all your devices.": pageScope; the theme, accent color and text style, the whole board's, "On
-  // all your devices.": allDevices, labelled).
+  // say "This page, on all your devices.": pageScope; the theme, accent color and default widget language, the whole
+  // board's, "On all your devices.": allDevices, labelled).
   const deviceOnly = (pre = '') => (Link.dir ? pre + 'This device only.' : '');
   const allDevices = () => (Link.dir ? 'On all your devices.' : '');
   const labelled = lbl => (Link.dir ? `<div><div class="lbl">${lbl}</div><div class="hint">${allDevices()}</div></div>` : `<div class="lbl">${lbl}</div>`);
@@ -4197,12 +4207,12 @@
   }
 
   function classroomAct(act, val) {
-    return languageAct(act, val) || awakeAct(act, val) || clockAct(act, val) || letterAct(act, val);
+    return languageAct(act, val) || awakeAct(act, val) || clockAct(act, val);
   }
 
   // Default widget language: the language new windows start in, where their widget has it (openWidget). Open windows
-  // keep theirs. A group like Text style's, its cards drawn by the same CSS (.lang-opt): each language in its own words,
-  // and in English under it. Not in the dev window, whose Language does this (LabBridge).
+  // keep theirs. A group of cards (.lang-opt): each language in its own words, and in English under it. Not in the dev
+  // window, whose Language does this (LabBridge).
   function languageSettings() {
     if (LAB) return '';
     const cur = Merge.LANGS.includes(S.settings.widgetLanguage) ? S.settings.widgetLanguage : 'en';
@@ -4630,7 +4640,7 @@
       panel.addEventListener('animationend', () => this.cover());
       // Timers sleep while the page is hidden or the device is asleep: the right time as soon as it shows again.
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !this.follow() && this.on()) this.tick(); });
-      // A font for the text style finishing loading changes its width: measure again.
+      // Inter can arrive after the first paint, and change its width: measure again.
       if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => this.place());
     },
     apply() {
@@ -4821,77 +4831,29 @@
     return true;
   }
 
-  // ---- Text style (easier-to-read fonts)
-  // Settings → Appearance → Text style: the device's own font (as before), or one that comes with 21Board for easier
-  // reading from across the room: Atkinson Hyperlegible (the Braille Institute's font for low vision: I, l and 1
-  // differ, and 0 has a line through it) or Andika (SIL's font for beginning readers: a and g as children learn to
-  // write them). Easier reading, not a "dyslexia font". The files are in fonts/, cut down to the letters 21Board
-  // needs (tools/build-letter-fonts.py; the cut-down Andika is renamed "21Board Early Readers", as its licence asks)
-  // and part of the offline copy (sw.js), which every device saves. @font-face rules fetch nothing until text uses
-  // them, so the page loads a font only once it's chosen (or Settings shows it). They point next to this file, so
-  // they also work in the widget dev window on 21Board's own site (not on another one: see LETTERS_HERE). Widgets
-  // get the font in their palette (--b21-font, paletteFor) and the SDK adds the same rules in their frames
-  // (sdk/board21.js, LETTER_FACES), then fires a resize (the window's and Board21's), so text that is fitted to its
-  // window fits again in the new letters.
-  // Weights 600 to 800 (headings, names) come out in the Bold face, 500 in the Regular one.
-  // The whole board's, like the theme and accent color (settings.letters, a name from when it was called Letters):
-  // exported, taken by Import › Replace this page, and with Board Sync on every device, the later choice winning
-  // (lettersAt, see updateSettings and Merge.stamp). Going back in Board history never changes it.
-  // (\u00a0, a no-break space, keeps “I, l, and 1” and “a and g” on one line in the hints.)
-  const LETTERS = {
-    standard: { name: 'Standard', hint: 'This device’s own font.' },
-    legible: { name: 'Easier to read', hint: 'Atkinson Hyperlegible, made for people with low vision. I,\u00a0l,\u00a0and\u00a01 look different, and 0 has a line through it.',
-      family: 'Atkinson Hyperlegible', files: ['AtkinsonHyperlegible-Regular.woff2', 'AtkinsonHyperlegible-Bold.woff2'] },
-    early: { name: 'Early readers', hint: 'Based on Andika by SIL, for children learning to read. Its a\u00a0and\u00a0g look the way children write them.',
-      family: '21Board Early Readers', files: ['EarlyReaders-Regular.woff2', 'EarlyReaders-Bold.woff2'] }
-  };
-  // (With a 0: Atkinson Hyperlegible draws it with a line through it, on every clock and timer too. Better seen
-  // here first.)
-  const LETTER_SAMPLE = 'Il1 0 ag';
+  // ---- The board's font
+  // Inter, built for 21Board (tools/build-inter.py): one font for 21Board and every widget, in English, Spanish, Russian,
+  // Ukrainian, and Greek. Its regular is a little heavier, its I has bars and its l a tail, and -> stays ->. It is part of
+  // the offline copy (sw.js). Widgets get it first in their palette (--b21-font, paletteFor), and the SDK adds the same
+  // face in their frames. Anything it doesn't have (▦, emoji…) comes from the device's own font, next in the stack.
   // The folder this file came from (the dev window's page is somewhere else).
   const FONT_BASE = (() => { const s = document.currentScript; return s && s.src ? s.src.replace(/[?#].*$/, '').replace(/[^/]*$/, '') : ''; })();
-  // Whether the fonts can load here. A font from another site loads only if that site allows it (CORS); if it
-  // doesn't, the browser logs errors and the text stays as it was. 21Board itself is always on the fonts' own site
-  // (or on disk). The widget dev window may not be: in an AI tool's preview it runs on the tool's site, and in the
-  // widget lab it is sealed off (no site at all). There the text style stays Standard and nothing is fetched, so the
-  // preview's console only shows the widget's own errors, and Settings says where to try them.
-  const LETTERS_HERE = !LAB || (() => { try { const u = new URL(FONT_BASE); return u.protocol === 'file:' || u.origin === self.origin; } catch (e) { return false; } })();
-  const letterKey = () => LETTERS_HERE && Object.prototype.hasOwnProperty.call(LETTERS, S.settings.letters) ? S.settings.letters : 'standard';
-  // The font stack: the chosen font, then the device's own for anything it doesn't have (▦, ✓, emoji, Cyrillic…).
-  const letterFont = (key = letterKey()) => (LETTERS[key].family ? `"${LETTERS[key].family}", ` : '') + PALETTES.light.font;
+  // Whether the font can load here. On 21Board's own site or disk it does. In an AI tool's preview (the tool's site) or
+  // the sealed widget lab (no site at all), a font from 21Board's site would need its permission (CORS): there the board
+  // uses the device's font and fetches nothing, so the preview's console shows only the widget's own errors.
+  const FONT_HERE = !LAB || (() => { try { const u = new URL(FONT_BASE); return u.protocol === 'file:' || u.origin === self.origin; } catch (e) { return false; } })();
+  const BOARD_FONT = (FONT_HERE ? '"Inter", ' : '') + PALETTES.light.font;
 
-  let letterFaces = null;
-  function applyLetters() {
-    if (!letterFaces && LETTERS_HERE) {   // (once: the rules load nothing by themselves)
-      letterFaces = document.createElement('style');
-      letterFaces.id = 'letter-faces';
-      letterFaces.textContent = Object.values(LETTERS).filter(l => l.files).map(l => l.files.map((file, i) =>
-        `@font-face { font-family: "${l.family}"; src: url("${FONT_BASE}fonts/${file}") format("woff2"); font-weight: ${i ? 700 : 400}; font-display: swap; }`).join('\n')).join('\n');
-      document.head.appendChild(letterFaces);
-    }
-    const key = letterKey();
-    document.body.style.fontFamily = key === 'standard' ? '' : letterFont(key);   // (everything else inherits it)
-  }
-
-  // Each choice is shown in its own letters, with a sample of the look-alikes.
-  function letterSettings() {
-    if (!LETTERS_HERE) return `<div class="row"><div><div class="lbl">Text style</div><div class="hint">Easier-to-read fonts can’t load in this test board. Try them in 21Board itself.</div></div></div>`;
-    const cur = letterKey();
-    const opt = key => {
-      const l = LETTERS[key], on = key === cur;
-      return `<button class="letter-opt${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="letters" data-val="${key}" style="font-family:${esc(letterFont(key))}">` +
-        `<span class="txt"><b>${esc(l.name)}</b><small>${esc(l.hint)}</small></span><span class="sample" aria-hidden="true">${LETTER_SAMPLE}</span>` +
-        (on ? `<span class="tick" aria-hidden="true">${svg('check')}</span>` : '') + '</button>';
-    };
-    // (A group: one row showing the choice, and under its name where it applies, like Theme's; it opens to the three
-    // cards. Its key and actions keep the setting's name, letters.)
-    return settingsGroup('letters', 'Text style', esc(LETTERS[cur].name), `<div class="letter-opts" role="radiogroup" aria-label="Text style">${Object.keys(LETTERS).map(opt).join('')}</div>`, { sub: allDevices() });
-  }
-
-  function letterAct(act, val) {
-    if (act !== 'letters') return false;
-    if (Object.prototype.hasOwnProperty.call(LETTERS, val)) updateSettings({ letters: val });
-    return true;
+  // Once, at boot, before Settings, the Widget Picker, and the clock in the corner first draw (the clock measures its
+  // text).
+  function applyFont() {
+    if (!FONT_HERE) return;
+    const face = document.createElement('style');
+    face.id = 'board-font';
+    face.textContent = `@font-face { font-family: "Inter"; src: url("${FONT_BASE}fonts/Inter-21Board.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }`;
+    document.head.appendChild(face);
+    document.body.style.fontFamily = BOARD_FONT;   // (everything else inherits it)
+    if (document.fonts) document.fonts.load('16px "Inter"').catch(() => {});
   }
 
   // ---- (end of section 12b)
@@ -5007,11 +4969,11 @@
   // district's files exactly as given, in light and dark alike; they and the license texts are part of the offline
   // copy (sw.js). Nothing in it leaves 21Board (no links: a kiosk can't open them).
   // The widget dev window shows only the release and the storage line: in an AI tool's preview it runs on the tool's
-  // site, and the pictures and texts would have to come from 21Board's (see LETTERS_HERE).
+  // site, and the pictures and texts would have to come from 21Board's (see FONT_HERE).
   // note: the board isn't being saved (SaveNote), so the storage line is left out.
   const ABOUT_LICENSES = [['code-license', 'Code', 'Apache 2.0', 'LICENSE'], ['docs-license', 'Docs', 'CC BY 4.0', 'LICENSE-DOCS']];
   const OFL = 'SIL Open Font License 1.1';
-  const ABOUT_FONTS = [['Atkinson Hyperlegible', 'by the Braille Institute', OFL], ['Andika', 'by SIL International', OFL],
+  const ABOUT_FONTS = [['Inter', 'by Rasmus Andersson and the Inter Project Authors', OFL],
     ['Excalifont', 'by Excalidraw', OFL], ['Crayon Libre', 'by GGBotNet', 'CC0 1.0'],
     ['Weather data', 'by Open-Meteo', 'CC BY 4.0'], ['Weather data', 'by the National Weather Service', 'Public domain']];   // (the fonts, then the Weather widget's two sources)
   function aboutSettings(note) {
@@ -5110,19 +5072,15 @@
   // Advanced › Back up every page: when the last backup was, with the amber dot that is on Advanced when it is overdue
   // (Settings.needsLook), so that what the dot is about is plain once Advanced is open.
   const backupLine = late => `<div class="hint${late ? ' warn-line' : ''}" id="st-backup">${late ? '<span class="status-dot warn"></span>' : ''}${esc(backupAgo())}</div>`;
-  // ... and without which theme, accent color, text style and default widget language are chosen (the swatches' shades,
-  // which follow the theme, and the check; Custom…'s dot and its input's color; the text style's and the language's card
-  // ticked, and the name on each one's row): put in place when only they changed, chosen on another device or in
-  // another tab (putLook).
+  // ... and without which theme, accent color and default widget language are chosen (the swatches' shades, which
+  // follow the theme, and the check; Custom…'s dot and its input's color; the language's card ticked, and the name on
+  // its row): put in place when only they changed, chosen on another device or in another tab (putLook).
   const noLook = h => h.replace(/<button role="radio" aria-checked="\w+" data-act="theme"([^>]*) class="\w*">/g, '<button data-act="theme"$1>')
     .replace(/<button class="swatch[^"]*" style="[^"]*" role="radio" aria-checked="\w+" data-act="accent"/g, '<button data-act="accent"')
     .replace(/(data-act="accent"[^>]*>)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/g, '$1')
     .replace(/<button class="swatch pill custom[^"]*" role="radio" aria-checked="\w+" data-act="accent-custom"([^>]*><span class="dot")[^>]*>/, '<button data-act="accent-custom"$1>')
     .replace(/(data-act="accent-custom"[^>]*><span class="dot"><\/span>Custom…)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/, '$1')
     .replace(/(id="set-accent-custom" value=")[^"]*/, '$1')
-    .replace(/<button class="letter-opt[^"]*" role="radio" aria-checked="\w+" data-act="letters"/g, '<button data-act="letters"')
-    .replace(/(<span class="sample" aria-hidden="true">[^<]*<\/span>)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/g, '$1')
-    .replace(/(data-val="letters"[^>]*>[\s\S]*?<span class="v">)[^<]*/, '$1')
     .replace(/<button class="lang-opt[^"]*" role="radio" aria-checked="\w+" data-act="widget-language"/g, '<button data-act="widget-language"')
     .replace(/(data-act="widget-language"[^>]*><span class="txt">[\s\S]*?<\/span>)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/g, '$1')
     .replace(/(data-val="widget-language"[^>]*>[\s\S]*?<span class="v">)<span lang="\w+">[^<]*<\/span>/, '$1');
@@ -5152,23 +5110,21 @@
     // the status line put in place otherwise. (Each merge drew it two or three times: a screen reader read the control
     // it was on again, and a tap whose press and release straddled a drawing was lost.)
     refresh() { this.render(false, true); },
-    // The theme's, accent color's, text style's and default widget language's choices as html has them, put in place:
-    // Settings isn't drawn again for a choice made elsewhere (the keyboard, a tap and a screen reader stay where they
-    // were, and nothing moves, but for the text in another font).
+    // The theme's, accent color's and default widget language's choices as html has them, put in place: Settings isn't
+    // drawn again for a choice made elsewhere (the keyboard, a tap and a screen reader stay where they were, and nothing
+    // moves).
     putLook(html) {
       const t = document.createElement('template');
       t.innerHTML = html;
-      for (const b of t.content.querySelectorAll('[data-act="theme"], [data-act="accent"], [data-act="accent-custom"], [data-act="letters"], [data-act="widget-language"], [data-act="accent-custom"] > .dot')) {
+      for (const b of t.content.querySelectorAll('[data-act="theme"], [data-act="accent"], [data-act="accent-custom"], [data-act="widget-language"], [data-act="accent-custom"] > .dot')) {
         const el = b.matches('.dot') ? $('[data-act="accent-custom"] > .dot', this.body) : $(`[data-act="${b.dataset.act}"][data-val="${CSS.escape(b.dataset.val)}"]`, this.body);
         if (!el) continue;
         for (const a of ['class', 'style', 'aria-checked']) if (el.getAttribute(a) !== b.getAttribute(a)) { if (b.hasAttribute(a)) el.setAttribute(a, b.getAttribute(a)); else el.removeAttribute(a); }
-        const tick = $(':scope > .tick', b), had = $(':scope > .tick', el);   // (the color or text style that is ticked)
+        const tick = $(':scope > .tick', b), had = $(':scope > .tick', el);   // (the color or language that is ticked)
         if (tick && !had) el.appendChild(tick.cloneNode(true)); else if (!tick && had) had.remove();
       }
       const ci = $('#set-accent-custom', t.content), ci0 = $('#set-accent-custom', this.body);   // (where the picker opens next)
       if (ci && ci0 && ci0.value !== ci.getAttribute('value')) ci0.value = ci.getAttribute('value');
-      const v = $('[data-act="group"][data-val="letters"] .v', t.content), el = $('[data-act="group"][data-val="letters"] .v', this.body);
-      if (v && el && el.textContent !== v.textContent) el.textContent = v.textContent;
       const lv = $('[data-act="group"][data-val="widget-language"] .v', t.content), lel = $('[data-act="group"][data-val="widget-language"] .v', this.body);
       if (lv && lel && lel.innerHTML !== lv.innerHTML) lel.innerHTML = lv.innerHTML;
     },
@@ -5211,7 +5167,7 @@
       this.body.addEventListener('click', e => {
         const b = e.target.closest('[data-act]');
         if (!b || b.disabled) return;
-        // (Where it was before anything changed: Text style and Size change the page before Settings is drawn again.)
+        // (Where it was before anything changed: Size changes the page before Settings is drawn again.)
         this.tapped = this.spot(b);
         try { this.act(b.dataset.act, b.dataset.val, b); } finally { this.tapped = null; }
       });
@@ -5410,7 +5366,6 @@
         <div class="row">${labelled('Theme')}${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']], false, 'Theme')}</div>
         ${backgroundSettings()}
         ${accentSettings()}
-        ${letterSettings()}
         ${shapeSettingsRow(seg)}
 
         <div class="gap"></div>
@@ -5787,7 +5742,6 @@
       viewport: here ? exportViewport() : storedViewport(sc, free, instances), // the size of the space the rects are in
       theme: S.settings.theme,
       accent: accentNow(),   // what the board shows: a key of ACCENTS or a custom '#rrggbb'
-      letters: S.settings.letters,   // the text style
       widgetLanguage: Merge.LANGS.includes(S.settings.widgetLanguage) ? S.settings.widgetLanguage : 'en',   // the default widget language, as Settings shows it
       board: Object.assign({ name: board.name, background: board.background || { color: null, pattern: 'none' }, scale: sc, shape: free ? 'free' : '16:9' },
         kind === 'full' && board.uid ? { uid: board.uid } : {},   // which board this is (see section 13b)
@@ -5886,6 +5840,9 @@
   }
 
 
+  // The style parts this release shows and changes: Import's.
+  const lookParts = () => Merge.STYLE_PARTS.filter(k => k !== 'letters');   // 'letters', the text style, is chosen only by releases up to 2026.11.28-1. Board Sync carries it for them.
+
   function parseBoardFile(text) {
     let j;
     try { j = JSON.parse(text); } catch (e) { throw new Error('This file is damaged or isn’t a 21Board file.'); }
@@ -5913,7 +5870,6 @@
       kind: j.kind === 'template' ? 'template' : 'full',
       theme: ['light', 'dark', 'system'].includes(j.theme) ? j.theme : null,
       accent: accentShown(j.accent, j.accentColor, null),   // (an export's accent, or a device file's two parts)
-      letters: Object.prototype.hasOwnProperty.call(LETTERS, j.letters) ? j.letters : null,   // (a file from before 2026.11.17-2 has none)
       widgetLanguage: Merge.LANGS.includes(j.widgetLanguage) ? j.widgetLanguage : null,   // (nor one from before 2026.11.27-2)
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
@@ -5965,11 +5921,11 @@
     const missing = new Set(parsed.instances.filter(i => !getWidget(i.widgetId)).map(i => i.widgetId));
     const what = parsed.kind === 'template' ? 'a blank template' : 'a full backup';
     // Replace keeps this page (its uid): with Board Sync, its windows and content change on the other devices too, and
-    // so do the file's theme, accent color, text style and default widget language, which are the whole board's (said,
-    // when they differ from this board's).
-    const uid = S.board.uid, look0 = { theme: S.settings.theme, accent: S.settings.accent, accentColor: S.settings.accentColor, letters: S.settings.letters, widgetLanguage: S.settings.widgetLanguage };
+    // so do the file's theme, accent color and default widget language, which are the whole board's (said, when they
+    // differ from this board's).
+    const uid = S.board.uid, look0 = Object.fromEntries(lookParts().map(k => [k, S.settings[k]]));
     const looks = andList([parsed.theme && parsed.theme !== look0.theme && 'theme', parsed.accent && parsed.accent !== accentNow() && 'accent color',
-      parsed.letters && parsed.letters !== look0.letters && 'text style', parsed.widgetLanguage && parsed.widgetLanguage !== look0.widgetLanguage && 'default widget language'].filter(Boolean));
+      parsed.widgetLanguage && parsed.widgetLanguage !== look0.widgetLanguage && 'default widget language'].filter(Boolean));
     const mode = await dialog({
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
       message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' isn’t' : 's aren’t'} installed here. ${missing.size === 1 ? 'Its' : 'Their'} content is kept but not shown.` : '') + picsLost(lost),
@@ -5990,10 +5946,10 @@
       const undoId = await Link.swap(() => applyImport(parsed, mode, { uid: replace ? uid : null, keepCreated: replace, photo: 'file', history: { reason: replace ? 'import' : 'add', label } }));
       if (Link.supported) Link.changed([Keys.board(S.boardId)]);
       const added = opened() - before, undo = undoAction(undoId, replace ? 'the import' : 'adding windows');
-      // (its Undo puts back the theme, accent and text style the file replaced too, chosen again here, so that with Board
-      // Sync it reaches the other devices: going back in Board history never changes them)
+      // (its Undo puts back the theme, accent and default widget language the file replaced too, chosen again here, so
+      // that with Board Sync it reaches the other devices: going back in Board history never changes them)
       const back = {};
-      for (const k of Merge.STYLE_PARTS) if (replace && S.settings[k] !== look0[k]) back[k] = look0[k];
+      for (const k of lookParts()) if (replace && S.settings[k] !== look0[k]) back[k] = look0[k];
       if (undo.onAction && Object.keys(back).length) { const go = undo.onAction; undo.onAction = async () => { if (await go() !== false) updateSettings(back); }; }
       toast(replace ? 'Board imported.' : `Added ${added} window${added === 1 ? '' : 's'}.`, undo);
     } catch (err) {
@@ -6128,10 +6084,10 @@
         out.push(rec(Keys.media(b, 'background'), 'media', p.photo));
         out.push(rec(Keys.media(b, 'background-look'), 'media', p.photoLook || normalizePhotoSettings({})));
       }
-      // (the file's theme, accent and text style: chosen here now, so with Board Sync they reach the other devices, see
-      // updateSettings)
+      // (the file's theme, accent and default widget language: chosen here now, so with Board Sync they reach the other
+      // devices, see updateSettings)
       const look = {}, q = Object.assign({}, p, p.accent ? accentSet(p.accent) : {});
-      for (const k of Merge.STYLE_PARTS) if (q[k]) Object.assign(look, { [k]: q[k], [k + 'At']: rev });
+      for (const k of lookParts()) if (q[k]) Object.assign(look, { [k]: q[k], [k + 'At']: rev });
       if (Object.keys(look).length) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, look)));
     }
 
@@ -7044,7 +7000,7 @@
       let st = { ledger, ctr: sync.ctr || 0, fixes: [], partsChanged: false };
       if (mode !== 'take') st = Merge.stamp(ledger, local, { dev: me, ctr: sync.ctr || 0, maxSeen: sync.maxSeen || 0, first: !!sync.first, now, dropHere, mode });
       const fixes = { writes: (st.fixes || []).map(f => Object.assign({ type: Keys.parse(f.key).kind }, f)), ifRev: this.ifRevOf(r, st.fixes || []), settings: st.settings ? stored => Merge.patchSettings(stored, st.settings) : null };
-      // (the theme, accent and text style's versions are in link:sync: the stamp's, see Merge.stamp)
+      // (the style parts' versions are in link:sync: the stamp's, see Merge.stamp)
       sync = Object.assign({}, sync, { ctr: st.ctr }, (st.ledger.sync || {}).style ? { style: st.ledger.sync.style } : {}, st.partsChanged ? { localAt: now } : {});
       // (Two devices that each set up a folder "first" at once gave it two ids: every device takes the smaller one.)
       for (const f of Object.values(this.good())) if (f.folder && sync.folder && f.folder < sync.folder) sync.folder = f.folder;
@@ -7150,7 +7106,7 @@
         if (back.length) Pages.backByMerge(back);
         // (Not the round that applies set-up's mode: its last step says what it did.)
         if (!(mode && this.welcoming)) {
-          // (a theme, accent or text style chosen in this tab while the round ran, not stored yet when it was saved: this
+          // (a style part chosen in this tab while the round ran, not stored yet when it was saved: this
           // tab shows that, not the merge's, and the next round takes it to the other devices. It isn't said.)
           const was = (r.by.get(Keys.settings) || {}).value || {};
           const style = (plan.summary.style || []).map(x => Object.fromEntries(Object.entries(x).filter(([k]) => k === 'by' || S.settings[k + 'At'] === was[k + 'At']))).filter(x => Merge.STYLE_PARTS.some(k => k in x));
@@ -7411,7 +7367,7 @@
           const go = () => {
             if (gen !== this.gen) { stale = 'gone'; s.transaction.abort(); return; }
             for (const w of writes) if ((((cur[w.key] || {}).rev) || 0) !== ((plan.ifRev || {})[w.key] || 0)) { stale = true; s.transaction.abort(); return; }
-            // (the theme, accent or text style chosen here, in another tab or by an Import, since the round read the
+            // (a style part chosen here, in another tab or by an Import, since the round read the
             // settings: the merge's value would replace a later choice for good. The round runs again, and the later one wins.)
             const sset = (plan.settingsPatch && plan.settingsPatch.set) || {}, was = ((r.by.get(Keys.settings) || {}).value) || {}, now0 = ((cur[Keys.settings] || {}).value) || {};
             if (Merge.STYLE_PARTS.some(k => k in sset && (now0[k] !== was[k] || now0[k + 'At'] !== was[k + 'At']))) { stale = true; s.transaction.abort(); return; }
@@ -7421,7 +7377,7 @@
               const rec = { key: w.key, type: w.type, rev: Math.max(((cur[w.key] && cur[w.key].rev) || 0) + 1, T), updatedAt: T, by: TAB_ID, m: 1, value: w.value };
               s.put(rec); out.push(rec);
             }
-            if (typeof plan.settings === 'function') {   // (a patch: only boards, deletedBoards, deletedAt, lastBoard, theme, accent, accentColor and letters)
+            if (typeof plan.settings === 'function') {   // (a patch: only boards, deletedBoards, deletedAt, lastBoard, and the style parts)
               const st = cur[Keys.settings] || { key: Keys.settings, type: 'settings', rev: 0, value: {} }, value = plan.settings(st.value || {});
               if (value && !sameJSON(value, st.value || {})) {
                 const rec = { key: Keys.settings, type: 'settings', rev: Math.max((st.rev || 0) + 1, T), updatedAt: T, by: TAB_ID, m: 1, value };
@@ -7474,7 +7430,7 @@
       const me = this.dev(), now = Date.now(), local = this.local(r, now, !!opts.left), name = this.fileName(this.wideName(me));
       const own = this.ownCheck(sync, me, name);
       const meta = { dev: me, folder: sync.folder, name: this.device().label, seq: sync.seq || 0, write: '', at: now, merged: this.mergedOf(sync, me), left: opts.left || null,
-        refs: this.byPhoto(this.refsOf(ledger)), skipped: r.skipped, generator: `21Board ${RELEASE}` };   // (the theme, accent and text style: Merge.read's, from r.settings)
+        refs: this.byPhoto(this.refsOf(ledger)), skipped: r.skipped, generator: `21Board ${RELEASE}` };   // (the style parts: Merge.read's, from r.settings)
       // (the trial finds the windows' pictures the file names: picNames keeps only those)
       const want = new Set();
       this.picSeen = new Set();
@@ -8323,8 +8279,7 @@
       return w;
     },
     photoKeyOf(m) { return m ? `${m.addedAt}-${m.bytes}-${m.w}x${m.h}` : null; },
-    // The board's content, without the theme, accent and text style (going back never changes them; boardSig never had
-    // the text style).
+    // The board's content, without the theme and accent (going back never changes them).
     sigOf(exp) { return boardSig(Object.assign({}, exp, { theme: null, accent: null })); },
     // Version prev already holds everything in cur (each window's content is there, or is gone now).
     holdsAll(prev, cur) {
@@ -8760,7 +8715,7 @@
         exp = clone(r.body.exp); meta = r.meta;
       } else exp = clone(src.exp);
       const at = (exp.snapshot && exp.snapshot.at) || (exp.history && exp.history.at) || (meta && meta.at) || Date.now();
-      delete exp.theme; delete exp.accent; delete exp.letters; delete exp.widgetLanguage;   // going back never changes the theme, accent, text style or default widget language
+      delete exp.theme; delete exp.accent; delete exp.letters; delete exp.widgetLanguage;   // going back never changes the theme, accent or default widget language
       if (!opts.undo) this.fix(exp, at);
       const ref = exp.media && exp.media.ref, look = exp.media && exp.media.look;
       delete exp.media;
@@ -9078,7 +9033,7 @@
     async loadExtras() {
       try {
         const exp = await buildExport('full');
-        // (Fingerprinted as versions are: without the theme, accent and text style, and also as an older 21Board stored it.)
+        // (Fingerprinted as versions are: without the theme and accent, and also as an older 21Board stored it.)
         this.now = { sigs: boardSigs(exp, e => BoardHistory.sigOf(e)), wins: BoardHistory.winsOf(exp), thumb: BoardHistory.thumbOf(exp), photo: BoardHistory.photoKeyOf(exp.media && exp.media.background), name: S.board.name };
       } catch (e) { this.now = null; }
       for (const k of new Set(BoardHistory.metas.map(m => m.photo).filter(k => k && k !== 'gone'))) {
@@ -10881,16 +10836,15 @@
       if (locked || !button) { this.merge(text, null, seedHere); return; }   // (locked: no Undo; Board history has it)
       this.merge(text, button, seedHere);
     },
-    // The theme, accent color, text style or default widget language changed on another device ({by, theme, accent,
-    // accentColor, letters, widgetLanguage}): they are the whole board's, on every device. No Undo: changing it back in
-    // Settings is one tap, and syncs. The accent is named as it shows now (accentShown): "a custom one" for a custom color.
+    // The theme, accent color or default widget language changed on another device ({by, theme, accent, accentColor,
+    // widgetLanguage; an older release's letters says nothing}): they are the whole board's, on every device. No Undo:
+    // changing it back in Settings is one tap, and syncs. The accent is named as it shows now (accentShown): "a custom
+    // one" for a custom color.
     style(x) {
       const a = ('accent' in x || 'accentColor' in x) && accentNow(), accent = a && (a[0] === '#' ? 'a custom one' : accentOf(a)[2]);
       const theme = { light: 'Light', dark: 'Dark', system: 'Auto' }[x.theme];
-      const text = Object.prototype.hasOwnProperty.call(LETTERS, x.letters) ? LETTERS[x.letters].name : null;
       const lang = Merge.LANGS.includes(x.widgetLanguage) ? LANG_NAMES[x.widgetLanguage] : null;
-      const what = andList([theme && `the theme to ${theme}`, accent && `the accent color to ${accent}`, text && `the text style to “${text}”`,
-        lang && `the default widget language to ${lang}`].filter(Boolean));
+      const what = andList([theme && `the theme to ${theme}`, accent && `the accent color to ${accent}`, lang && `the default widget language to ${lang}`].filter(Boolean));
       return what ? `${this.names([x.by], true)} changed ${what}.` : '';
     },
     // A page deleted here is back: brought back on another device (its Undo, Bring back), or changed there before the
@@ -11815,6 +11769,7 @@
   // 16. Boot
   // =====================================================================
   function initUI() {
+    applyFont();   // (section 12b: before the Widget Picker, Settings, and the clock in the corner first draw)
     Picker.init();
     Pages.initMenu();
     Menu.init();

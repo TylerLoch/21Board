@@ -239,8 +239,8 @@ and links are stripped. Up to 24 items. A row of swatches or choices counts as o
 | --- | --- | --- |
 | `data` | `(data, { reason })` | This instance's content changed outside this page: another 21Board tab, an import, or a reset. |
 | `config` | `(config, { reason })` | Same, for config. |
-| `theme` | `(theme, palette)` | The theme, accent color, or text style changed. The CSS variables are already updated. |
-| `resize` | `(info)` | The window's content size, maximized or focused state, `zoom`, or `corners` changed. Also fires when the teacher's text style changes, and again once its font loads, so text can be fitted again. Native `resize` events fire too when the size changes. On the 16:9 board, `zoom` changes at almost every step while the browser window is resized, so keep this handler light, or wait about 150 ms for it to stop. |
+| `theme` | `(theme, palette)` | The theme or accent color changed. The CSS variables are already updated. |
+| `resize` | `(info)` | The window's content size, maximized or focused state, `zoom`, or `corners` changed. Also fires again once the board's font has loaded, so text can be fitted again. Native `resize` events fire too when the size changes. On the 16:9 board, `zoom` changes at almost every step while the browser window is resized, so keep this handler light, or wait about 150 ms for it to stop. |
 | `focus` / `blur` | — | The window was selected or deselected. Selecting a window brings it to the front. **`blur` also fires when the teacher taps the empty board to deselect everything, and the window stays in front and visible.** So `blur` doesn't mean the window is covered. Don't pause a timer on blur. |
 | `menu` | `(id, item)` | One of your menu items was tapped. |
 | `beforeclose` | — | The window is about to close. Save anything pending *synchronously* (call `save()`). |
@@ -376,17 +376,17 @@ The SDK sets these CSS variables on your `<html>` element and keeps them updated
 | `--b21-danger`, `--b21-success`, `--b21-warning` | Status colors |
 | `--b21-font`, `--b21-radius` | Font stack, corner radius |
 
-`--b21-font` is the device's own font, unless the teacher chose an easier-to-read text style in Settings →
-Appearance → *Text style*. With Board Sync, that choice is the same on all the teacher's devices. `--b21-font` then
-starts with a font that comes with 21Board, which the SDK loads from the board's `fonts/` folder. A widget on
-another site gets that font only if the board's site allows it (CORS). Otherwise its text stays in the device's own
-font. So does a widget uploaded as a file in Developer mode, which is sealed off from the board's files. A Russian or
-Ukrainian window skips those fonts, which have no Cyrillic letters, and keeps the device's own.
+`--b21-font` starts with Inter, 21Board's font, which has every letter in English, Spanish, Russian, Ukrainian, and
+Greek. The SDK loads it from the board's `fonts/` folder. A widget on another site gets it only if the board's site
+allows it (CORS). A widget uploaded as a file in Developer mode gets it from the board. Anything Inter doesn't have,
+such as emoji, comes from the device's own font.
 
-If you fit text to the window, fit it on `resize`, the window's or `Board21.on('resize')`. One fires when the text
-style changes, and again once the new font has loaded. Form controls don't take the page's font by themselves.
-Give `button`, `input`, `textarea`, and `select` `font-family: inherit` (or `font: inherit`) so their text follows
-the text style too.
+If you fit text to the window, fit it on `resize`, the window's or `Board21.on('resize')`. One fires again once the
+font has loaded. Form controls don't take the page's font by themselves. Give `button`, `input`, `textarea`, and
+`select` `font-family: inherit` (or `font: inherit`).
+
+Its regular is a little heavier, for the back of the room. Keep writing `font-weight: 400`. Its digits are
+proportional, so give numbers that tick `font-variant-numeric: tabular-nums`.
 
 Use `[data-b21-theme="dark"] .thing { … }` for anything else that should change in dark mode.
 
@@ -498,7 +498,6 @@ Language row and stays English.
 - `<html lang>` is the window's locale, so a screen reader picks the right voice. A page written in another language
   keeps its own `lang` in an English window.
 - `translate="no"` goes on `<html>`, so a browser's page translation never sends a window's words away.
-- A Russian or Ukrainian window skips the easier-to-read fonts, which have no Cyrillic letters.
 - The board names the window's frame with its language before your page loads, so `Board21.t()` is right from your
   first line.
 
@@ -630,14 +629,14 @@ The footer shows the window's content size, shape lock, minimum size, and board 
 - **Just the widget:** *⋯ ▸ Show the widget on its own*, or add `#b21-bare` to the address, or
   `data-dev="off"` to the SDK's script tag. This is standalone mode: data in `localStorage`, window calls
   ignored, menu items in a small dropdown in the corner. Add `&b21-lang=es`, `ru`, or `uk` after `#b21-bare` to see
-  the widget alone in that language. Without `#b21-bare`, `#b21-lang=es` starts the dev window in it.
+  the widget alone in that language. Without `#b21-bare`, `#b21-lang=es` starts the dev window in it. On its own,
+  a widget shows Inter only on 21Board's site or opened from disk. Elsewhere it uses the device's font.
 - If the SDK **isn't the first script** in `<head>`, the widget runs on its own with a note saying so.
 - Without a manifest block, a widget in this repo's `widgets/` folder uses its `widgets/registry.js`
   entry; otherwise the window is 400 × 300.
-- **Text style** (Settings → Appearance) works only in the dev window of a widget file on 21Board's own site,
-  or opened from disk. In an AI tool's preview the test board isn't on 21Board's site, and the widget lab's is
-  sealed off. Fonts from another site need that site's permission (CORS), so there the text style stays
-  Standard, and Settings says so.
+- **The board's font** loads in the dev window of a widget file on 21Board's own site, or opened from disk. In an
+  AI tool's preview the test board isn't on 21Board's site, and the widget lab's is sealed off, so there your widget
+  shows the device's own font.
 
 **How it works.** Before any of your code runs, the SDK keeps the rest of the page as text
 (`document.write` of an unclosed `<plaintext>`), then loads `sdk/board21-dev.js`. That runs the board in a

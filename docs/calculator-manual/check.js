@@ -12,7 +12,7 @@
  * line; With remainders gives 17 ÷ 5 = 3 R 2, its R muted and 4.5:1 or more, in the demo and the page's example; Desmos %
  * shows under Advanced keys while they're on). It also runs the demo inside a sandboxed frame, as the viewer may, and
  * in one that starts hidden and shows later. It checks that the page and the demo follow a data-theme the host sets,
- * and that each chip is marked once tapped. Screenshots go to dist/shots/, at deviceScaleFactor 2.
+ * and that each chip is marked once tapped, and that the faces Inter and Inter Letters load in the page and the demo. Screenshots go to dist/shots/, at deviceScaleFactor 2.
  */
 'use strict';
 const { chromium } = require('playwright');
@@ -87,6 +87,22 @@ async function checkOne(browser, base, w, h, scheme) {
     const frame = await calcFrame(page);
     await frame.waitForSelector('.key[data-key="2"]', { state: 'visible' });
     await page.waitForSelector('#menu-history');
+    // The fonts: Inter and Inter Letters load, in the page and in the demo's frame (a face no text uses yet is loaded here).
+    const faces = () => document.fonts.ready.then(async () => {
+      const out = {};
+      for (const f of document.fonts) {
+        const fam = f.family.replace(/"/g, '');
+        if (fam !== 'Inter' && fam !== 'Inter Letters') continue;
+        if (f.status === 'unloaded') await f.load().catch(() => {});
+        out[fam] = out[fam] === 'loaded' ? 'loaded' : f.status;
+      }
+      return out;
+    });
+    for (const [what, target] of [['the page', page], ['the demo', frame]]) {
+      const got = await target.evaluate(faces);
+      if (got.Inter !== 'loaded' || got['Inter Letters'] !== 'loaded') fail(where, `${what}: Inter ${got.Inter || 'missing'}, Inter Letters ${got['Inter Letters'] || 'missing'}`);
+      else ok(`${what}: Inter and Inter Letters loaded`);
+    }
 
     // The page itself
     const chips = await page.$$eval('.pg-chip', cs => cs.map(c => { const id = (c.getAttribute('href') || '').slice(1), s = document.getElementById(id); return { id, ok: !!s && s.tagName === 'SECTION' }; }));

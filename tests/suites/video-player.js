@@ -333,7 +333,7 @@ module.exports = T => {
 
     // The link box at its smallest where the board draws it no smaller than its CSS size (Size 200% on a 1920 × 1080
     // panel: the window's own 200 × 200 minimum), with Cancel and either message: all of it fits without scrolling and
-    // the title stays on one line, in every text style.
+    // the title stays on one line.
     await page.evaluate(() => { window.__board21.setBoardScale(2); window.__board21.setRect('youtube-player:1', { x: 20, y: 20, w: 50, h: 60 }); }); await page.waitForTimeout(600);
     other = await ctx.newPage(); await other.goto(BASE); await boardUp(other);
     await linkBoxWithCancel(page, other);
@@ -341,9 +341,7 @@ module.exports = T => {
     // (text that gets each of the link box's messages)
     const G = '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms', texts = ['not a link', '', 'https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345', 'https://vimeo.com/showcase/11223344',
       `https://docs.google.com/document/d/${G}/edit`, `https://docs.google.com/spreadsheets/d/${G}/edit`, `https://docs.google.com/presentation/d/${G}/edit`];
-    for (const letters of ['standard', 'legible', 'early']) {
-      await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${letters}"]`); await page.keyboard.press('Escape');
-      await page.waitForFunction(l => window.__board21.state.settings.letters === l, letters); await page.waitForTimeout(800);
+    {
       for (const text of texts) {
         await ytWin(page).locator('#link').fill(text); await ytWin(page).locator('#go').click(); await page.waitForTimeout(300);
         const r = await ytWin(page).locator('html').evaluate(async () => {
@@ -352,16 +350,14 @@ module.exports = T => {
           const off = ['link', 'err', 'cancel', 'go'].filter(id => { const b = $(id).getBoundingClientRect(); return b.bottom > innerHeight + 0.5 || b.right > innerWidth + 0.5; });
           return { w: innerWidth, h: innerHeight, scrolls: $('ask').scrollHeight > $('ask').clientHeight + 1, lines: Math.round(h1.getBoundingClientRect().height / parseFloat(getComputedStyle(h1).lineHeight)), off, err: $('err').textContent, cancel: !$('cancel').hidden };
         });
-        const label = `${letters}, “${r.err}”, ${r.w} × ${r.h}`;
+        const label = `“${r.err}”, ${r.w} × ${r.h}`;
         said.add(r.err);
         if (r.scrolls || r.lines !== 1 || r.off.length || !r.cancel || !r.err || r.w > 202 || r.h > 202) tight.push(`${label}: ${r.scrolls ? 'scrolls, ' : ''}title on ${r.lines} line(s)${r.off.length ? ', cut off: ' + r.off.join(' ') : ''}`);
         else fitted.push(label);
       }
     }
-    ok(!tight.length && fitted.length === texts.length * 3 && Object.values(VMSG).every(m => said.has(m)),
-      `the smallest link box fits, title on one line, in every text style and with each of its ${Object.keys(VMSG).length} messages (${tight.length ? 'not: ' + tight.join('; ') : fitted.length + ' fitted, 200 × 200'})`);
-    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]'); await page.keyboard.press('Escape');
-    await page.waitForFunction(() => window.__board21.state.settings.letters === 'standard');
+    ok(!tight.length && fitted.length === texts.length && Object.values(VMSG).every(m => said.has(m)),
+      `the smallest link box fits, title on one line, with each of its ${Object.keys(VMSG).length} messages (${tight.length ? 'not: ' + tight.join('; ') : fitted.length + ' fitted, 200 × 200'})`);
     await ytWin(page).locator('#cancel').click(); await page.waitForTimeout(400);
     await other.close();
 

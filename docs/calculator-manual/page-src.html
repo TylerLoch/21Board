@@ -1,6 +1,8 @@
 <title>21Board Calculator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
+@font-face { font-family: "Inter"; font-weight: 100 900; font-display: swap; src: url(data:font/woff2;base64,/*@INTER*/) format("woff2"); }
+@font-face { font-family: "Inter Letters"; font-style: italic; font-weight: 100 900; font-display: swap; src: url(data:font/woff2;base64,/*@INTER_LETTERS*/) format("woff2"); }
 /* The Calculator's manual. One column of sections under a sticky bar of chips; the live Calculator at the top, its
    window menu beside it. Page tokens below; the Calculator gets the board's own --b21-* palette from the script. */
 :root {
@@ -8,7 +10,7 @@
   --accent: #2563eb; --accent-soft: #eff6ff; --on-accent: #ffffff;
   --good: #15803d; --bad: #b91c1c;
   --shadow: rgba(17, 24, 39, .08); --swatch-ring: rgba(0, 0, 0, .12);
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 }
@@ -166,7 +168,7 @@ button.wm-i:hover:not(:disabled) { background: var(--surface-2); }
 .kp .op { background: var(--accent); color: var(--on-accent); font-size: 19px; }
 .kp .adv { background: var(--accent-soft); font-size: 14px; }
 .kp .w { font-size: 13px; font-weight: 600; }
-.kp i { font-family: Georgia, "Times New Roman", serif; }
+.kp i, .rules i, .ce-word { font-family: "Inter Letters", var(--font); font-style: italic; }
 .kp sup { font-size: .62em; line-height: 0; position: relative; top: -.42em; }
 .kp .k3 { grid-column: span 3; } .kp .k6 { grid-column: span 6; }
 .key-notes { margin: 16px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 6px 18px; }
@@ -186,7 +188,6 @@ button.wm-i:hover:not(:disabled) { background: var(--surface-2); }
 .rules b { display: inline-block; height: 24px; padding: 0 5px; border-radius: 6px; font-size: 13px; font-weight: 700; line-height: 24px; white-space: nowrap; word-spacing: -.12em; color: var(--muted); }
 .rules b.lit { background: var(--accent); color: var(--on-accent); }
 .rules b.soft { background: var(--accent-soft); color: var(--text); }
-.rules i { font-family: Georgia, "Times New Roman", serif; font-style: italic; }
 .rules sup { font-size: .62em; line-height: 0; vertical-align: baseline; position: relative; top: -.42em; margin-left: .04em; }
 .hide-ex { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--surface-2); font-size: 26px; }
 .pg-btn { margin-top: 10px; height: 34px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font: 600 14px var(--font); cursor: pointer; }
@@ -661,7 +662,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
   const theme = () => (mode !== 'auto' ? mode : hostTheme === 'light' || hostTheme === 'dark' ? hostTheme : dark.matches ? 'dark' : 'light');
   // The palette a widget gets from the board (board.js paletteFor)
   function palette(t) {
-    const pal = Object.assign({}, PALETTES[t]);
+    const pal = Object.assign({}, PALETTES[t], { font: '"Inter", ' + PALETTES[t].font });
     if (accent !== 'blue') { const c = ACCENTS[accent][t === 'dark' ? 1 : 0]; pal.accent = c; pal['accent-soft'] = t === 'dark' ? rgba(c, 0.18) : mixHex(c, '#ffffff', 0.9); }
     return pal;
   }

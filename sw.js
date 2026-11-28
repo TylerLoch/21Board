@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.27-2';
+const VERSION = '2026.11.28-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'fdccfabc';
+const BUILD = '53bb0aa4';
 const FILES = {
-  './': '57ada3b9278e9168',
-  'index.html': '57ada3b9278e9168',
-  'board.js': 'bd605c8dbe47b341',
-  'sdk/board21.js': '08906190c5acd9e7',
+  './': '7c988b812d92bdcb',
+  'index.html': '7c988b812d92bdcb',
+  'board.js': 'e95284017875dcfd',
+  'sdk/board21.js': '05b38da7174470d4',
   'sdk/board21-dev.js': '8a581bec97559eaf',
-  'sdk/dev/board-shell.js': '49c875caff4259fa',
+  'sdk/dev/board-shell.js': 'b38759afe3f25c75',
   'sdk/lab.html': '0f64e592aad54c02',
-  'widgets/registry.js': '0bc966acbae82c8b',
+  'widgets/registry.js': 'd1db251f37b61c98',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -31,49 +31,47 @@ const FILES = {
   'icons/goat.png': 'c6072947ca83bc84',
   'LICENSE': 'cfc7749b96f63bd3',
   'LICENSE-DOCS': '9ba9550ad48438d0',
-  'fonts/AtkinsonHyperlegible-Regular.woff2': '57f2debe054cd288',
-  'fonts/AtkinsonHyperlegible-Bold.woff2': '21b2f082b7390e74',
-  'fonts/AtkinsonHyperlegible-OFL.txt': 'f32d22b3908fcad2',
-  'fonts/EarlyReaders-Regular.woff2': 'e96901beca9ae308',
-  'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
-  'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
-  'widgets/timer/index.html': '46ecb3641dd9a842',
+  'fonts/Inter-21Board.woff2': '9e8c7e3909a2d295',
+  'fonts/Inter-OFL.txt': '5b9321a4298cfeb6',
+  'widgets/timer/index.html': 'db935fd1273a8f29',
   'widgets/timer/words.js': '16517f04ba8ae70f',
-  'widgets/stopwatch/index.html': '5c56c767f8f86c2a',
-  'widgets/task-timer/index.html': 'db23b33641e050b2',
+  'widgets/stopwatch/index.html': '858ae65e29d5dbc4',
+  'widgets/task-timer/index.html': '9397776c2b9013d2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
-  'widgets/clock/index.html': '0e18c55dfc6153cb',
-  'widgets/notes/index.html': '84d19e7f5c6d5d64',
+  'widgets/clock/index.html': '40bc9f1f49e83ffe',
+  'widgets/notes/index.html': '880c847110718dcb',
   'widgets/notes/fonts/CrayonLibre-21Board.woff2': '7456bd198b414e6c',
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': 'b834f3f9e03916dd',
+  'widgets/name-picker/index.html': 'f384c1c70625f7d5',
   'widgets/name-picker/style-bigname.js': '9d6775ffa5fb7f17',
-  'widgets/name-picker/style-wheel.js': '075d8ee73bbcab4d',
-  'widgets/name-picker/style-spotlight.js': '275408a405cc9a54',
+  'widgets/name-picker/style-wheel.js': 'cf24efe718db3ff5',
+  'widgets/name-picker/style-spotlight.js': 'e8858149fe62cb73',
   'widgets/name-picker/style-lotto.js': 'b34332daca17e15b',
-  'widgets/name-picker/style-versus.js': '9344c716f271af5d',
+  'widgets/name-picker/style-versus.js': 'fe47a6131cf6b567',
   'widgets/name-picker/vs-lightning.js': '6d34946be8338ab8',
   'widgets/name-picker/vs-forged.js': '07556f56a9ccea89',
   'widgets/name-picker/vs-crest.js': '5215473e36a8b620',
   'widgets/name-picker/vs-comic.js': '282eeb9624080002',
   'widgets/name-picker/vs-flame.js': 'f7f0828ff757f68c',
-  'widgets/name-picker/style-groups.js': '7a1b0a0be51ac9fe',
-  'widgets/name-picker/style-bracket.js': '626ae95cae9d2924',
-  'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
-  'widgets/zones-check-in/index.html': '9264fcdf821b3af2',
+  'widgets/name-picker/style-groups.js': '74d0b9ada7eb9a39',
+  'widgets/name-picker/style-bracket.js': 'e899f84d5cd09161',
+  'widgets/first-then-board/index.html': '11f3ef0c0101a9f5',
+  'widgets/zones-check-in/index.html': '2e34ece05f5db0ce',
   'widgets/dice/index.html': '7e6e22547b32875e',
   'widgets/traffic-light/index.html': 'aef3d9ed351ee704',
   'widgets/traffic-light/words.js': 'fdb19ea10bfd8c2b',
-  'widgets/youtube-player/index.html': '176df55af520e59f',
+  'widgets/youtube-player/index.html': 'b3b154e3b972e3b2',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': 'af8342c7d8c343fa',
-  'widgets/calculator/index.html': '3896197f020c6ab2',
+  'widgets/calculator/index.html': 'f3b2a583ff627035',
   'widgets/calculator/calc-engine.js': 'bef93f908446ec8e',
-  'widgets/weather/index.html': '1b8face7bdbe9970',
+  'widgets/calculator/fonts/InterItalic-21Board.woff2': '2fc235d6bccb7e40',
+  'widgets/calculator/fonts/Inter-OFL.txt': '5b9321a4298cfeb6',
+  'widgets/weather/index.html': '968518cca725b94d',
   'widgets/weather/calendar.js': '6b801ee9abb6d70d',
-  'widgets/sdk-playground/index.html': '6f72b8cc9da26bdd'
+  'widgets/sdk-playground/index.html': '51de5e392ddb97b2'
 };
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION + '-' + BUILD;
@@ -97,13 +95,9 @@ const SHELL_FILES = [
   'icons/goat.png',
   'LICENSE',
   'LICENSE-DOCS',
-  // Settings → Text style (board.js section 12b): loaded only when chosen, but always in the copy, so they work offline
-  'fonts/AtkinsonHyperlegible-Regular.woff2',
-  'fonts/AtkinsonHyperlegible-Bold.woff2',
-  'fonts/AtkinsonHyperlegible-OFL.txt',
-  'fonts/EarlyReaders-Regular.woff2',
-  'fonts/EarlyReaders-Bold.woff2',
-  'fonts/EarlyReaders-OFL.txt'
+  // The board's font, Inter (board.js, "The board's font"), and its license
+  'fonts/Inter-21Board.woff2',
+  'fonts/Inter-OFL.txt'
 ];
 
 // (Not the district's own apps, `external`: they come from their own sites, which keep their own offline copies.
@@ -190,7 +184,8 @@ self.addEventListener('message', event => {
 });
 
 const offlinePage = (title, text) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<body style="margin:0;height:100vh;display:grid;place-items:center;font:16px system-ui;color:#6b7280;background:transparent;text-align:center;padding:16px">
+<style>@font-face{font-family:"Inter";src:url("${new URL('fonts/Inter-21Board.woff2', self.registration.scope)}") format("woff2");font-weight:100 900}</style>
+<body style="margin:0;height:100vh;display:grid;place-items:center;font:16px 'Inter',system-ui;color:#6b7280;background:transparent;text-align:center;padding:16px">
 <div><b style="color:#1f2937">${title}</b><br>${text}</div></body>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 
 self.addEventListener('fetch', event => {

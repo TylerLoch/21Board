@@ -245,8 +245,7 @@ module.exports = T => {
     // The ink of the names and of the emblem, shot apart on black and on white (what differs is their alpha): each name's
     // smallest gap to the emblem (ink is alpha over 60 of 255, as the looks were measured), whether it is whole inside the
     // stage, and whether any name crosses the middle.
-    // (While a picker is shot, the other windows are hidden: a shot takes in whatever is on top.) And a Text style, chosen in
-    // Settings.
+    // (While a picker is shot, the other windows are hidden: a shot takes in whatever is on top.)
     const fitTools = ip => {
       const inkGaps = async ik => {
         const css = v => inFrame((_, c) => { let e = document.getElementById('ink-test'); if (!e) { e = document.createElement('style'); e.id = 'ink-test'; document.head.appendChild(e); } e.textContent = c; }, ip, ik, v);
@@ -295,8 +294,7 @@ module.exports = T => {
           return out;
         }, ip, ik, Object.assign(shots, { tall: await inFrame(() => document.querySelector('.versus-name').getBoundingClientRect().bottom < document.querySelector('.versus-box').getBoundingClientRect().top, ip, ik) }));
       };
-      const letters = async val => { await openSettings(ip, ['letters']); await ip.click(`#settings [data-act="letters"][data-val="${val}"]`); await ip.keyboard.press('Escape'); await ip.waitForTimeout(900); };
-      return { inkGaps, letters };
+      return { inkGaps };
     };
     return { LOOKS, N24, SPY, errors, watch, use, np, saved, conf, menu, items, MENU_V, showing, idle, text, said, inFrame, setNames, sameList, pickNow, vs, clean, onHit, into, played, probe, probed, tapNow, hiddenUntil, flash, pickTapped, till, skipAt, LONG, IK, looksBoard, fitTools };
   };
@@ -1240,7 +1238,7 @@ module.exports = T => {
     await ictx.close();
 
     // ---- Fit: the smallest window and one that fills the board, 30 names in 2 groups and long names; every name in
-    // its card and one size. A change of theme, accent, or Text style fits them again.
+    // its card and one size. A change of theme or accent fits them again.
     errors.length = 0;
     const fctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const fp = await fctx.newPage(); watch(fp, 'fit');
@@ -1287,21 +1285,11 @@ module.exports = T => {
     await openSettings(fp, ['bg']); await fp.click('#settings [data-act="accent"][data-val="purple"]'); await fp.keyboard.press('Escape'); await fp.waitForTimeout(500);
     fd = await fitLook(fp);
     ok(!fd.bad.length && fd.sizes.length === 1, `a new accent: every name still fits (${fd.sizes.join()})`);
-    // Text style: the names in its letters, fitted again. Then long names in a small window, where the width sets the
-    // size, in Early readers and in Easier to read (Atkinson Hyperlegible).
-    const nameFont = () => inFrame(() => getComputedStyle(document.querySelector('.groups-name')).fontFamily, fp);
-    const letters = async val => { await openSettings(fp, ['letters']); await fp.click(`#settings [data-act="letters"][data-val="${val}"]`); await fp.keyboard.press('Escape'); await fp.waitForTimeout(800); };
-    await letters('early');
-    fd = await fitLook(fp);
-    let font = await nameFont();
-    ok(!fd.bad.length && fd.sizes.length === 1 && /21Board Early Readers/.test(font), `Text style Early readers: the names in its letters, fitted again (${fd.sizes.join()}; ${font})`);
+    // Long names in a small window, where the width sets the size.
     await setNames(LONG, fp); await menu('groups:3', fp); await drawNow(fp); await idle(fp);
     await fp.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 360, h: 270 })); await fp.waitForTimeout(700);
-    for (const [val, label, family] of [['early', 'Early readers', /21Board Early Readers/], ['legible', 'Easier to read', /Atkinson Hyperlegible/]]) {
-      if (val !== 'early') await letters(val);
-      fd = await fitLook(fp); font = await nameFont();
-      ok(fd.cards === 3 && !fd.bad.length && fd.sizes.length === 1 && family.test(font), `${label}, long names at 360×270: in its letters, every name in its card, one size (${fd.sizes.join()}; ${font}; ${fd.bad.slice(0, 3).join('; ') || 'ok'})`);
-    }
+    fd = await fitLook(fp);
+    ok(fd.cards === 3 && !fd.bad.length && fd.sizes.length === 1, `long names at 360×270: every name in its card, one size (${fd.sizes.join()}; ${fd.bad.slice(0, 3).join('; ') || 'ok'})`);
     // The data format names what the Name Picker saves.
     const dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
     ok(/`\{ names, left, picked, pickId, [^}]*current, [^}]*groups, groupId[, }]/.test(dataDoc) && dataDoc.includes('`{ noRepeats, style, winners, groups, quick, sound }`') && dataDoc.includes('`"groups"`'), 'docs/DATA-FORMAT.md gives its content and its config, Groups too');
@@ -1972,8 +1960,8 @@ module.exports = T => {
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ictx.close();
 
-    // ---- Layout: 8 names at 360 × 270, 24 at 540 × 400, 64 filling the board, partway through. Dark theme, a new accent, and
-    // Text style fit them again.
+    // ---- Layout: 8 names at 360 × 270, 24 at 540 × 400, 64 filling the board, partway through. Dark theme and a new accent
+    // fit them again.
     errors.length = 0;
     const fctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const fp = await fctx.newPage(); watch(fp, 'fit');
@@ -2022,16 +2010,11 @@ module.exports = T => {
     const accent = await inFrame(() => { const t = document.createElement('i'); document.body.appendChild(t); t.style.color = 'var(--b21-accent)'; const c = getComputedStyle(t).color; t.remove();
       return { want: c, ready: getComputedStyle(document.querySelector('.bracket-ready')).borderTopColor, won: getComputedStyle(document.querySelector('.bracket-lines path.bracket-won')).stroke }; }, fp);
     ok(!fd.bad.length && accent.ready === accent.want && accent.won === accent.want, `a new accent: the ready spots and the winners’ lines take it, and every name still fits (${JSON.stringify(accent)})`);
-    const letters = async val => { await openSettings(fp, ['letters']); await fp.click(`#settings [data-act="letters"][data-val="${val}"]`); await fp.keyboard.press('Escape'); await fp.waitForTimeout(800); };
     const LONG24 = N24.slice(0, 14).concat(['Maximiliana-Guadalupe', 'Bartholomew Alexander', 'Anne-Sophie', 'Christopher', 'Jo', 'Oluwaseun', 'Krzysztof', 'Xiomara Isabel', 'Ty', 'Wilhelmina']);
     await setNames(LONG24, fp); await drawNow(fp); await idle(fp); await play(5, fp);
     await fp.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 540, h: 400 })); await fp.waitForTimeout(600);
-    for (const [val, label, family] of [['early', 'Early readers', /21Board Early Readers/], ['legible', 'Easier to read', /Atkinson Hyperlegible/]]) {
-      await letters(val);
-      fd = await fitLook(fp);
-      const font = await inFrame(() => getComputedStyle(document.querySelector('.bracket-spot')).fontFamily, fp);
-      ok(!fd.bad.length && fd.sizes.length === 1 && family.test(font), `${label}, 24 names with long ones at 540×400: in its letters, every name in its spot, one size (${fd.sizes.join()}; ${font}; ${fd.bad.slice(0, 3).join('; ') || 'ok'})`);
-    }
+    fd = await fitLook(fp);
+    ok(!fd.bad.length && fd.sizes.length === 1, `24 names with long ones at 540×400: every name in its spot, one size (${fd.sizes.join()}; ${fd.bad.slice(0, 3).join('; ') || 'ok'})`);
     // The docs: what the Name Picker saves, and what it does.
     const dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
     ok(/saves `\{ names, [^}]*groupId, [^}]*bracket, bracketId[^}]*\}`/.test(dataDoc) && /`bracket` is /.test(dataDoc)
@@ -2381,12 +2364,12 @@ module.exports = T => {
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await wctx.close();
   }],
-  ['Name Picker: Versus from a file, and long names fitting in every Text style', async (browser) => {
+  ['Name Picker: Versus from a file, and long names fitting', async (browser) => {
     const { LOOKS, errors, showing, inFrame, vs, clean, LONG, IK, looksBoard, fitTools } = versusKit();
     // ---- A board from a file, at 1:1 (each emblem measured in screen pixels): every look, in two pickers each. A saved look
     // shows with no show; one we don't have, or none, gets one of the five. No look has text, and no two pickers share an
     // id. Long names fit their side and stay at least 8 px clear of the emblem at 360 × 270, at 540 × 400, and filling the
-    // board, in every Text style.
+    // board.
     const { ictx, ip } = await looksBoard(browser);
     ok(await eventually(async () => (await Promise.all(Array.from({ length: 12 }, (_, i) => vs(ip, IK(i + 1)).catch(() => null)))).every(Boolean), 15000), 'the board from the file opens with its twelve pickers');
     await ip.waitForTimeout(600);
@@ -2406,15 +2389,13 @@ module.exports = T => {
     ok(!clash.length, `two Name Pickers in the same look have no clashing ids, in every look (${clash.join(', ') || 'none clash'})`);
     // (The board at 100%, so a window's px are screen px.)
     await freeBoard(ip);
-    const { inkGaps, letters } = fitTools(ip);
+    const { inkGaps } = fitTools(ip);
     const tight = [], worst = {}, sizesAt = {};
-    for (const [val, label] of [['standard', 'the device’s letters'], ['early', 'Early readers'], ['legible', 'Easier to read']]) {
-      if (val !== 'standard') await letters(val);
-      // (In the device's letters, square and narrow windows too, down to the smallest, 260 × 200, and tall windows, where
-      // the names go above and below the emblem. Long names go above and below at 400 × 400 and 420 × 420 too, and in
-      // some looks at 540 × 460 and 900 × 700. Every Text style takes two tall windows: Early readers' letters reach
-      // deepest.)
-      for (const size of [[360, 270], [540, 400], null, [360, 480], [300, 400]].concat(val === 'standard' ? [[260, 200], [400, 400], [420, 420], [400, 460], [400, 500], [300, 520], [300, 640], [540, 460], [900, 700]] : [])) {
+    { const val = 'standard', label = 'Inter';
+      // (Square and narrow windows too, down to the smallest, 260 × 200, and tall windows, where the names go above and
+      // below the emblem. Long names go above and below at 400 × 400 and 420 × 420 too, and in some looks at 540 × 460 and
+      // 900 × 700.)
+      for (const size of [[360, 270], [540, 400], null, [360, 480], [300, 400], [260, 200], [400, 400], [420, 420], [400, 460], [400, 500], [300, 520], [300, 640], [540, 460], [900, 700]]) {
         const where = size ? size.join(' × ') : 'filling the board';
         for (let n = 1; n <= 10; n++) {
           const ik = IK(n);
@@ -2431,7 +2412,7 @@ module.exports = T => {
         }
       }
     }
-    ok(!tight.length, `long names fit their side, at least 8 px clear of the emblem beside them and 10 px above and below it, in every look, both ways round, at 360 × 270, 540 × 400, filling the board, 360 × 480, and 300 × 400, in every Text style, and at 260 × 200, 400 × 400, 420 × 420, 400 × 460, 400 × 500, 300 × 520, 300 × 640, 540 × 460, and 900 × 700 (closest: ${JSON.stringify(worst)}${tight.length ? '; ' + tight.slice(0, 4).join(' | ') : ''})`);
+    ok(!tight.length, `long names fit their side, at least 8 px clear of the emblem beside them and 10 px above and below it, in every look, both ways round, at 360 × 270, 540 × 400, filling the board, 360 × 480, 300 × 400, 260 × 200, 400 × 400, 420 × 420, 400 × 460, 400 × 500, 300 × 520, 300 × 640, 540 × 460, and 900 × 700 (closest: ${JSON.stringify(worst)}${tight.length ? '; ' + tight.slice(0, 4).join(' | ') : ''})`);
     // Readable in a square or narrow window: a narrow, tall Name Picker beside the board's other windows.
     ok(sizesAt['400 × 400'] >= 14 && sizesAt['420 × 420'] >= 14 && sizesAt['300 × 520'] >= 20 && sizesAt['300 × 640'] >= 20,
       `long names stay readable in square and tall windows, in every look (smallest, px: ${JSON.stringify(sizesAt)})`);
@@ -2448,10 +2429,9 @@ module.exports = T => {
     await eventually(async () => (await Promise.all(Array.from({ length: 12 }, (_, i) => vs(ip, IK(i + 1)).catch(() => null)))).every(Boolean), 15000);
     await ip.waitForTimeout(600);
     await freeBoard(ip);
-    const { inkGaps, letters } = fitTools(ip);
+    const { inkGaps } = fitTools(ip);
     // From a square window up, a taller window never makes the names smaller. (In a wider one the emblem grows with the
     // stage's height, as the looks were designed, until it takes 38% of the width.)
-    await letters('standard');
     const growth = [];
     for (const w of [300, 400]) for (let n = 1; n <= 5; n++) {
       const row = [];
@@ -2523,23 +2503,6 @@ module.exports = T => {
       }
     }
     ok(!darkTight.length, `dark theme: long names above and below the emblem stay at least 10 px clear of it, in every look, both ways round, at 400 × 460, 400 × 470, and 360 × 480 (closest: ${JSON.stringify(darkWorst)}${darkTight.length ? '; ' + darkTight.slice(0, 4).join(' | ') : ''})`);
-    // Early readers in dark theme is the tightest fit. Its letters reach deepest, and the emblems glow a little past their
-    // boxes. One window of each layout.
-    await letters('early');
-    const earlyTight = [], earlyWorst = {};
-    for (const [size, want] of [[[540, 400], 'side'], [[440, 440], 'tall']]) {
-      const where = size.join(' × ');
-      for (let n = 1; n <= 10; n++) {
-        const ik = IK(n);
-        await ip.evaluate(([ik, w, h]) => { window.__board21.setRect(ik, { x: 300, y: 120, w, h }); window.__board21.focusWin(ik); }, [ik, ...size]);
-        await ip.waitForTimeout(450);
-        const g = await inkGaps(ik), min = Math.min(g.L.gap, g.R.gap);
-        earlyWorst[where] = Math.min(earlyWorst[where] === undefined ? 999 : earlyWorst[where], min);
-        if (!((g.tall ? 'tall' : 'side') === want && min >= (g.tall ? 10 : 8) && g.L.inside && g.R.inside && !g.mid)) earlyTight.push(`${LOOKS[(n - 1) % 5]} ${(n > 5 ? LONG.slice().reverse() : LONG).join('/')}, ${where} ${g.tall ? '(above and below)' : '(beside)'}: ${g.L.gap} / ${g.R.gap} px`);
-      }
-    }
-    await letters('standard');
-    ok(!earlyTight.length, `dark theme, Early readers: long names stay 8 px clear of the emblem beside it at 540 × 400, and 10 px above and below it at 440 × 440, in every look, both ways round (closest: ${JSON.stringify(earlyWorst)}${earlyTight.length ? '; ' + earlyTight.slice(0, 4).join(' | ') : ''})`);
     // Wide windows keep the names beside the emblem, as designed, and so do short names in a wide window close to
     // square. A tall window puts them above and below it, in every look.
     const PAIRS = [['Mateo', 'Jamal'], ['Alexandria', 'Maximiliano'], ['Fatima', 'Ben']];
@@ -2945,23 +2908,19 @@ module.exports = T => {
       `dark theme: the wheel is drawn again in the dark colours, and the banner is dark with light names (${px.slice}, ${px.middle}; ${dark.join(', ')})`);
     await page.screenshot({ path: OUT + 'name-picker-wheel-dark.png' });
 
-    // ---- Settings → Text style → Easier to read: the names on the slices, the banner and SPIN are in those letters.
+    // ---- The names on the slices, the banner and SPIN are drawn in Inter.
     await setSize(page, { x: 300, y: 60, w: 640, h: 460 });
-    await showList(page, CLASS.slice(0, 12), 1); await page.waitForTimeout(300);
     await inFrame(page, () => {
       const c = CanvasRenderingContext2D.prototype, fill = c.fillText;
-      window.__drawn = []; window.__fontsIn = 0;
-      c.fillText = function () { window.__drawn.push({ font: this.font, at: performance.now() }); return fill.apply(this, arguments); };
-      document.fonts.addEventListener('loadingdone', () => { window.__fontsIn = performance.now(); });
+      window.__drawn = [];
+      c.fillText = function () { window.__drawn.push(this.font); return fill.apply(this, arguments); };
     });
-    await openSettings(page, ['letters']);
-    await page.click('#settings [data-act="letters"][data-val="legible"]'); await page.keyboard.press('Escape');
-    const FAM = '"Atkinson Hyperlegible"';
+    await showList(page, CLASS.slice(0, 12), 1); await page.waitForTimeout(300);
+    const INTER = /^(700|bold) [\d.]+px "?Inter"?,/;
     ok(await eventually(async () => {
-      const w = await look(page);
-      const drawn = await inFrame(page, (html, fam) => window.__fontsIn > 0 && window.__drawn.some(d => d.at >= window.__fontsIn && d.font.includes(fam) && /^(700|bold) /.test(d.font)), FAM);
-      return w.font.startsWith(FAM) && w.fonts.every(f => f.startsWith(FAM)) && drawn;
-    }, 10000), `Easier to read letters reach the wheel: the names on the slices are drawn again in them once loaded, and the banner and SPIN use them (${(await look(page)).fonts.join(' | ')})`);
+      const w = await look(page), drawn = await inFrame(page, () => window.__drawn);
+      return /^"?Inter"?,/.test(w.font) && w.fonts.every(f => /^"?Inter"?,/.test(f)) && drawn.length && drawn.some(f => INTER.test(f));
+    }, 10000), `the names on the slices are drawn in Inter, and the banner and SPIN use it (${(await look(page)).fonts.join(' | ')}; ${(await inFrame(page, () => window.__drawn.slice(-1)))[0]})`);
     if (errors.length) ok(false, 'no page or console errors: ' + errors.join(' | '));
     errors.length = 0;
     await ctx.close();
@@ -3332,7 +3291,7 @@ module.exports = T => {
       `names shortened in the smallest window never cut a flag or an emoji in two (${cut.map(t => t.name + ' → ' + t.text).join(', ')})`);
     await size(page, 420, 320);
 
-    // ---- Dark theme and the text style (Settings → Text style → Easier to read) reach the stage.
+    // ---- Dark theme reaches the stage.
     await page.evaluate(([ik, d]) => window.__board21.state.wins.get(ik).post('data', { data: d, reason: 'remote' }), [IK, { names: CLASS, left: CLASS.slice(3), picked: ['Liam'], pickId: '1-dark', current: 'Liam' }]);
     await page.waitForTimeout(300);
     const colours = () => inFrame(page, () => {
@@ -3352,15 +3311,9 @@ module.exports = T => {
     ok(col.theme === 'dark' && col.tileBg === col.s2 && col.tileText === col.text && col.cardBg === col.win && col.cardText === col.ink, `dark theme: the stage follows (tiles ${col.tileBg}, text ${col.tileText}, cards ${col.cardBg})`);
     await page.screenshot({ path: OUT + 'name-picker-spotlight-dark.png' });
     await setTheme(page, 'light');
-    await openSettings(page, ['letters']);
-    await page.click('#settings [data-act="letters"][data-val="legible"]');
-    await page.waitForTimeout(400); await inFrame(page, () => document.fonts.ready); await page.waitForTimeout(500);
+    await inFrame(page, () => document.fonts.ready); await page.waitForTimeout(300);
     s = await stage(page);
-    const tileFont = await inFrame(page, () => getComputedStyle(document.querySelector('.spotlight-nm')).fontFamily);
-    ok(tileFont.startsWith('"Atkinson Hyperlegible"') && s.cards[0].font.startsWith('"Atkinson Hyperlegible"') && await inFrame(page, () => [...document.fonts].some(f => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible' && f.status === 'loaded')),
-      `Easier to read letters reach the tiles and the cards (${tileFont.split(',')[0]})`);
-    ok(!s.tiles.some(t => t.over) && !s.cards.some(c => c.over) && s.tiles.every((t, i) => t.text === CLASS[i]), 'and the names are measured again in them: every name whole, none cut');
-    await page.click('#settings [data-act="letters"][data-val="standard"]'); await page.waitForTimeout(500); await page.keyboard.press('Escape');
+    ok(!s.tiles.some(t => t.over) && !s.cards.some(c => c.over) && s.tiles.every((t, i) => t.text === CLASS[i]), 'the names measured in Inter: every name whole, none cut');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
 
@@ -3856,22 +3809,16 @@ module.exports = T => {
     await page.locator(`.win[data-ikey="${IK}"]`).screenshot({ path: OUT + 'name-picker-lotto-dark.png' });
     await setTheme(page, 'light'); await page.waitForTimeout(100);
 
-    // ---- Text style: Settings → Text style → Easier to read reaches the names, the initials, the "?" and the tray's heading,
-    // and the names are fitted again in the new letters.
+    // ---- Names measured in Inter: a long name fills its room, and the names, the initials, the "?" and the tray's heading
+    // are in it.
     await size(420, 320);
     await put(C24, ['Maximiliano'], 1); await page.waitForTimeout(400);
-    const w0 = (await look()).names[0];
-    await openSettings(page, ['letters']);
-    await page.click('#settings [data-act="letters"][data-val="legible"]');
-    await page.keyboard.press('Escape');
-    ok(await eventually(async () => await inFrame(() => Array.from(document.fonts).some(f => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible' && f.status === 'loaded'))), 'Easier to read: the letters load in the widget');
-    await page.waitForTimeout(500);
     const fonts = await inFrame(() => ['.lotto-name .lotto-text', '.lotto-face', '.lotto-head', '.lotto-sock'].map(s => getComputedStyle(document.querySelector(s)).fontFamily));
     L = await look();
-    ok(fonts.every(f => f.startsWith('"Atkinson Hyperlegible"')), `its names, initials, “?” and heading are in them (${fonts.map(f => f.split(',')[0]).join(', ')})`);
-    ok(L.names[0].out <= 1 && L.names[0].fill >= 0.85 && L.names[0].fs !== w0.fs, `and the name is fitted again in the new letters (${Math.round(w0.fs)} px, now ${Math.round(L.names[0].fs)} px, filling ${Math.round(L.names[0].fill * 100)}%)`);
+    ok(fonts.every(f => /^"?Inter"?,/.test(f)), `its names, initials, “?” and heading are in Inter (${fonts.map(f => f.split(',')[0]).join(', ')})`);
+    ok(L.names[0].out <= 1 && L.names[0].fill >= 0.85, `and the name fits, filling its room (${Math.round(L.names[0].fs)} px, filling ${Math.round(L.names[0].fill * 100)}%)`);
     await page.mouse.click(1000, 400);
-    await page.locator(`.win[data-ikey="${IK}"]`).screenshot({ path: OUT + 'name-picker-lotto-letters.png' });
+    await page.locator(`.win[data-ikey="${IK}"]`).screenshot({ path: OUT + 'name-picker-lotto-inter.png' });
     if (errors.length) ok(false, 'no page errors or console errors: ' + errors.join(' | '));
     await ctx.close();
 

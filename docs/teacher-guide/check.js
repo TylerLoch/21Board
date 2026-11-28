@@ -7,7 +7,7 @@
  *
  * At 1366 × 768, 1920 × 1080 and 390 × 844, light and dark, it fails on: a console error, a page that scrolls
  * sideways, a screenshot that doesn't load or has no alt text, a link to a section that isn't there, a widget
- * tile with no section, or widget tiles that don't line up in rows. Screenshots of the first screen go to dist/check/.
+ * tile with no section, widget tiles that don't line up in rows, or the page's Inter face not loaded. Screenshots of the first screen go to dist/check/.
  */
 'use strict';
 const { chromium } = require('playwright');
@@ -84,6 +84,8 @@ async function checkOne(browser, base, w, h, scheme) {
       bg: getComputedStyle(document.body).backgroundColor,
     };
   });
+  const inter = await page.evaluate(() => document.fonts.ready.then(() => Array.from(document.fonts).some(f => f.family.replace(/"/g, '') === 'Inter' && f.status === 'loaded')));
+  if (!inter) fail(where, 'the Inter face isn’t loaded'); else ok('Inter is loaded');
   if (errors.length) fail(where, 'console errors: ' + JSON.stringify(errors.slice(0, 5))); else ok('no console errors');
   if (r.sideways > 1) fail(where, `scrolls sideways by ${r.sideways}px`); else ok('no sideways scroll');
   if (r.broken.length) fail(where, 'screenshots that don\'t load: ' + r.broken.join(', ')); else ok('every screenshot loads');

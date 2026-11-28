@@ -96,7 +96,7 @@ widget.
 | **Languages** | The Timer and Traffic Light come in English, Spanish, Russian, and Ukrainian. Tap the window's name ⌄, then **Language**, and pick one. Only that window changes. **Settings → Classroom → Default widget language** sets the language new windows start in. Title bars and menus stay English. A window that switches starts again and keeps what it saved. Nothing goes online to translate. |
 | **Close a window** | Its content is kept. Open the widget again to pick up where you left off. Several of one widget come back in order: 1, 2, 3. |
 | **Export** | *Full backup* saves everything, closed windows too. *Blank template* saves the layout and widget settings with no content, so it's safe to share with colleagues. With several pages, choose *All pages*, *This page*, or *This page as a blank template*. You get a `.21board` file. In Chrome and Edge on computers and Chromebooks, you choose where it goes, such as Google Drive. *Back up now* in Settings and the backup reminders always save every page. |
-| **Import** | Pick a `.21board` file, or drop it on the board. The suggested choice is *Open as a new page*. The others are *Replace this page* and *Add to this page*. For a file of several pages, choose *Add these pages* or *Replace all pages*, which has Undo. *Replace this page* keeps the page itself and takes the file's theme, accent color, text style, and default widget language, and says so when they differ. With Board Sync, the new windows, content, theme, accent color, text style, and default widget language reach your other devices too. Its Undo puts back the page, theme, accent color, text style, and default widget language it replaced. The other choices leave the theme, accent color, text style, and default widget language alone. A Board Sync device file opens as a backup of every page. |
+| **Import** | Pick a `.21board` file, or drop it on the board. The suggested choice is *Open as a new page*. The others are *Replace this page* and *Add to this page*. For a file of several pages, choose *Add these pages* or *Replace all pages*, which has Undo. *Replace this page* keeps the page itself and takes the file's theme, accent color, and default widget language, and says so when they differ. With Board Sync, the new windows, content, theme, accent color, and default widget language reach your other devices too. Its Undo puts back the page, theme, accent color, and default widget language it replaced. The other choices leave the theme, accent color, and default widget language alone. A Board Sync device file opens as a backup of every page. |
 | **Paste** | Ctrl+V or ⌘V opens a copied picture in a new Picture window. A copied video link opens in a new Video Player. Dropping either on the board does the same. On a touch screen, tap *Paste* in the Widget Picker. An animation copied from a web page pastes as a still. Open or drop its file to keep it moving. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so your layout looks the same on a laptop and the smartboard. In Settings, *Fill* lets the board take any window's shape, and you can change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover from a curious student. Settings → Classroom → **Board history…** lists earlier versions in a column beside Settings. Tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board, and can be undone. *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, and Import. An empty board offers *Go back to an earlier version*. Each window's menu has *Go back…*, for that window's earlier versions. |
@@ -150,11 +150,6 @@ time Settings opens.
   - **Accent color:** Blue, Purple, Rose, Orange, Green, Slate, or *Custom…* for any color. A custom color adjusts to
     stay readable in Light and Dark. The accent colors widgets and tints every title bar. With Board Sync, on all
     your devices. A board that had Pink or Teal is now Blue.
-  - **Text style ▸** for 21Board and its widgets. *Standard* uses the device's own font. *Easier to read* uses
-    Atkinson Hyperlegible, made for low vision, where I, l, and 1 all differ and 0 has a line through it. *Early
-    readers* uses Andika by SIL, with a and g the way children learn to write them. They're for easier reading.
-    Neither is a dyslexia font. Notes' Chalkboard and Whiteboard keep their own lettering. With Board Sync, on all
-    your devices. Before 2026.11.17-2 it was called *Letters* and stayed on each device.
   - **Board shape** for this page: *Widescreen*, the default, is 16:9 and the same on every screen. *Fill* uses the
     whole window. See [Board shape and size](#board-shape-and-size).
 - **Advanced ▸** shows an amber dot when a backup is overdue: none for a week, or none yet after a week with windows
@@ -195,7 +190,7 @@ board.js                Board shell logic (storage, sync, windows, picker, setti
 sw.js                   Service worker (offline copy, updates)  ← bump VERSION, run tools/release.js
 manifest.webmanifest    PWA manifest; lets the installed app open .21board files in Chrome
 icons/                  App icons (192 and 512 px), the 21 gear, and the goat (Settings → About)
-fonts/                  Text style fonts (Settings → Appearance), saved offline, loaded only once chosen
+fonts/                  Inter, the board's font, and its license, saved offline
 sdk/board21.js          The SDK every widget includes (window.Board21)
 sdk/board21-dev.js      The dev window: a widget opened outside 21Board runs in the real board
 sdk/dev/board-shell.js  index.html's markup for the dev window (made by tools/build-sdk.js)
@@ -358,18 +353,18 @@ in Settings → Board Sync.
 **What happens when you link a folder.** The last step says which of these happened, and ends with "Changes on any
 of your devices show up on the others, usually within a minute."
 
-- **An empty folder:** this device's board goes there at once, with its theme, accent color, text style, and default
-  widget language. A device with only its untouched first page, "Page 1", writes nothing yet, and takes the board from
+- **An empty folder:** this device's board goes there at once, with its theme, accent color, and default widget
+  language. A device with only its untouched first page, "Page 1", writes nothing yet, and takes the board from
   your other device. If two or three devices set up the same folder before Google Drive has carried one's file to the
-  others, a theme, accent color, text style, or default widget language chosen on any of them wins on all. The
+  others, a theme, accent color, or default widget language chosen on any of them wins on all. The
   defaults never replace a choice.
 - **A folder with a board, on a device that has never synced:** this device shows the board, in its theme, accent
-  color, text style, and default widget language. This device's own pages go after the board's: "This device’s 2
+  color, and default widget language. This device's own pages go after the board's: "This device’s 2
   pages were added at the end." A page both have, from the same import, keeps the folder's values, and this device's
-  different content stays beside it as a copy. This device's own theme, accent color, text style, and default widget
-  language don't count as a change, so they never replace the board's.
+  different content stays beside it as a copy. This device's own theme, accent color, and default widget language
+  don't count as a change, so they never replace the board's.
 - **A folder with another board,** after *Change…* to another class's folder, or after *Unlink* and linking a different
-  folder: this device switches to that board, and to its theme, accent color, text style, and default widget language.
+  folder: this device switches to that board, and to its theme, accent color, and default widget language.
   Its own pages stay in the other folder, and under Board history › Deleted pages for 30 days. Two boards are never
   combined. Before it leaves, *Change…* writes this device's file once more, with the work done here since its last
   write and a note that it left, as *Unlink* does. So the devices still on that folder get the work and stop listing
@@ -377,7 +372,7 @@ of your devices show up on the others, usually within a minute."
   Switching back within 20 seconds, while Undo for the pages it left is still offered, waits until that Undo is gone, so
   those pages come back with the work this device's file there holds.
 - **The same folder again,** after *Unlink*, or after the folder was renamed or moved: it carries on. Changes made
-  here while unlinked join the board, a theme, accent color, or text style too. If another device chose one since,
+  here while unlinked join the board, a theme, accent color, or default widget language too. If another device chose one since,
   the later choice wins. Nothing is deleted anywhere because of how this device looked while it wasn't syncing.
 - **Google Drive still bringing the folder or its files:** it links anyway. Nothing is merged or written until the
   files can be read, up to 10 minutes, so a slow Drive can never combine two boards. A theme, accent color, or text
@@ -413,22 +408,19 @@ being typed in, is due again.
   locking takes away an Undo already shown. A clash where your text stayed in the window says so without Undo,
   because the other device kept its own version as the copy. Several pages deleted at once on another device make
   one message, "3 pages were deleted on the laptop.", with one Undo that leaves you on the page you're on.
-- **Theme, accent color, text style, and default widget language belong to the board.** The latest choice, made on any
-  device, shows on all of them at once, in every tab, even while the board is locked. Set the laptop to Dark and the
-  smartboard turns dark. Choose Early readers on the laptop, and the smartboard's text and widgets change too. If
-  Settings is open, it shows the new choice in place without being redrawn. The device that shows the change says who
+- **Theme, accent color, and default widget language belong to the board.** The latest choice, made on any device,
+  shows on all of them at once, in every tab, even while the board is locked. Set the laptop to Dark and the smartboard
+  turns dark. If Settings is open, it shows the new choice in place without being redrawn. The device that shows the change says who
   made it, in one message: "The laptop changed the theme to Dark and the accent color to Green.", "The laptop changed
-  the text style to “Early readers”.", "The laptop changed the accent color to a custom one.", or "The laptop changed
-  the default widget language to Español." There's no Undo, since changing it back in Settings is one tap, and syncs.
+  the accent color to a custom one.", or "The laptop changed the default widget language to Español." There's no Undo, since changing it back in Settings is one tap, and syncs.
   Auto stays Auto everywhere, so each device follows its own light or dark setting. A device that only ever had the
   defaults, or the folder's, never replaces another's choice. A choice made while unlinked counts when the same folder
   is linked again, and of two made apart, the later wins on every device. Board history never changes them, and neither
-  does Undo on an "Updated from…" message. A device still on 2026.11.16-4 doesn't know the text style. It keeps its own,
-  and changes nobody's, until it updates. Then each device keeps its text style until one is chosen on any of your
-  devices, or takes one already chosen on another updated device. A device on a release before 2026.11.18-2 shows Blue
+  does Undo on an "Updated from…" message. A device on 2026.11.28-1 or earlier keeps its own text style. It shares it only with your other devices on those
+  releases. A device on a release before 2026.11.18-2 shows Blue
   for a custom accent color until it updates. The page shown, Lock, Stay awake, the clock, and the Widget Picker's
-  corners stay on each device. Settings says "On all your devices." beside Theme, Accent color, Text style, and Default
-  widget language, "This device only." beside Stay awake and the clock, and "This page, on all your devices." beside the
+  corners stay on each device. Settings says "On all your devices." beside Theme, Accent color, and Default widget
+  language, "This device only." beside Stay awake and the clock, and "This page, on all your devices." beside the
   page's own settings.
 
 **Settings → Board Sync** has three rows:
@@ -650,7 +642,7 @@ doesn't copy the apps or their work.
 - **Backups, templates, the Google Drive folder, and Board history** keep the window's place and whether it's open,
   never the app's work. A board opened on another device opens that device's 21Sketch, with whatever is saved there.
   To move a drawing, use 21Sketch's own project file, a `.json`.
-- 21Board's theme, accent color, text style, and size don't reach these apps. They have their own settings.
+- 21Board's theme, accent color, and size don't reach these apps. They have their own settings.
 
 **Production and the test site.** At `boardapp.ccsd21.org`, 21Board and the apps share one site, ccsd21.org. So
 Chrome, on Chromebooks and the smartboards, treats the app in the window as the same app as on its own, with the
@@ -764,7 +756,7 @@ versions for the past 30 days*, *Weekly versions for the past 12 weeks*. When Bo
 it has used its share of the device's storage or the device is full, the oldest versions go first. Versions you save
 are never deleted to make room. Photos are stored once.
 
-**Going back never changes the theme, accent color, or text style.** A running timer comes back paused, and a running
+**Going back never changes the theme, accent color, or default widget language.** A running timer comes back paused, and a running
 stopwatch comes back stopped. If going back can't finish, 21Board says why and the board stays as it was. *Erase
 everything* keeps Board history, so it can be undone. If the board as it is can't be kept first, 21Board asks before
 erasing. *Erase, including Board history* erases it too.
@@ -830,7 +822,7 @@ devices changing and merging one board. It takes a couple of minutes, and `tests
 the results. It takes a filter too. It won't start while another test run is going.
 
 GitHub runs the whole of `tests/run.js` for every push, in 15 parts at once, in about 9 minutes. It installs the
-fonts the tests are written with, so text measures the same. `.github/fonts/` makes Inter the system font.
+fonts the tests are written with, so text measures the same. `.github/fonts/` makes Inter the system font too, for text the board's own font doesn't draw.
 `node tools/ci-wait.js` waits for the pushed commit's run, then prints each part and every failure. It prints nothing
 while it waits. It needs the GitHub CLI, `gh`. Add `--save-timings` to save how long each suite took to
 `tests/timings.json`. `PART=k/n` uses those times to give each part about the same work.
@@ -863,16 +855,16 @@ Firefox. Full screen is hidden where the browser doesn't support it.
 - `widgets/notes/fonts/Excalifont-Regular.woff2`: *Excalifont* by Excalidraw (based on Virgil by Ellinor
   Rapp), used unmodified under the SIL Open Font License 1.1 (`widgets/notes/fonts/Excalifont-OFL.txt`),
   for the Notes Whiteboard theme.
-- `fonts/AtkinsonHyperlegible-Regular.woff2` and `-Bold.woff2`: *Atkinson Hyperlegible* 1.006 by the Braille
-  Institute, under the SIL Open Font License 1.1 (`fonts/AtkinsonHyperlegible-OFL.txt`), for Settings → Appearance →
-  Text style → *Easier to read*. `tools/build-letter-fonts.py` makes them from the originals in the google/fonts
-  repository. It cuts them down to Latin letters (Basic Latin, Latin-1, Latin Extended-A) and the punctuation
-  21Board uses, as WOFF2.
-- `fonts/EarlyReaders-Regular.woff2` and `-Bold.woff2`: *Andika* 6.101 by SIL International, under the SIL Open Font
-  License 1.1 (`fonts/EarlyReaders-OFL.txt`), for *Early readers*. Made the same way, and renamed “21Board Early
-  Readers”, since Andika is a Reserved Font Name that a cut-down copy may not use. Its line height comes down from
-  1.61 to 1.36 em, room for these letters' accents only. The four fonts add about 83 KB to the offline copy, or 92
-  KB with the licenses. Every device saves them, and 21Board uses one only once it's chosen.
+- `fonts/Inter-21Board.woff2`: *Inter* 4.001 by Rasmus Andersson and the Inter Project Authors, under the SIL Open
+  Font License 1.1 (`fonts/Inter-OFL.txt`). It's the font of 21Board and every widget. `tools/build-inter.py` makes it
+  from the original in the google/fonts repository: opsz pinned at 14, the weight axis kept with its regular a little
+  heavier, I with bars and l with a tail, -> kept as two characters, and cut down to the letters 21Board shows in
+  English, Spanish, Russian, Ukrainian, and Greek. About 64 KB.
+- `widgets/calculator/fonts/InterItalic-21Board.woff2`: *Inter* Italic, the same, cut down to the Calculator's letters
+  a, b, n, and x, and the word "of". About 3 KB.
+
+**For IT:** The tool checks each original's SHA-256 before it builds. `tools/build-inter.py --check` rebuilds and
+compares the bytes.
 
 ## License
 

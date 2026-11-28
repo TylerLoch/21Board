@@ -289,7 +289,7 @@
   }
   fitChips();
   Board21.ready().then(fitChips);   // (again in the window's font: on its own, the SDK sets it after this script)
-  addEventListener('resize', fitChips);   // (also when the text style's font changes)
+  addEventListener('resize', fitChips);   // (also once a font has loaded)
   $('chips').onclick = e => { const b = e.target.closest('button'); if (b) setDuration(+b.dataset.min * 60000); };
 
   // Window menu: pick the alarm sound (picking one plays it), or turn it off; then the warning near the end.

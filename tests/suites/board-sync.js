@@ -388,8 +388,8 @@ module.exports = T => {
     ok(await A.p.locator('#settings [data-act="link-send"], #settings [data-act="link-auto"], #settings [data-act="link-photo"], #settings [data-act="group"][data-val="boards"], #settings [data-act="group"][data-val="folder"]').count() === 0,
       'no Send, Send automatically, Send the background photo, Boards from other devices or Folder settings');
     const hints = await A.p.evaluate(() => Array.from(document.querySelectorAll('#settings .hint')).map(h => h.textContent));
-    ok(hints.filter(h => /This page, on all your devices\./.test(h)).length >= 2 && hints.filter(h => h === 'This device only.').length >= 2 && hints.filter(h => h === 'On all your devices.').length === 4 && !hints.some(h => /This page only\./.test(h)),
-      'while linked, the page’s own settings say “This page, on all your devices.”, the device’s own say “This device only.”, and Theme, Accent color, Text style, and Default widget language “On all your devices.”');
+    ok(hints.filter(h => /This page, on all your devices\./.test(h)).length >= 2 && hints.filter(h => h === 'This device only.').length >= 2 && hints.filter(h => h === 'On all your devices.').length === 3 && !hints.some(h => /This page only\./.test(h)),
+      'while linked, the page’s own settings say “This page, on all your devices.”, the device’s own say “This device only.”, and Theme, Accent color, and Default widget language “On all your devices.”');
     await openSettings(A.p, ['about']);
     const footer = (await A.p.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
     ok(footer.endsWith(' Your work is stored only on this device and in your school Google Drive.') && !/sends nothing/.test(footer), `About says the work is stored only here and in the school Google Drive (${footer})`);
@@ -1872,8 +1872,7 @@ module.exports = T => {
   }],
 
   // Tyler's decision 5: the theme and accent color are the board's, on every device linked to the folder (the later
-  // change wins, as for a page's name); the text style too, from 2026.11.17-2; the clock, Lock and Stay awake stay on
-  // each device.
+  // change wins, as for a page's name); the clock, Lock and Stay awake stay on each device.
   ['Board Sync: theme and accent color on every device (a change and what it says, Settings open, Auto back, locked, another tab, kiosk, a fresh smartboard, the hints)', async (browser) => {
     const errors = [];
     const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
@@ -1882,22 +1881,21 @@ module.exports = T => {
       return `${s.theme} ${a} ${document.body.classList.contains('dark') ? 'dark' : 'light'} ${document.body.style.getPropertyValue('--focus-ring').trim() || 'built-in'}`; });
     const hints = p => p.evaluate(() => {
       const hint = act => { const b = document.querySelector(`#settings [data-act="${act}"]`), r = b && b.closest('.row'), h = r && r.querySelector('.hint'); return h ? h.textContent.trim() : ''; };
-      const g = document.querySelector('#settings [data-act="group"][data-val="letters"] .hint');   // (Text style: a group, its hint on its row)
-      return { theme: hint('theme'), accent: hint('accent'), text: g ? g.textContent.trim() : '', clock: hint('clock'), awake: hint('awake') };
+      return { theme: hint('theme'), accent: hint('accent'), clock: hint('clock'), awake: hint('awake') };
     });
     const pick = async (p, act, val) => { await p.click(`#settings [data-act="${act}"][data-val="${val}"]`); await p.waitForTimeout(300); };
     const said = (p, text) => p.locator('#toasts .toast', { hasText: text });
 
     await openSettings(A.p);
     const h0 = await hints(A.p);
-    ok(h0.theme === '' && h0.accent === '' && h0.text === '' && !/This device only/.test(h0.clock + h0.awake), `not linked: no hint beside Theme, Accent color or Text style (${JSON.stringify(h0)})`);
+    ok(h0.theme === '' && h0.accent === '' && !/This device only/.test(h0.clock + h0.awake), `not linked: no hint beside Theme or Accent color (${JSON.stringify(h0)})`);
     await A.p.keyboard.press('Escape');
     await addNote(A.p, 'Morning meeting');
     await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
     await openSettings(A.p);
     const h1 = await hints(A.p);
-    ok(h1.theme === 'On all your devices.' && h1.accent === 'On all your devices.' && h1.text === 'On all your devices.' && h1.clock === 'This device only.' && h1.awake === 'This device only.',
-      `linked: “On all your devices.” beside Theme, Accent color and Text style; the clock and Stay awake still “This device only.” (${JSON.stringify(h1)})`);
+    ok(h1.theme === 'On all your devices.' && h1.accent === 'On all your devices.' && h1.clock === 'This device only.' && h1.awake === 'This device only.',
+      `linked: “On all your devices.” beside Theme and Accent color; the clock and Stay awake still “This device only.” (${JSON.stringify(h1)})`);
     const accentRow = await A.p.evaluate(() => {
       const row = document.querySelector('#settings .accent-row'), r = document.createRange();
       r.selectNodeContents(row.querySelector('.hint'));
@@ -1981,7 +1979,7 @@ module.exports = T => {
     await openSettings(C.p);
     await pick(C.p, 'theme', 'light'); await pick(C.p, 'accent', 'slate');
     const h2 = await hints(C.p);
-    ok(h2.theme === '' && h2.accent === '' && h2.text === '', 'a device not linked yet: no hint beside them');
+    ok(h2.theme === '' && h2.accent === '', 'a device not linked yet: no hint beside them');
     await C.p.keyboard.press('Escape');
     await deliver(A.p, C.p); await deliver(B.p, C.p); await linkFolder(C.p);
     ok(await look(C.p) === pinkA, `a fresh smartboard set up against a folder whose board is Dark and pink becomes Dark and pink (${await look(C.p)})`);
@@ -1991,7 +1989,7 @@ module.exports = T => {
     ok(await look(A.p) === pinkA && await look(B.p) === pinkA, 'the laptop and the smartboard keep theirs');
     await openSettings(C.p);
     const h3 = await hints(C.p);
-    ok(h3.theme === 'On all your devices.' && h3.accent === 'On all your devices.' && h3.text === 'On all your devices.', 'and once linked, it says “On all your devices.” beside them');
+    ok(h3.theme === 'On all your devices.' && h3.accent === 'On all your devices.', 'and once linked, it says “On all your devices.” beside them');
     await C.p.keyboard.press('Escape');
 
     // Import › Replace this page takes the file's theme and accent, as before: a change made here, so it syncs. The
@@ -2220,73 +2218,37 @@ module.exports = T => {
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
 
-  // The text style (Settings › Text style, called Letters before 2026.11.17-2) is the board's too, as the theme and accent.
-  ['Board Sync: theme and accent color, and the text style, and the default widget language (Early readers from the laptop, all three at once, Settings open, locked, another tab, kiosk, Import)', async (browser) => {
+  // The default widget language is the board's too, as the theme and accent. The text style, which only releases up to
+  // 2026.11.28-1 show, stays in the settings and device files, unshown and unsaid.
+  ['Board Sync: theme and accent color, and the default widget language (Español from the laptop, all three at once, Settings open, locked, another tab, kiosk, Import, and a text style from an older release)', async (browser) => {
     const errors = [];
     const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
-    const FAM = { standard: 'system-ui', legible: '"Atkinson Hyperlegible"', early: '"21Board Early Readers"' };
-    // the text style, and the font 21Board's own text is in
-    const text = p => p.evaluate(() => `${window.__board21.state.settings.letters} ${getComputedStyle(document.body).fontFamily.split(',')[0]}`);
-    const look = p => p.evaluate(() => { const s = window.__board21.state.settings; return `${s.theme} ${s.accent} ${s.letters}`; });
-    const row = p => p.evaluate(() => { const g = document.querySelector('#settings [data-act="group"][data-val="letters"]'), h = g && g.querySelector('.hint');
-      return g && { label: g.querySelector('.lbl').textContent, hint: h ? h.textContent : '', value: g.querySelector('.v').textContent }; });
+    const look = p => p.evaluate(() => { const s = window.__board21.state.settings; return `${s.theme} ${s.accent} ${s.widgetLanguage}`; });
     const said = (p, t) => p.locator('#toasts .toast', { hasText: t });
     // (a choice made, and stored: what the next round reads)
     const stored = (p, fn, arg) => p.waitForFunction(fn, arg).then(() => p.evaluate(() => window.__board21.writer.settled(5000)));
-    const pick = async (p, act, val) => { await p.click(`#settings [data-act="${act}"][data-val="${val}"]`); await stored(p, ([a, v]) => window.__board21.state.settings[a] === v, [act, val]); };
+    const pick = async (p, act, val) => { await p.click(`#settings [data-act="${act}"][data-val="${val}"]`); await stored(p, ([a, v]) => window.__board21.state.settings[a === 'widget-language' ? 'widgetLanguage' : a] === v, [act, val]); };
     const lock = async (p, on) => { if (on) await lockBoard(p, 'widgets'); else await unlockBoard(p); await stored(p, on => !!window.__board21.state.settings.locked === on, on); };
     const round = async (from, ...to) => { await syncNow(from.p); for (const d of to) { await deliver(from.p, d.p); await syncNow(d.p); } };
+    const letters = p => p.evaluate(() => { const s = window.__board21.state.settings; return { letters: s.letters, lettersAt: s.lettersAt }; });
 
-    await openSettings(A.p);
-    const r0 = await row(A.p);
-    ok(r0 && r0.label === 'Text style' && r0.hint === '' && r0.value === 'Standard', `Settings › Appearance › Text style, Standard, with no hint while not linked (${JSON.stringify(r0)})`);
-    await A.p.keyboard.press('Escape');
     await addNote(A.p, 'Morning meeting');
     await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
-    await openSettings(A.p);
-    const r1 = await row(A.p);
-    ok(r1.hint === 'On all your devices.', `linked: Text style says “On all your devices.” (${JSON.stringify(r1)})`);
-    await A.p.keyboard.press('Escape');
-
-    // The laptop picks Early readers, with Settings open on the smartboard at Text style (the keyboard on Standard) and a
-    // note open there.
-    const nb = (await winList(B.p))[0].ikey, inNote = (fn, arg) => B.p.frameLocator(`.win[data-ikey="${nb}"] iframe`).locator('html').evaluate(fn, arg);
-    await inNote(() => { window.__resized = 0; addEventListener('resize', () => window.__resized++); });
-    await openSettings(B.p, ['letters']);
-    await B.p.focus('#settings [data-act="letters"][data-val="standard"]');
-    await B.p.evaluate(() => { const body = document.querySelector('#settings .sheet-body'); window.__drawn = 0; new MutationObserver(ms => { if (ms.some(m => m.target === body)) window.__drawn++; }).observe(body, { childList: true }); });
-    await hear(B.p);
-    await openSettings(A.p, ['letters']); await pick(A.p, 'letters', 'early'); await A.p.keyboard.press('Escape');
-    ok(await text(A.p) === `early ${FAM.early}`, `(the laptop is in Early readers: ${await text(A.p)})`);
-    await round(A, B);
-    ok(await text(B.p) === `early ${FAM.early}`, `the smartboard’s board switches to Early readers within a round (${await text(B.p)})`);
-    ok(await eventually(async () => await inNote((html, f) => getComputedStyle(document.body).fontFamily.startsWith(f) && getComputedStyle(html).getPropertyValue('--b21-font').trim().startsWith(f) && window.__resized > 0, FAM.early)),
-      `and so does its open note (--b21-font, and the resize that follows: ${await inNote(() => window.__resized)})`);
-    const st = await B.p.evaluate(() => ({ early: document.querySelector('#settings [data-act="letters"][data-val="early"]').getAttribute('aria-checked'), ticks: Array.from(document.querySelectorAll('#settings .letter-opt .tick'), t => t.parentElement.dataset.val).join(),
-      std: document.querySelector('#settings [data-act="letters"][data-val="standard"]').className, value: document.querySelector('#settings [data-val="letters"] .v').textContent,
-      font: getComputedStyle(document.querySelector('#settings .row .lbl')).fontFamily.split(',')[0], focus: `${document.activeElement.dataset.act}=${document.activeElement.dataset.val}`, drawn: window.__drawn }));
-    ok(st.early === 'true' && st.ticks === 'early' && st.std === 'letter-opt' && st.value === 'Early readers' && st.font === FAM.early && st.focus === 'letters=standard' && st.drawn === 0,
-      `Settings open on the smartboard shows Early readers chosen, in its letters, put in place: the keyboard where it was, not drawn again (${JSON.stringify(st)})`);
-    ok((await heard(B.p)).includes('The laptop changed the text style to “Early readers”.'), `it says “The laptop changed the text style to “Early readers”.” (${(await heard(B.p)).join(' | ')})`);
-    ok(await said(B.p, 'The laptop changed the text style').locator('button').count() === 0, 'with no Undo');
-    await B.p.evaluate(() => document.fonts.ready); await B.p.screenshot({ path: OUT + 'text-style-synced.png' });
-    const fileA = await ownJSON(A.p), devA = await A.p.evaluate(() => window.__board21.link.dev());
-    ok(fileA.letters === 'early' && fileA.sync.style.letters[0] === devA, `the laptop’s file has it, and its version (${JSON.stringify(fileA.sync.style.letters)})`);
-    await B.p.keyboard.press('Escape');
+    const devA = await A.p.evaluate(() => window.__board21.link.dev());
 
     // Two and three at once, said in one message.
     await hear(B.p);
-    await openSettings(A.p, ['letters']); await pick(A.p, 'theme', 'dark'); await pick(A.p, 'letters', 'legible'); await A.p.keyboard.press('Escape');
+    await openSettings(A.p); await pick(A.p, 'theme', 'dark'); await pick(A.p, 'accent', 'orange'); await A.p.keyboard.press('Escape');
     await round(A, B);
-    ok(await look(B.p) === 'dark blue legible' && (await heard(B.p)).includes('The laptop changed the theme to Dark and the text style to “Easier to read”.'),
-      `the theme and text style: “The laptop changed the theme to Dark and the text style to “Easier to read”.” (${await look(B.p)}; ${(await heard(B.p)).join(' | ')})`);
+    ok(await look(B.p) === 'dark orange en' && (await heard(B.p)).includes('The laptop changed the theme to Dark and the accent color to Orange.'),
+      `the theme and accent color: “The laptop changed the theme to Dark and the accent color to Orange.” (${await look(B.p)}; ${(await heard(B.p)).join(' | ')})`);
     await hear(A.p);
-    await openSettings(B.p, ['letters']); await pick(B.p, 'theme', 'light'); await pick(B.p, 'accent', 'green'); await pick(B.p, 'letters', 'early'); await B.p.keyboard.press('Escape');
+    await openSettings(B.p, ['widget-language']); await pick(B.p, 'theme', 'light'); await pick(B.p, 'accent', 'green'); await pick(B.p, 'widget-language', 'uk'); await B.p.keyboard.press('Escape');
     await round(B, A);
-    ok(await look(A.p) === 'light green early' && await text(A.p) === `early ${FAM.early}` && (await heard(A.p)).includes('The smartboard changed the theme to Light, the accent color to Green, and the text style to “Early readers”.'),
-      `all three: “The smartboard changed the theme to Light, the accent color to Green, and the text style to “Early readers”.” (${await look(A.p)}; ${(await heard(A.p)).join(' | ')})`);
+    ok(await look(A.p) === 'light green uk' && (await heard(A.p)).includes('The smartboard changed the theme to Light, the accent color to Green, and the default widget language to Українська.'),
+      `all three: “The smartboard changed the theme to Light, the accent color to Green, and the default widget language to Українська.” (${await look(A.p)}; ${(await heard(A.p)).join(' | ')})`);
     await round(A, B);
-    ok(await look(B.p) === 'light green early', 'nothing changes back');
+    ok(await look(B.p) === 'light green uk', 'nothing changes back');
 
     // The default widget language: Español from the laptop, with Settings open on the smartboard at that group. It is put
     // in place there, said with no Undo, kept in the laptop's file with its version, and a Timer opened on the smartboard
@@ -2294,8 +2256,7 @@ module.exports = T => {
     await openSettings(B.p, ['widget-language']);
     await B.p.evaluate(() => { const body = document.querySelector('#settings .sheet-body'); window.__drawn = 0; new MutationObserver(ms => { if (ms.some(m => m.target === body)) window.__drawn++; }).observe(body, { childList: true }); });
     await hear(B.p);
-    await openSettings(A.p, ['widget-language']); await A.p.click('#settings [data-act="widget-language"][data-val="es"]');
-    await stored(A.p, () => window.__board21.state.settings.widgetLanguage === 'es'); await A.p.keyboard.press('Escape');
+    await openSettings(A.p, ['widget-language']); await pick(A.p, 'widget-language', 'es'); await A.p.keyboard.press('Escape');
     await round(A, B);
     const wl = await B.p.evaluate(() => ({ set: window.__board21.state.settings.widgetLanguage, es: document.querySelector('#settings [data-act="widget-language"][data-val="es"]').getAttribute('aria-checked'),
       ticks: Array.from(document.querySelectorAll('#settings .lang-opt .tick'), t => t.parentElement.dataset.val).join(), value: document.querySelector('#settings [data-val="widget-language"] .v').textContent,
@@ -2312,22 +2273,41 @@ module.exports = T => {
       `a Timer opened on the smartboard opens in Spanish (${await B.p.evaluate(ik => window.__board21.state.insts.get(ik).language, tk)})`);
     await B.p.evaluate(ik => window.__board21.deleteInstance(ik), tk); await round(B, A);
 
-    // Locked, with another tab and a kiosk tab of the smartboard open: Standard from the laptop applies everywhere.
+    // Locked, with another tab and a kiosk tab of the smartboard open: Dark from the laptop applies everywhere.
+    const dark = p => p.evaluate(() => document.body.classList.contains('dark'));
     const B2 = await B.c.newPage(); B2.on('pageerror', e => errors.push('smartboard tab 2: ' + e.message)); await B2.goto(BASE); await boardUp(B2);
     const K = await B.c.newPage(); K.on('pageerror', e => errors.push('smartboard kiosk: ' + e.message)); await K.goto(BASE + '?kiosk=yes'); await boardUp(K);
     await lock(B.p, true);
-    ok(await B.p.evaluate(() => window.__board21.state.settings.locked === 'widgets') && await text(B2) === `early ${FAM.early}`, '(the smartboard is locked; its other tab is in Early readers)');
+    ok(await B.p.evaluate(() => window.__board21.state.settings.locked === 'widgets') && !await dark(B2), '(the smartboard is locked; its other tab is light)');
     await hear(B.p);
-    await openSettings(A.p, ['letters']); await pick(A.p, 'letters', 'standard'); await A.p.keyboard.press('Escape');
+    await openSettings(A.p); await pick(A.p, 'theme', 'dark'); await A.p.keyboard.press('Escape');
     await round(A, B);
-    ok(await text(B.p) === `standard ${FAM.standard}` && (await heard(B.p)).includes('The laptop changed the text style to “Standard”.'), `locked: Standard applies, and is said (${await text(B.p)}; ${(await heard(B.p)).join(' | ')})`);
-    ok(await eventually(async () => await text(B2) === `standard ${FAM.standard}`), `another tab of the smartboard follows (${await text(B2)})`);
-    ok(await eventually(async () => await text(K) === `standard ${FAM.standard}`), `and so does one in kiosk mode (${await text(K)})`);
+    ok(await dark(B.p) && (await heard(B.p)).includes('The laptop changed the theme to Dark.'), `locked: Dark applies, and is said (${(await heard(B.p)).join(' | ')})`);
+    ok(await eventually(() => dark(B2)), 'another tab of the smartboard follows');
+    ok(await eventually(() => dark(K)), 'and so does one in kiosk mode');
     await lock(B.p, false);
     await B2.close(); await K.close();
 
-    // Import › Replace this page takes the file's text style (a change made here, so it syncs); the dialog says so, and
-    // its Undo puts it back, on every device. The other ways to import leave it alone, and so does a file without one.
+    // A text style from an older release: written straight into the laptop's settings record, as an older release's
+    // Settings does (shown in its tab as another tab's change). The smartboard takes it silently, keeps Inter, and
+    // passes it on in its own file.
+    await A.p.evaluate(async () => {
+      const B = window.__board21, [rec] = await B.store.getMany(['settings']);
+      rec.value = Object.assign({}, rec.value, { letters: 'legible', lettersAt: Date.now() }); rec.rev = Date.now(); rec.updatedAt = Date.now();
+      await B.store.tx('readwrite', s => { s.put(rec); });
+      B.applyMerged(['settings'], await B.store.getMany(['settings']));
+    });
+    ok(await A.p.evaluate(() => window.__board21.state.settings.letters) === 'legible', '(the laptop holds an older release’s text style)');
+    await hear(B.p);
+    await round(A, B);
+    const old = await B.p.evaluate(() => ({ letters: window.__board21.state.settings.letters, font: getComputedStyle(document.body).fontFamily }));
+    ok(old.letters === 'legible' && /^"?Inter"?,/.test(old.font), `the smartboard takes an older release’s text style into its settings, and stays in Inter (${JSON.stringify(old)})`);
+    ok(!(await heard(B.p)).some(h => /text style|Easier to read/i.test(h)), `and says nothing of it (${(await heard(B.p)).join(' | ') || 'nothing said'})`);
+    await syncNow(B.p);
+    const fileB = await ownJSON(B.p);
+    ok(fileB.letters === 'legible' && fileB.sync.style.letters && fileB.sync.style.letters[0] === devA, `its own file carries it, with the laptop’s version (${fileB.letters} ${JSON.stringify(fileB.sync.style.letters)})`);
+
+    // Import › Replace this page takes the file's theme and accent color, never a text style, and its Undo stamps none.
     const fileWith = async (name, set) => {
       const exp = await A.p.evaluate(async set => {
         const e = await window.__board21.buildExport('full');
@@ -2337,32 +2317,21 @@ module.exports = T => {
       fs.writeFileSync(OUT + name, JSON.stringify(exp)); return OUT + name;
     };
     const offer = async f => { await A.p.setInputFiles('#import-input', f); return (await A.p.locator('#modal.open .btn', { hasText: 'Replace this page' }).innerText()).replace(/\s+/g, ' '); };
-    let sub = await offer(await fileWith('colleague-all-three.21board', { theme: 'dark', accent: 'orange', letters: 'early' }));
-    ok(/This page’s windows and content are replaced, here and on your other devices\. So are the theme, accent color, and text style\. You can undo this\./.test(sub), `a file in another theme, accent color, and text style: Replace this page names all three (${sub})`);
-    await A.p.locator('#modal.open .modal-card').evaluate(e => Promise.all(e.getAnimations().map(a => a.finished))); await A.p.screenshot({ path: OUT + 'text-style-import.png' });
+    let sub = await offer(await fileWith('colleague-two.21board', { theme: 'light', accent: 'purple' }));
+    ok(/This page’s windows and content are replaced, here and on your other devices\. So are the theme and accent color\. You can undo this\./.test(sub), `a file in another theme and accent color: Replace this page names both (${sub})`);
     await A.p.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await A.p.locator('#modal.open').waitFor({ state: 'hidden' });
-    await hear(B.p);
-    sub = await offer(await fileWith('colleague-easier.21board', { letters: 'legible', name: 'Fractions (Ms. Lee)' }));
-    ok(/This page’s windows and content are replaced, here and on your other devices\. So is the text style\. You can undo this\./.test(sub), `a file in Easier to read: “…here and on your other devices. So is the text style.” (${sub})`);
+    const before = await letters(A.p);
+    sub = await offer(await fileWith('colleague-early.21board', { letters: 'early', name: 'Fractions (Ms. Lee)' }));
+    await A.p.locator('#modal.open .modal-card').evaluate(e => Promise.all(e.getAnimations().map(a => a.finished))); await A.p.screenshot({ path: OUT + 'import-old-text-style.png' });
+    ok(!/text style/.test(sub), `a file with a text style: Replace this page doesn’t name it (${sub})`);
     await A.p.locator('#modal.open .btn', { hasText: 'Replace this page' }).click();
-    await A.p.locator('#toasts .toast', { hasText: 'Board imported.' }).waitFor();
-    await round(A, B);
-    ok(await text(A.p) === `legible ${FAM.legible}` && await text(B.p) === `legible ${FAM.legible}`, `Replace this page: both take its Easier to read (${await text(A.p)} / ${await text(B.p)})`);
-    ok((await heard(B.p)).includes('The laptop changed the text style to “Easier to read”.'), `and the smartboard says so (${(await heard(B.p)).join(' | ')})`);
+    await A.p.locator('#toasts .toast', { hasText: 'Board imported.' }).waitFor(); await A.p.evaluate(() => window.__board21.writer.settled(5000));
+    const afterReplace = await letters(A.p);
     await A.p.locator('#toasts .toast', { hasText: 'Board imported.' }).locator('button', { hasText: 'Undo' }).click();
-    ok(await eventually(async () => await text(A.p) === `standard ${FAM.standard}` && await A.p.evaluate(() => window.__board21.state.board.name) !== 'Fractions (Ms. Lee)'),
-      `the import’s Undo brings back the page and the text style it replaced (${await text(A.p)})`);
-    await round(A, B);
-    ok(await text(B.p) === `standard ${FAM.standard}`, `on both (${await text(B.p)})`);
-    const early = await fileWith('colleague-early.21board', { letters: 'early' });
-    await A.p.setInputFiles('#import-input', early); await A.p.locator('#modal.open .btn', { hasText: 'Add to this page' }).click();
-    await A.p.locator('#toasts .toast', { hasText: /^Added \d+ windows?\./ }).first().waitFor(); await A.p.evaluate(() => window.__board21.writer.settled(5000));
-    await A.p.setInputFiles('#import-input', early); await A.p.locator('#modal.open .btn', { hasText: 'Open as a new page' }).click();
-    await A.p.waitForFunction(() => window.__board21.pages.ids().length === 2 && !window.__board21.pages.busy, null, { timeout: 8000 }).catch(() => {});
-    ok(await A.p.evaluate(() => window.__board21.pages.ids().length) === 2 && await text(A.p) === `standard ${FAM.standard}`, `Add to this page and Open as a new page leave the text style alone (${await text(A.p)})`);
-    sub = await offer(await fileWith('colleague-before.21board', { letters: null }));
-    await A.p.locator('#modal.open .btn', { hasText: 'Replace this page' }).click(); await A.p.locator('#toasts .toast', { hasText: 'Board imported.' }).first().waitFor();
-    ok(!/text style/.test(sub) && await text(A.p) === `standard ${FAM.standard}`, `a file from before (no text style) changes nothing, nor says it does (${sub})`);
+    await eventually(async () => await A.p.evaluate(() => window.__board21.state.board.name) !== 'Fractions (Ms. Lee)'); await A.p.evaluate(() => window.__board21.writer.settled(5000));
+    const afterUndo = await letters(A.p);
+    ok(JSON.stringify(afterReplace) === JSON.stringify(before) && JSON.stringify(afterUndo) === JSON.stringify(before),
+      `the text style and when it was chosen stay as they were, after Replace and after its Undo (${JSON.stringify({ before, afterReplace, afterUndo })})`);
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();

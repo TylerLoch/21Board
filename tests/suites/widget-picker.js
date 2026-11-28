@@ -7,7 +7,7 @@ module.exports = T => {
     copyText, BASE
   } = T;
   return [
-  ['Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (every Text style, 5 and 3 columns, 100–150%, both corners, badges and DEV, 200%, four rows of tiles, a ring in dark mode)', async (browser) => {
+  ['Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (5 and 3 columns, 100–150%, both corners, badges and DEV, 200%, four rows of tiles, a ring in dark mode)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -120,12 +120,7 @@ module.exports = T => {
       if (ink) { const cut = await inkCut(); ok(!cut.length, `${where}: no letter of a name is clipped by its box (${cut.join(', ') || 'none'})`); }
     };
 
-    const FAMS = { legible: 'Atkinson Hyperlegible', early: '21Board Early Readers' };
-    for (const style of ['standard', 'legible', 'early']) {
-      if (style !== 'standard') {
-        await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
-        await page.waitForFunction(fam => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === fam && f.status === 'loaded').length >= 2, FAMS[style]);
-      }
+    { const style = 'Inter';
       for (const cols of [5, 3]) {
         await openPicker('left', cols === 5 ? 0 : cols);
         ok(await page.evaluate(() => getComputedStyle(document.getElementById('panel')).getPropertyValue('--cols').trim()) === String(cols), `${style}: ${cols} columns`);
@@ -140,9 +135,8 @@ module.exports = T => {
       }
       await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
     }
-    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]');
     await openPicker('right');
-    await check('Standard, the right corner’s panel');
+    await check('the right corner’s panel');
     await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-right.png' });
     // 200% on 1366 × 768: the panel is drawn as big as the screen's height allows, and still fits on the screen. Where
     // five columns would need four rows, it has six (since the Zones Check-In, 2026.11.20-1): a teacher's 18 tiles (with
@@ -195,15 +189,11 @@ module.exports = T => {
       await check(`four rows at ${sc * 100}% on ${w} × ${h}`);
       await page.locator('#panel').screenshot({ path: OUT + `widget-picker-16-${w}x${h}.png` });
     }
-    // Each long name's … whole in every Text style.
+    // Each long name's … whole at 1366 × 768.
     await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(400);
-    for (const style of ['standard', 'legible', 'early']) {
-      await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
-      if (style !== 'standard') await page.waitForFunction(fam => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === fam && f.status === 'loaded').length >= 2, FAMS[style]);
-      await openPicker('left');
-      await check(`four rows, ${style}`);
-    }
-    await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-16-early.png' });
+    await openPicker('left');
+    await check('four rows, 1366 × 768');
+    await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-16.png' });
 
     // Dark theme: each tile's icon keeps its shadows and gains a faint light ring. Light theme: no ring.
     const icons = () => page.evaluate(() => [...document.querySelectorAll('#panel .widget-tile .widget-icon')].map(i =>
@@ -222,7 +212,7 @@ module.exports = T => {
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Widget Picker: Paste (both corners at 1366 × 768 in every Text style and Size, with one page and 12, every widget in view, six columns from 150%; five columns on smaller screens, ‹ Page › on a row of its own where the buttons need the room; a picture opens a Picture window, a video link a Video Player; nothing to paste, a link it can’t play, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)', async (browser) => {
+  ['Widget Picker: Paste (both corners at 1366 × 768 in every Size, with one page and 12, every widget in view, six columns from 150%; five columns on smaller screens, ‹ Page › on a row of its own where the buttons need the room; a picture opens a Picture window, a video link a Video Player; nothing to paste, a link it can’t play, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)', async (browser) => {
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
     ok(/\| \*\*Buttons\*\* \|[^|]*Paste, Export, Import, Lock, Full screen, and Settings/.test(readme), 'the README’s Buttons row starts with Paste');
     ok(/\| \*\*Paste\*\* \|/.test(readme), 'the README has a Paste row');
@@ -232,7 +222,6 @@ module.exports = T => {
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page); await freeBoard(page);
-    const FAMS = { legible: 'Atkinson Hyperlegible', early: '21Board Early Readers' };
     const openPicker = async side => {
       for (let i = 0; i < 3 && await page.locator('#settings.open, #panel.open').count(); i++) { await page.keyboard.press('Escape'); await page.waitForTimeout(200); }
       await page.click(`.picker-btn.${side}`); await page.mouse.move(1, 1);
@@ -263,11 +252,7 @@ module.exports = T => {
     const misplaced = w => !w.there ? ['no Paste'] : Object.keys(PLACED).filter(k => !w[k]).map(k => PLACED[k]).concat(w.label === 'Paste/Paste' ? [] : [`Paste named “${w.label}”`]);
     const good = w => !misplaced(w).length;
     const allSeen = w => w.tiles >= 16 && w.seen === w.tiles && !w.tilesScroll;
-    for (const style of ['standard', 'legible', 'early']) {
-      if (style !== 'standard') {
-        await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
-        await page.waitForFunction(fam => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === fam && f.status === 'loaded').length >= 2, FAMS[style]);
-      }
+    { const style = 'Inter';
       for (const side of ['left', 'right']) {
         await openPicker(side);
         const w = await where(side);
@@ -275,12 +260,11 @@ module.exports = T => {
         await page.locator('#panel').screenshot({ path: OUT + `widget-picker-paste-${style}-${side}.png` });
       }
     }
-    // Every Size in every Text style, from both corners, with 12 pages (‹ Page 12 of 12 ›: the widest row).
+    // Every Size, from both corners, with 12 pages (‹ Page 12 of 12 ›: the widest row).
     for (let i = 0; i < 11; i++) await page.evaluate(() => window.__board21.pages.create({ end: true, quiet: true }));
     await page.waitForTimeout(500);
     const SIZES = [0.5, 0.6, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
-    for (const style of ['standard', 'legible', 'early']) {
-      await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
+    { const style = 'Inter';
       const bad = [];
       for (const sc of SIZES) {
         await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(150);
@@ -295,7 +279,6 @@ module.exports = T => {
       }
       ok(!bad.length, `${style}, Page 12 of 12, every Size from both corners: Paste fits as at 100%, five columns and six from 150%, and every widget in view (${bad.join('; ') || SIZES.length * 2 + ' cases'})`);
     }
-    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]');
     // Smaller screens: five columns from 600 px of room, as on ba52951, and six where four rows of five don't fit and
     // three of six do. ‹ Page › ends the row of buttons where that row clears the other corner's ▦, else it has a row of
     // its own. (On an iPad Air at 175%, six don't fit beside the other ▦: the fourth row of five is a scroll away.)

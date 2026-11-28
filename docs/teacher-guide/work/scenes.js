@@ -71,7 +71,7 @@ async function ftCard(p, ik, which, search, label) {
 }
 // Rolls until the dice don't all match (a first roll of all 1s looks like dice that never rolled).
 async function rollDice(p, ik, n = 3) {
-  if (n !== 1) await choose(p, ik, `${n} dice`, { exact: true });
+  if (n !== 1) { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="count:${n}"]`); await wait(p, 400); }   // (Number of dice: a row of choices)
   for (let i = 0; i < 6; i++) {
     await frame(p, ik).locator('#roll').click();
     await wait(p, 2500);
@@ -458,10 +458,10 @@ SCENES.settings = async () => {
   await shot(p, 'settings.jpg', padded(union(await p.locator('#settings').boundingBox(), await p.locator('.picker-btn.left').boundingBox()), 20));
   await ctx.close();
 };
-// settings-appearance.jpg: Settings with Appearance open (Theme, Background, Accent color, Text style, Board shape)
+// settings-appearance.jpg: Settings with Appearance open (Theme, Background, Accent color, Board shape)
 SCENES.settingsLook = async () => {
   const { ctx, p } = await newBoard();
-  await openSettings(p, ['letters', 'bg']);
+  await openSettings(p, ['bg']);
   log('  groups', JSON.stringify(await settingsGroups(p)));
   await shot(p, 'settings-appearance.jpg');
   await ctx.close();
@@ -531,21 +531,6 @@ SCENES.history = async () => {
   await p.locator('#history [data-act="sel"]').first().click(); await wait(p, 1500);
   log('  detail', JSON.stringify((await p.locator('#history-detail').innerText().catch(() => '')).replace(/\s+/g, ' ').slice(0, 600)));
   await shot(p, 'history.jpg');
-  await ctx.close();
-};
-
-// ---- 9. textstyle.jpg: Early readers
-SCENES.textstyle = async () => {
-  const { ctx, p } = await newBoard();
-  const ik = await addWin(p, 'notes');
-  await setRect(p, ik, { x: 1000, y: 120, w: 900, h: 640 });
-  await typeNote(p, ik, 'a b c d e f g\nWe read a big book.');
-  const t2 = await addWin(p, 'first-then-board');
-  await setRect(p, t2, { x: 1000, y: 800, w: 900, h: 460 });
-  await deselect(p);
-  await openSettings(p, ['letters']);
-  await p.click('#settings [data-act="letters"][data-val="early"]'); await wait(p, 1500);
-  await shot(p, 'textstyle.jpg');
   await ctx.close();
 };
 

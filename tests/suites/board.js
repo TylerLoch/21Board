@@ -1107,7 +1107,6 @@ module.exports = T => {
       [/e\.g\. when a timer ends|\(e\.g\. `https:/.test(sdkDoc), 'WIDGET-SDK says “e.g.”'],
       [!/Storage used, kiosk mode, and/.test(readme) || !/use system fonts, and draw/.test(devJs), 'a list of three without its serial comma'],
       [!/It needs Chrome 84 or later, or Safari 16\.4 or later\. As a Home Screen app, it needs Safari 18\.4 or later\./.test(readme), 'Stay awake’s versions without “or later”'],
-      [!/Choose Early readers on the laptop, and the smartboard/.test(readme), 'Board Sync’s “there”'],
       [/needs a connection/.test(readme), 'the district apps’ offline message in its old words']
     ].filter(([bad]) => bad).map(([, w]) => w);
     ok(!docOff.length, `README and the docs follow the glossary (${docOff.join('; ') || 'all fine'})`);
@@ -1460,7 +1459,7 @@ module.exports = T => {
     let [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="1"]')]);
     const oneP = OUT + 'page-one.21board'; await dl.saveAs(oneP);
     const single = JSON.parse(fs.readFileSync(oneP, 'utf8'));
-    ok(Object.keys(single).join() === 'format,formatVersion,kind,exportedAt,generator,viewport,theme,accent,letters,widgetLanguage,board,instances' && single.formatVersion === 1 && !single.pages && single.board.name === 'Page 1' && single.instances.length === 1,
+    ok(Object.keys(single).join() === 'format,formatVersion,kind,exportedAt,generator,viewport,theme,accent,widgetLanguage,board,instances' && single.formatVersion === 1 && !single.pages && single.board.name === 'Page 1' && single.instances.length === 1,
       `“This page” is a .21board file exactly as before pages (${Object.keys(single).join(',')})`);
     await openPicker(); await page.click('[data-ctl="export"]'); await settle(200);
     [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="0"]')]);

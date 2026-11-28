@@ -673,7 +673,7 @@
     sayTimer = setTimeout(function () { announceEl.textContent = t; }, 60);
   }
 
-  /* ---------- Metrics, measured from the teacher's font ---------- */
+  /* ---------- Metrics, measured from the board's font ---------- */
   var metricsCache = {};
   function probeEm(text) { probe.textContent = text; return probe.getBoundingClientRect().width / 100; }
   function metrics() {
@@ -1558,7 +1558,7 @@
     if (info && num(info.zoom) && info.zoom > 0) zoom = info.zoom;
     corners = info && info.maximized && info.corners && typeof info.corners === 'object' ? info.corners : null;
     relayout();
-    // It also fires once the teacher's font loads: measure again when things settle.
+    // It also fires once a font loads: measure again when things settle.
     clearTimeout(fontTimer);
     fontTimer = setTimeout(function () { metricsCache = {}; minCache = {}; cur.key = ''; render(false); }, 200);
   });

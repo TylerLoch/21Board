@@ -57,7 +57,7 @@ NamePicker.register('groups', {
     let run = null;       // the show running: { t0, ev, ei, anims, extra (elements to remove), deck }
     let raf = 0, dead = false;
 
-    // ---- Measuring names in the board's letters (Settings → Text style), on a canvas that is never shown.
+    // ---- Measuring names in the board's letters, on a canvas that is never shown.
     const measure = document.createElement('canvas').getContext('2d');
     const widths = new Map();
     let fam = '';
@@ -311,7 +311,7 @@ NamePicker.register('groups', {
       skip() { end(true); },
       resize() {
         if (dead) return;
-        fam = ''; widths.clear();   // (the letters may have changed, or a font finished loading: measure again)
+        fam = ''; widths.clear();   // (a font may have finished loading: measure again)
         relayout();
       },
       destroy() { dead = true; end(true); box.remove(); }

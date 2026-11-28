@@ -632,31 +632,30 @@ module.exports = T => {
       `“Time and date” reads as Auto, “Time” as On, Off stays Off, anything else as Auto: the board (in a tab / in full screen) and Settings agree (${agree.join('; ')})`);
     await ctx.close();
 
-    // Text style: the clock measures itself (and the room toasts keep clear of) in the letters it shows. A font still on
-    // its way measures again once it arrives (here each takes 0.7 s); a change to letters already loaded, or to
-    // Standard, is measured in them straight away.
+    // The board's font arriving late (here each font file takes 0.7 s): the clock measures itself again once Inter is in,
+    // so the room it says it takes (--clock-room, which toasts keep clear of) is how far it really reaches.
     ctx = await browser.newContext({ viewport: { width: 1100, height: 700 } });
     await ctx.route(/\.woff2$/, async r => { await new Promise(res => setTimeout(res, 700)); await r.continue(); });
-    // The room the clock says it takes (--clock-room), and how far in from its edge it really reaches (with its gap).
-    await ctx.addInitScript(() => { window.__clockRoom = () => { const c = document.querySelector('.corner-clock');
-      return { room: parseFloat(document.body.style.getPropertyValue('--clock-room')), real: !c || c.hidden ? 0 : Math.ceil((innerWidth - c.getBoundingClientRect().left) / window.__board21.zoom.ui + 8) }; }; });
+    // The room the clock says it takes, and how far in from its edge it really reaches (with its gap); and the Inter
+    // face's status when the clock first shows its time.
+    await ctx.addInitScript(() => {
+      window.__clockRoom = () => { const c = document.querySelector('.corner-clock');
+        return { room: parseFloat(document.body.style.getPropertyValue('--clock-room')), real: !c || c.hidden ? 0 : Math.ceil((innerWidth - c.getBoundingClientRect().left) / window.__board21.zoom.ui + 8) }; };
+      window.__firstDraw = null;
+      new MutationObserver(() => {
+        const c = document.querySelector('.corner-clock');
+        if (!window.__firstDraw && c && !c.hidden && c.textContent.trim()) window.__firstDraw = Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === 'Inter').map(f => f.status).join() || 'no Inter face';
+      }).observe(document, { subtree: true, childList: true, characterData: true, attributes: true });
+    });
     page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
     await page.clock.install({ time: new Date('2026-11-12T09:41:05') });   // (no new minute meanwhile: it measures again too)
     await page.goto(BASE); await boardUp(page);
-    const rooms = [];
-    for (const key of ['legible', 'early']) {
-      await putSettings({ letters: key, clock: 'on' }); await page.reload(); await boardUp(page);
-      await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(300);
-      const m = await page.evaluate(() => window.__clockRoom()); rooms.push(`opened in ${key}: ${m.room}/${m.real}`);
-    }
-    await openSettings(page, ['letters']);
-    await page.evaluate(() => document.fonts.ready);   // (Settings shows each choice in its own letters, once Text style is open: all loaded now)
-    for (const key of ['standard', 'legible', 'early', 'standard']) {
-      // (Read in the same task as the tap: before anything else gets the chance to measure again.)
-      const m = await page.evaluate(key => { document.querySelector(`#settings [data-act="letters"][data-val="${key}"]`).click(); return window.__clockRoom(); }, key);
-      rooms.push(`${key}: ${m.room}/${m.real}`);
-    }
-    ok(rooms.every(r => { const [a, b] = r.split(': ')[1].split('/'); return a === b && +a > 0; }), `--clock-room is how far the clock really reaches, in each of the letters (${rooms.join('; ')})`);
+    await putSettings({ clock: 'on' }); await page.reload(); await boardUp(page, { fonts: false });
+    const loadedNow = () => page.evaluate(() => Array.from(document.fonts).some(f => f.family.replace(/"/g, '') === 'Inter' && f.status === 'loaded'));
+    await eventually(loadedNow); await page.waitForTimeout(300);
+    const first = await page.evaluate(() => window.__firstDraw), m = await page.evaluate(() => window.__clockRoom());
+    ok(first === 'loading' && await loadedNow() && m.room === m.real && m.room > 0,
+      `the clock first draws while Inter is still loading (${first}), and once it has loaded, --clock-room is how far the clock really reaches (${m.room}/${m.real})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
